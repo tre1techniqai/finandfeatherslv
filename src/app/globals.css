@@ -1,8 +1,11 @@
+
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  color-scheme: dark;
+  --background: #000000;
+  --foreground: #f5f5f5;
+  --font-sans: var(--font-geist-sans);
 }
 
 @theme inline {
@@ -12,15 +15,41 @@
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+html {
+  min-height: 100%;
+  background: #000000;
+  scroll-behavior: smooth;
 }
 
 body {
-  background: var(--background);
+  position: relative;
+  isolation: isolate;
+  min-height: 100vh;
+  margin: 0;
+  background: #000000;
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
+}
+
+/* Fixed background image layer: content stays fully opaque. */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+
+  background-image: url("/img/fin-feathers-bg-desktop.jpg");
+  background-position: center center;
+  background-repeat: no-repeat;
+  background-size: cover;
+
+  opacity: 0.5;
+}
+
+/* Use the portrait-oriented artwork on mobile screens. */
+@media (max-width: 767px) {
+  body::before {
+    background-image: url("/img/fin-feathers-bg-mobile.jpg");
+  }
 }

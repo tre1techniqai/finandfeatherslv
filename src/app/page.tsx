@@ -4,7 +4,7 @@ import SiteFooter from "@/components/site-footer";
 
 export default function HomePage() {
   return (
-    <div className="flex min-h-screen flex-col bg-white text-slate-900">
+    <div className="flex min-h-screen flex-col bg-transparent text-white">
       <SiteHeader />
 
       <main className="flex-1">
