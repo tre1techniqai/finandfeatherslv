@@ -7,16 +7,16 @@ import { useState } from "react";
 
 const navigationLinks = [
   { label: "FULL MENU", href: "#full-menu" },
-  { label: "MAKE A RESERVATION", href: "#reservations" },
+  { label: "RESERVATIONS", href: "#reservations" },
   { label: "ORDER ONLINE", href: "#order-online" },
-  { label: "GET DIRECTIONS", href: "#directions" },
+  { label: "DIRECTIONS", href: "#directions" },
 ];
 
 export default function SiteHeader() {
   const [menuOpen, setMenuOpen] = useState(false);
 
   return (
-    <header className="sticky top-0 z-50 w-full border-b border-white/10 bg-[rgb(234_27_36_/_40%)] text-white shadow-lg backdrop-blur-sm">
+    <header className="sticky top-0 z-50 w-full border-b border-white/30 bg-[rgb(234_27_36_/_60%)] text-white shadow-lg backdrop-blur-sm">
       <div className="mx-auto flex min-h-20 w-full max-w-[1600px] items-center justify-between gap-4 px-4 sm:px-6 lg:px-10">
         
         {/* Mobile slogan; desktop logo */}
@@ -27,16 +27,16 @@ export default function SiteHeader() {
         onClick={() => setMenuOpen(false)}
         >
             <Image
-                src="/img/fin-feathers-icon.png"
+                src="/img/fin-feathers-icon-blk-alpha.png"
                 alt="Fin & Feathers"
-                width={65}
-                height={65}
+                width={70}
+                height={70}
                 priority
-                className="hidden h-14 w-14 shrink-0 object-contain sm:h-14 sm:w-14 md:block"
+                className="h-14 w-14 shrink-0 object-contain sm:h-14 sm:w-14 md:block"
             />
 
-            <span className="block max-w-full text-[clamp(12px,3.4vw,19px)] font-bold leading-tight tracking-[0.08em] text-white md:hidden">
-                ELEVATED DINING MEETS SOUTHERN SOUL
+            <span className="block max-w-full ml-3 text-3xl font-light leading-tight tracking-[0.08em] text-yellow-400 sm:text-2xl md:text-3xl lg:text-3xl">
+               Fin & Feathers
             </span>
         </Link>
 
