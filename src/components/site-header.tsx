@@ -5,6 +5,8 @@ import Image from "next/image";
 import Link from "next/link";
 import { useState } from "react";
 
+const OPEN_RESERVATION_EVENT = "fin-feathers:open-reservation-modal";
+
 const navigationLinks = [
   { label: "FULL MENU", href: "#full-menu" },
   { label: "RESERVATIONS", href: "#reservations" },
@@ -15,41 +17,51 @@ const navigationLinks = [
 export default function SiteHeader() {
   const [menuOpen, setMenuOpen] = useState(false);
 
+  const handleNavigation = (
+    event: React.MouseEvent<HTMLAnchorElement>,
+    label: string,
+  ) => {
+    if (label !== "RESERVATIONS") return;
+
+    event.preventDefault();
+    setMenuOpen(false);
+    window.dispatchEvent(new Event(OPEN_RESERVATION_EVENT));
+  };
+
   return (
     <header className="sticky top-0 z-50 w-full border-b border-white/30 bg-[rgb(234_27_36_/_60%)] text-white shadow-lg backdrop-blur-sm">
       <div className="mx-auto flex min-h-20 w-full max-w-[1600px] items-center justify-between gap-4 px-4 sm:px-6 lg:px-10">
-        
-        {/* Mobile slogan; desktop logo */}
+        {/* Brand */}
         <Link
-        href="/"
-        aria-label="Fin & Feathers home"
-        className="flex min-w-0 flex-1 items-center md:flex-none"
-        onClick={() => setMenuOpen(false)}
+          href="/"
+          aria-label="Fin & Feathers home"
+          className="flex min-w-0 flex-1 items-center md:flex-none"
+          onClick={() => setMenuOpen(false)}
         >
-            <Image
-                src="/img/fin-feathers-icon-blk-alpha.png"
-                alt="Fin & Feathers"
-                width={70}
-                height={70}
-                priority
-                className="h-14 w-14 shrink-0 object-contain sm:h-14 sm:w-14 md:block"
-            />
+          <Image
+            src="/img/fin-feathers-icon-blk-alpha.png"
+            alt="Fin & Feathers"
+            width={70}
+            height={70}
+            priority
+            className="h-14 w-14 shrink-0 object-contain sm:h-14 sm:w-14 md:block"
+          />
 
-            <span className="block max-w-full ml-3 text-3xl font-light leading-tight tracking-[0.08em] text-yellow-400 sm:text-2xl md:text-3xl lg:text-3xl">
-               Fin & Feathers
-            </span>
+          <span className="ml-3 block max-w-full text-3xl font-light leading-tight tracking-[0.08em] text-yellow-400 sm:text-2xl md:text-3xl lg:text-3xl">
+            Fin & Feathers
+          </span>
         </Link>
-
 
         {/* Desktop navigation */}
         <nav
           aria-label="Main navigation"
-          className="hidden items-center justify-end gap-5 lg:gap-8 md:flex"
+          className="hidden items-center justify-end gap-5 md:flex lg:gap-8"
         >
           {navigationLinks.map((link) => (
             <Link
               key={link.label}
               href={link.href}
+              onClick={(event) => handleNavigation(event, link.label)}
               className="whitespace-nowrap text-xs font-semibold tracking-[0.1em] text-white transition-colors hover:text-white/70 lg:text-sm"
             >
               {link.label}
@@ -60,7 +72,9 @@ export default function SiteHeader() {
         {/* Mobile menu toggle */}
         <button
           type="button"
-          aria-label={menuOpen ? "Close navigation menu" : "Open navigation menu"}
+          aria-label={
+            menuOpen ? "Close navigation menu" : "Open navigation menu"
+          }
           aria-expanded={menuOpen}
           aria-controls="mobile-navigation"
           onClick={() => setMenuOpen((open) => !open)}
@@ -95,7 +109,7 @@ export default function SiteHeader() {
             <Link
               key={link.label}
               href={link.href}
-              onClick={() => setMenuOpen(false)}
+              onClick={(event) => handleNavigation(event, link.label)}
               className="block border-b border-white/15 py-4 text-sm font-semibold tracking-[0.1em] text-white last:border-b-0 hover:bg-white/5"
             >
               {link.label}
