@@ -3,35 +3,48 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { useState } from "react";
+import { useState, type MouseEvent } from "react";
 
 const OPEN_RESERVATION_EVENT = "fin-feathers:open-reservation-modal";
+const OPEN_MENU_EVENT = "fin-feathers:open-menu-modal";
 
 const navigationLinks = [
   { label: "FULL MENU", href: "#full-menu" },
   { label: "RESERVATIONS", href: "#reservations" },
-  { label: "ORDER ONLINE", href: "#order-online" },
-  { label: "DIRECTIONS", href: "#directions" },
+  {
+    label: "ORDER ONLINE",
+    href: "https://toast.app/r/fin-feathers-las-vegas-1229-s-casino-center-blvd/order?utm_medium=redirect",
+    external: true,
+  },
+  {
+    label: "LEAVE A REVIEW",
+    href: "https://www.google.com/maps/place/Fin+%26+Feathers+Restaurants/@36.156238,-115.1522077,17z/data=!3m1!4b1!4m6!3m5!1s0x80c8c3c535db0607:0xeec4559c4d00dbbe!8m2!3d36.156238!4d-115.1522077!16s%2Fg%2F11vm377z6q?entry=ttu&g_ep=EgoyMDI2MTAwNy4wIKXMDSoASAFQAw%3D%3D",
+    external: true,
+  },
 ];
 
 export default function SiteHeader() {
   const [menuOpen, setMenuOpen] = useState(false);
 
   const handleNavigation = (
-    event: React.MouseEvent<HTMLAnchorElement>,
+    event: MouseEvent<HTMLAnchorElement>,
     label: string,
   ) => {
-    if (label !== "RESERVATIONS") return;
+    if (label !== "FULL MENU" && label !== "RESERVATIONS") return;
 
     event.preventDefault();
     setMenuOpen(false);
-    window.dispatchEvent(new Event(OPEN_RESERVATION_EVENT));
+
+    if (label === "FULL MENU") {
+      window.dispatchEvent(new Event(OPEN_MENU_EVENT));
+    } else {
+      window.dispatchEvent(new Event(OPEN_RESERVATION_EVENT));
+    }
   };
 
   return (
     <header className="sticky top-0 z-50 w-full border-b border-white/30 bg-[rgb(234_27_36_/_60%)] text-white shadow-lg backdrop-blur-sm">
       <div className="mx-auto flex min-h-20 w-full max-w-[1600px] items-center justify-between gap-4 px-4 sm:px-6 lg:px-10">
-        {/* Brand */}
         <Link
           href="/"
           aria-label="Fin & Feathers home"
@@ -52,24 +65,24 @@ export default function SiteHeader() {
           </span>
         </Link>
 
-        {/* Desktop navigation */}
         <nav
           aria-label="Main navigation"
           className="hidden items-center justify-end gap-5 md:flex lg:gap-8"
         >
           {navigationLinks.map((link) => (
-            <Link
+            <a
               key={link.label}
               href={link.href}
+              target={link.external ? "_blank" : undefined}
+              rel={link.external ? "noopener noreferrer" : undefined}
               onClick={(event) => handleNavigation(event, link.label)}
               className="whitespace-nowrap text-xs font-semibold tracking-[0.1em] text-white transition-colors hover:text-white/70 lg:text-sm"
             >
               {link.label}
-            </Link>
+            </a>
           ))}
         </nav>
 
-        {/* Mobile menu toggle */}
         <button
           type="button"
           aria-label={
@@ -98,7 +111,6 @@ export default function SiteHeader() {
         </button>
       </div>
 
-      {/* Mobile dropdown navigation */}
       {menuOpen && (
         <nav
           id="mobile-navigation"
@@ -106,14 +118,16 @@ export default function SiteHeader() {
           className="border-t border-white/20 bg-[rgb(190_20_29_/_40%)] px-5 py-3 md:hidden"
         >
           {navigationLinks.map((link) => (
-            <Link
+            <a
               key={link.label}
               href={link.href}
+              target={link.external ? "_blank" : undefined}
+              rel={link.external ? "noopener noreferrer" : undefined}
               onClick={(event) => handleNavigation(event, link.label)}
               className="block border-b border-white/15 py-4 text-sm font-semibold tracking-[0.1em] text-white last:border-b-0 hover:bg-white/5"
             >
               {link.label}
-            </Link>
+            </a>
           ))}
         </nav>
       )}

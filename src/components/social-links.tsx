@@ -112,7 +112,7 @@ export default function SocialLinks() {
             </span>
             <span className="font-semibold">Instagram</span>
             <span className="text-xs text-white/60">
-              See what's happening
+              See what&apos;s happening
             </span>
           </a>
 

@@ -9,12 +9,23 @@ import SocialLinks from "@/components/social-links";
 import MerchModal from "@/components/merch-modal";
 import ReservationModal from "@/components/reservation-modal";
 import ReservationTrigger from "@/components/reservation-trigger";
+import MenuModal, { MenuTrigger } from "@/components/menu-modal";
+import LoyaltyProgram from "@/components/loyalty-program";
+import CareersContactEvents from "@/components/careers-contact-events";
 
 const homeButtons = [
   { label: "FULL MENU", href: "#full-menu" },
   { label: "RESERVATIONS", href: "#reservations" },
-  { label: "ORDER ONLINE", href: "#order-online" },
-  { label: "DIRECTIONS", href: "#directions" },
+  {
+    label: "ORDER ONLINE",
+    href: "https://toast.app/r/fin-feathers-las-vegas-1229-s-casino-center-blvd/order?utm_medium=redirect",
+    external: true,
+  },
+  {
+    label: "LEAVE A REVIEW",
+    href: "https://www.google.com/maps/place/Fin+%26+Feathers+Restaurants/@36.156238,-115.1522077,17z/data=!3m1!4b1!4m6!3m5!1s0x80c8c3c535db0607:0xeec4559c4d00dbbe!8m2!3d36.156238!4d-115.1522077!16s%2Fg%2F11vm377z6q?entry=ttu&g_ep=EgoyMDI2MTAwNy4wIKXMDSoASAFQAw%3D%3D",
+    external: true,
+  },
 ];
 
 const buttonClassName =
@@ -64,24 +75,41 @@ export default function HomePage() {
 
                 {/* Two columns on mobile, four on desktop */}
                 <div className="mt-8 grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
-                  {homeButtons.map((button) =>
-                    button.label === "RESERVATIONS" ? (
-                      <ReservationTrigger
-                        key={button.label}
-                        className={buttonClassName}
-                      >
-                        {button.label}
-                      </ReservationTrigger>
-                    ) : (
+                  {homeButtons.map((button) => {
+                    if (button.label === "FULL MENU") {
+                      return (
+                        <MenuTrigger
+                          key={button.label}
+                          className={buttonClassName}
+                        >
+                          {button.label}
+                        </MenuTrigger>
+                      );
+                    }
+
+                    if (button.label === "RESERVATIONS") {
+                      return (
+                        <ReservationTrigger
+                          key={button.label}
+                          className={buttonClassName}
+                        >
+                          {button.label}
+                        </ReservationTrigger>
+                      );
+                    }
+
+                    return (
                       <a
                         key={button.label}
                         href={button.href}
+                        target={button.external ? "_blank" : undefined}
+                        rel={button.external ? "noopener noreferrer" : undefined}
                         className={buttonClassName}
                       >
                         {button.label}
                       </a>
-                    ),
-                  )}
+                    );
+                  })}
                 </div>
 
               </div>
@@ -92,7 +120,9 @@ export default function HomePage() {
                   TAKE A VIRTUAL TOUR
                 </h2>
 
-                <VirtualTourModal />
+                <div className="flex w-full justify-center">
+                  <VirtualTourModal />
+                </div>
 
                 <div className="mt-12 w-full">
                   <RibeyeVideo />
@@ -135,12 +165,15 @@ export default function HomePage() {
           className="mt-8 border-t border-white/15 bg-transparent"
         >
           <MerchModal />
+          <LoyaltyProgram />
+          <CareersContactEvents />
         </section>
       </main>
 
       <SiteFooter />
 
-      {/* Shared modal opened by homepage and header reservation links */}
+      {/* Shared modals opened by homepage and header links */}
+      <MenuModal />
       <ReservationModal />
     </div>
   );

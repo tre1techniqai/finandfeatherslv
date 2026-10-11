@@ -1,7 +1,8 @@
 
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
+import Image from "next/image";
 
 const galleryImages = [
   "/img/gallery-pic-01.jpg",
@@ -12,19 +13,40 @@ const galleryImages = [
   "/img/gallery-pic-06.jpg",
 ];
 
+function ArrowIcon({ direction }: { direction: "prev" | "next" }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      className="h-6 w-6"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      {direction === "prev" ? (
+        <path d="m15 18-6-6 6-6" />
+      ) : (
+        <path d="m9 18 6-6-6-6" />
+      )}
+    </svg>
+  );
+}
+
 export default function ImageGallery() {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isOpen, setIsOpen] = useState(false);
 
   const totalImages = galleryImages.length;
 
-  const previousImage = () => {
+  const previousImage = useCallback(() => {
     setCurrentIndex((index) => (index - 1 + totalImages) % totalImages);
-  };
+  }, [totalImages]);
 
-  const nextImage = () => {
+  const nextImage = useCallback(() => {
     setCurrentIndex((index) => (index + 1) % totalImages);
-  };
+  }, [totalImages]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -44,30 +66,7 @@ export default function ImageGallery() {
       document.body.style.overflow = previousOverflow;
       window.removeEventListener("keydown", handleKeyDown);
     };
-  }, [isOpen]);
-
-  const ArrowIcon = ({
-    direction,
-  }: {
-    direction: "prev" | "next";
-  }) => (
-    <svg
-      viewBox="0 0 24 24"
-      className="h-6 w-6"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2.5"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
-      {direction === "prev" ? (
-        <path d="m15 18-6-6 6-6" />
-      ) : (
-        <path d="m9 18 6-6-6-6" />
-      )}
-    </svg>
-  );
+  }, [isOpen, nextImage, previousImage]);
 
   return (
     <section
@@ -91,10 +90,13 @@ export default function ImageGallery() {
           className="block aspect-[4/3] w-full cursor-zoom-in focus:outline-none focus-visible:ring-2 focus-visible:ring-[#ea1b24]"
           aria-label={`Enlarge gallery image ${currentIndex + 1} of ${totalImages}`}
         >
-          <img
+          <Image
             src={galleryImages[currentIndex]}
             alt={`Fin & Feathers gallery photo ${currentIndex + 1}`}
             className="h-full w-full object-cover"
+            width={1200}
+            height={800}
+            sizes="(max-width: 768px) 100vw, 896px"
           />
         </button>
 
@@ -172,10 +174,13 @@ export default function ImageGallery() {
             </button>
 
             {/* Full image */}
-            <img
+            <Image
               src={galleryImages[currentIndex]}
               alt={`Fin & Feathers gallery photo ${currentIndex + 1}`}
               className="max-h-full max-w-full rounded-md object-contain"
+              width={1200}
+              height={800}
+              sizes="(max-width: 768px) 100vw, 1152px"
             />
 
             {/* Modal previous */}

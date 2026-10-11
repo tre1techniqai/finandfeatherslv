@@ -6,6 +6,7 @@ import {
   useEffect,
   useMemo,
   useState,
+  useRef,
   type FormEvent,
 } from "react";
 
@@ -128,6 +129,7 @@ function buildReservationMessage(data: {
 }
 
 export default function ReservationModal() {
+  const modalContentRef = useRef<HTMLDivElement>(null);
   const [isOpen, setIsOpen] = useState(false);
   const [name, setName] = useState("");
   const [date, setDate] = useState("");
@@ -189,11 +191,34 @@ const availableTimes = useMemo(() => {
   }, []);
 
   useEffect(() => {
-    setNow(new Date());
+    // Defer initialization until after the initial render.
+    // This also avoids a server/client initial-time mismatch.
+    const timeoutId = window.setTimeout(() => {
+      setNow(new Date());
+    }, 0);
+
+    return () => window.clearTimeout(timeoutId);
   }, []);
+
+    useEffect(() => {
+    if (!preparedMessage) return;
+
+    const frame = window.requestAnimationFrame(() => {
+      const container = modalContentRef.current;
+      if (!container) return;
+
+      container.scrollTo({
+        top: container.scrollHeight,
+        behavior: "smooth",
+      });
+    });
+
+    return () => window.cancelAnimationFrame(frame);
+  }, [preparedMessage, showFallback, smsHandoffAttempted]);
 
   useEffect(() => {
     const openModal = () => {
+      setNow(new Date());
       setIsOpen(true);
       setFormError("");
     };
@@ -260,12 +285,6 @@ const availableTimes = useMemo(() => {
     return () => window.clearInterval(interval);
   }, [isOpen]);
 
-  useEffect(() => {
-    if (time && !availableTimes.includes(time)) {
-      setTime("");
-    }
-  }, [availableTimes, time]);
-
   const handleDateChange = (nextDate: string) => {
     setDate(nextDate);
     setTime("");
@@ -289,6 +308,13 @@ const availableTimes = useMemo(() => {
 
     if (!date || !time) {
       setFormError("Please select a reservation date and time.");
+      return;
+    }
+
+    if (!availableTimes.includes(time)) {
+      setFormError(
+        "That time is no longer available. Please select another time.",
+      );
       return;
     }
 
@@ -411,7 +437,10 @@ const availableTimes = useMemo(() => {
           </button>
         </div>
 
-        <div className="overflow-y-auto px-5 py-5 sm:px-7 sm:py-6">
+        <div
+            ref={modalContentRef}
+            className="min-w-0 overflow-x-hidden overflow-y-auto px-4 py-5 sm:px-7 sm:py-6"
+        >
           <p
             id="reservation-dialog-description"
             className="mb-5 text-sm leading-6 text-white/80"
@@ -443,8 +472,8 @@ const availableTimes = useMemo(() => {
               />
             </div>
 
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <div>
+            <div className="grid min-w-0 grid-cols-1 gap-4 sm:grid-cols-2">
+              <div className="w-full min-w-0">
                 <label
                   htmlFor="reservation-date"
                   className="mb-2 block text-sm font-semibold"
@@ -461,7 +490,7 @@ const availableTimes = useMemo(() => {
                     disabled={!now}
                     value={date}
                     onChange={(event) => handleDateChange(event.target.value)}
-                    className="min-h-12 w-full rounded-lg border border-white/25 bg-[#191919] px-3 py-3 text-base text-white focus:border-red-500 focus:outline-none focus:ring-2 focus:ring-red-500/30 disabled:cursor-not-allowed disabled:opacity-50"
+                    className="block min-h-12 w-full min-w-0 max-w-full box-border rounded-lg border border-white/25 bg-[#191919] px-2 py-3 text-base text-white focus:border-red-500 focus:outline-none focus:ring-2 focus:ring-red-500/30 disabled:cursor-not-allowed disabled:opacity-50"
                 />
                 <p className="mt-1 text-xs text-white/55">
                   Requests are limited to the next 30 calendar days.

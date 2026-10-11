@@ -6,26 +6,37 @@ import { useState } from "react";
 const VIDEO_URL =
   "https://ikxruiemlczfritxrjqr.supabase.co/storage/v1/object/public/website-media/fin-feathers-ribeye.mp4";
 
-const POSTER_URL =
-  "/img/ribeye-video-thumb.png";
+const POSTER_URL = "/img/ribeye-video-thumb.png";
 
 export default function RibeyeVideo() {
   const [playing, setPlaying] = useState(false);
 
   if (playing) {
     return (
-      <video
-        controls
-        autoPlay
-        playsInline
-        preload="metadata"
-        poster={POSTER_URL}
-        aria-label="Fin & Feathers ribeye steak video"
-        className="mx-auto block h-auto w-full max-w-[300px] rounded-lg"
-      >
-        <source src={VIDEO_URL} type="video/mp4" />
-        Your browser does not support video playback.
-      </video>
+      <div className="relative mx-auto w-full max-w-[300px]">
+        <video
+          controls
+          autoPlay
+          playsInline
+          preload="metadata"
+          poster={POSTER_URL}
+          aria-label="Fin & Feathers ribeye steak video"
+          onEnded={() => setPlaying(false)}
+          className="mx-auto block h-auto w-full rounded-lg"
+        >
+          <source src={VIDEO_URL} type="video/mp4" />
+          Your browser does not support video playback.
+        </video>
+
+        <button
+          type="button"
+          onClick={() => setPlaying(false)}
+          aria-label="Close ribeye video and return to thumbnail"
+          className="absolute right-2 top-2 z-10 flex h-9 w-9 items-center justify-center rounded-full border border-white/40 bg-black/80 text-2xl leading-none text-white shadow-lg transition-colors hover:bg-[#ea1b24] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
+        >
+          ×
+        </button>
+      </div>
     );
   }
 
@@ -39,7 +50,7 @@ export default function RibeyeVideo() {
         type="button"
         onClick={() => setPlaying(true)}
         aria-label="Play the Fin & Feathers ribeye video"
-        className="group relative block w-full overflow-hidden"
+        className="group relative block w-full overflow-hidden rounded-lg"
       >
         <img
           src={POSTER_URL}

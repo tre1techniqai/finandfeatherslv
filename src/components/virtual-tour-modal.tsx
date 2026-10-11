@@ -34,7 +34,7 @@ export default function VirtualTourModal() {
         type="button"
         onClick={() => setIsOpen(true)}
         aria-label="Open the Fin & Feathers virtual tour"
-        className="block w-full max-w-[300px] cursor-pointer"
+        className="mx-auto block w-1/2 max-w-[300px] cursor-pointer"
       >
         <img
           src="/img/fin-feathers-virtual-tour-v2.png"
