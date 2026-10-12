@@ -15,13 +15,40 @@ export default function PrivacyPolicyPage() {
       <SiteHeader />
 
       <main className="mx-auto w-full max-w-4xl flex-1 px-5 py-10 sm:px-8 sm:py-16">
+
         <div className="mb-8 border-b border-white/20 pb-6">
           <p className="text-xs font-bold tracking-[0.2em] text-red-300">
-            FIN & FEATHERS · LAS VEGAS
+            FIN &amp; FEATHERS · LAS VEGAS
           </p>
-          <h1 className="mt-3 text-3xl font-bold sm:text-4xl">
-            Privacy Policy
-          </h1>
+
+          <div className="mt-3 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <h1 className="text-3xl font-bold sm:text-4xl">
+              Privacy Policy
+            </h1>
+
+            <a
+              href="/"
+              className="inline-flex w-fit shrink-0 items-center gap-2 rounded-lg border border-white/30 bg-black/40 px-4 py-2 text-sm font-medium text-white transition hover:border-[#ea1b24] hover:bg-[#ea1b24] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#ea1b24] focus-visible:ring-offset-2 focus-visible:ring-offset-black"
+            >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                className="h-4 w-4"
+                aria-hidden="true"
+              >
+                <path d="m12 19-7-7 7-7" />
+                <path d="M19 12H5" />
+              </svg>
+
+              Back to Home
+            </a>
+          </div>
+
           <p className="mt-3 text-sm text-white/65">
             Mobile messaging and SMS privacy
           </p>

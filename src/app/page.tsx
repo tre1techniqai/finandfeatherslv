@@ -68,7 +68,7 @@ export default function HomePage() {
                   ELEVATED DINING MEETS SOUTHERN SOUL
                 </h1>
 
-                <p className="mt-3 max-w-4xl text-center text-lg leading-8 text-white/85 sm:text-2xl">
+                <p className="mt-3 max-w-4xl text-center text-lg leading-8 text-slate-400 sm:text-2xl">
                   Every dish crafted with fresh ingredients and genuine
                   hospitality.
                 </p>
@@ -111,6 +111,45 @@ export default function HomePage() {
                     );
                   })}
                 </div>
+
+                {/* Hours of Operation */}
+                <section
+                  aria-label="Hours of operation"
+                  className="mt-6 flex flex-col items-center justify-center text-center"
+                >
+                  <div className="flex items-center justify-center gap-2">
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="1.8"
+                      className="h-4 w-4 text-yellow-400"
+                      aria-hidden="true"
+                    >
+                      <circle cx="12" cy="12" r="9" />
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        d="M12 7v5l3 2"
+                      />
+                    </svg>
+
+                    <h2 className="text-md font-medium text-white">
+                      HOURS OF OPERATION
+                    </h2>
+                  </div>
+
+                  <p className="mt-2 text-sm leading-relaxed text-slate-400">
+                    Mon - Thu: 11am - 12am
+                    <span className="mx-2 hidden sm:inline">|</span>
+                    <span className="block sm:inline">Fri: 11am - 2am</span>
+                    <span className="mx-2 hidden sm:inline">|</span>
+                    <span className="block sm:inline">Sat: 10am - 2am</span>
+                    <span className="mx-2 hidden sm:inline">|</span>
+                    <span className="block sm:inline">Sun: 10am - 12am</span>
+                  </p>
+                </section>
 
               </div>
 

@@ -157,14 +157,14 @@ export default function CareersContactEvents() {
                 </a>
 
                 <a
-                  href="mailto:info@finandfeathersrestaurants.com"
+                  href="mailto:lasvegs@finandfeathersrestaurants.com"
                   className="flex items-start gap-3 break-words text-sm text-white/85 transition hover:text-[#ea1b24]"
                 >
                   <span className="mt-0.5 shrink-0 text-[#ea1b24]">
                     <SectionIcon type="email" />
                   </span>
                   <span className="break-all">
-                    info@finandfeathersrestaurants.com
+                    lasvegs@finandfeathersrestaurants.com
                   </span>
                 </a>
 
