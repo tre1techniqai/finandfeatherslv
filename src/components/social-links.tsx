@@ -4,10 +4,10 @@
 import { useEffect, useState } from "react";
 
 const FACEBOOK_URL =
-  "https://www.facebook.com/finandfeathersrestaurants";
+  "https://www.facebook.com/finandfeatherslasvegas";
 
 const INSTAGRAM_URL =
-  "https://www.instagram.com/finandfeathers/";
+  "https://www.instagram.com/finandfeatherslasvegas/";
 
 const COMMUNITY_URL = "https://finandfeathers.live/checkin";
 
