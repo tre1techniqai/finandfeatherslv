@@ -12,6 +12,7 @@ import ReservationTrigger from "@/components/reservation-trigger";
 import MenuModal, { MenuTrigger } from "@/components/menu-modal";
 import LoyaltyProgram from "@/components/loyalty-program";
 import CareersContactEvents from "@/components/careers-contact-events";
+import ScrollReveal from "@/components/scroll-reveal";
 
 const homeButtons = [
   { label: "FULL MENU", href: "#full-menu" },
@@ -49,7 +50,7 @@ export default function HomePage() {
                 height={273}
                 priority
                 sizes="100vw"
-                className="mb-6 block h-auto w-full object-contain md:hidden"
+                className="neon-flicker mb-6 block h-auto w-full object-contain md:hidden"
               />
 
               {/* Desktop logo */}
@@ -60,21 +61,21 @@ export default function HomePage() {
                 height={546}
                 priority
                 sizes="(min-width: 1280px) 896px, (min-width: 768px) calc(100vw - 48px), 100vw"
-                className="mb-6 hidden h-auto w-full object-contain md:block"
+                className="neon-flicker mb-6 hidden h-auto w-full object-contain md:block"
               />
 
               <div className="px-4 sm:px-0">
-                <h1 className="max-w-4xl text-center text-3xl font-bold leading-tight tracking-tight sm:text-4xl">
+                <h1 className="slogan-fade-in max-w-4xl text-center text-3xl font-bold leading-tight tracking-tight sm:text-4xl">
                   ELEVATED DINING MEETS SOUTHERN SOUL
                 </h1>
 
-                <p className="mt-3 max-w-4xl text-center text-lg leading-8 text-slate-400 sm:text-2xl">
+                <p className="slogan-reveal mt-3 max-w-4xl text-center text-lg leading-8 text-slate-400 sm:text-2xl">
                   Every dish crafted with fresh ingredients and genuine
                   hospitality.
                 </p>
 
                 {/* Two columns on mobile, four on desktop */}
-                <div className="mt-8 grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
+                <div className="homepage-buttons-reveal mt-8 grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
                   {homeButtons.map((button) => {
                     if (button.label === "FULL MENU") {
                       return (
@@ -113,64 +114,71 @@ export default function HomePage() {
                 </div>
 
                 {/* Hours of Operation */}
-                <section
-                  aria-label="Hours of operation"
-                  className="mt-6 flex flex-col items-center justify-center text-center"
-                >
-                  <div className="flex items-center justify-center gap-2">
-                    <svg
-                      xmlns="http://www.w3.org/2000/svg"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="1.8"
-                      className="h-4 w-4 text-yellow-400"
-                      aria-hidden="true"
-                    >
-                      <circle cx="12" cy="12" r="9" />
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        d="M12 7v5l3 2"
-                      />
-                    </svg>
+                <ScrollReveal className="mt-6">
+                  <section
+                    aria-label="Hours of operation"
+                    className="flex flex-col items-center justify-center text-center"
+                  >
+                    <div className="flex items-center justify-center gap-2">
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="1.8"
+                        className="h-4 w-4 text-yellow-400"
+                        aria-hidden="true"
+                      >
+                        <circle cx="12" cy="12" r="9" />
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          d="M12 7v5l3 2"
+                        />
+                      </svg>
 
-                    <h2 className="text-md font-medium text-white">
-                      HOURS OF OPERATION
-                    </h2>
-                  </div>
+                      <h2 className="text-md font-medium text-white">
+                        HOURS OF OPERATION
+                      </h2>
+                    </div>
 
-                  <p className="mt-2 text-sm leading-relaxed text-slate-400">
-                    Mon - Thu: 11am - 12am
-                    <span className="mx-2 hidden sm:inline">|</span>
-                    <span className="block sm:inline">Fri: 11am - 2am</span>
-                    <span className="mx-2 hidden sm:inline">|</span>
-                    <span className="block sm:inline">Sat: 10am - 2am</span>
-                    <span className="mx-2 hidden sm:inline">|</span>
-                    <span className="block sm:inline">Sun: 10am - 12am</span>
-                  </p>
-                </section>
+                    <p className="mt-2 text-sm leading-relaxed text-slate-400">
+                      Mon - Thu: 11am - 12am
+                      <span className="mx-2 hidden sm:inline">|</span>
+                      <span className="block sm:inline">Fri: 11am - 2am</span>
+                      <span className="mx-2 hidden sm:inline">|</span>
+                      <span className="block sm:inline">Sat: 10am - 2am</span>
+                      <span className="mx-2 hidden sm:inline">|</span>
+                      <span className="block sm:inline">Sun: 10am - 12am</span>
+                    </p>
+                  </section>
+                </ScrollReveal>
 
               </div>
 
               {/* Mobile virtual tour and ribeye video */}
               <div className="mt-12 px-[10px] xl:hidden">
-                <h2 className="mb-3 text-center text-xl font-bold tracking-[0.12em] text-white sm:text-2xl">
-                  TAKE A VIRTUAL TOUR
-                </h2>
+                <ScrollReveal>
+                  <h2 className="mb-3 text-center text-xl font-bold tracking-[0.12em] text-white sm:text-2xl">
+                    TAKE A VIRTUAL TOUR
+                  </h2>
 
-                <div className="flex w-full justify-center">
-                  <VirtualTourModal />
-                </div>
+                  <div className="flex w-full justify-center">
+                    <VirtualTourModal />
+                  </div>
+                </ScrollReveal>
 
-                <div className="mt-12 w-full">
+                <ScrollReveal className="mt-12 w-full">
                   <RibeyeVideo />
-                </div>
+                </ScrollReveal>
               </div>
             </div>
 
             {/* Desktop virtual tour and ribeye video */}
-            <div className="hidden w-full flex-col items-center justify-center justify-self-center xl:flex">
+            <ScrollReveal
+              desktopIntro
+              className="hidden w-full flex-col items-center justify-center justify-self-center xl:flex"
+            >
               <h2 className="mb-3 w-full text-center text-xl font-bold tracking-[0.12em] text-white sm:text-xl">
                 TAKE A VIRTUAL TOUR
               </h2>
@@ -180,32 +188,46 @@ export default function HomePage() {
               <div className="mt-12 w-full">
                 <RibeyeVideo />
               </div>
-            </div>
+            </ScrollReveal>
           </div>
         </section>
 
-        {/* Existing sections retained */}
+        {/* Image gallery */}
         <section
           id="image-gallery"
           className="mx-auto mt-8 w-full max-w-[1500px] border-t border-white/15 bg-transparent px-0 py-6 sm:px-6"
         >
-          <ImageGallery />
+          <ScrollReveal>
+            <ImageGallery />
+          </ScrollReveal>
         </section>
 
+        {/* Social links */}
         <section
           id="follow-us"
           className="mt-8 border-t border-white/15 bg-transparent"
         >
-          <SocialLinks />
+          <ScrollReveal>
+            <SocialLinks />
+          </ScrollReveal>
         </section>
 
+        {/* Merchandise, loyalty, careers, contact, and events */}
         <section
           id="merch"
           className="mt-8 border-t border-white/15 bg-transparent"
         >
-          <MerchModal />
-          <LoyaltyProgram />
-          <CareersContactEvents />
+          <ScrollReveal>
+            <MerchModal />
+          </ScrollReveal>
+
+          <ScrollReveal>
+            <LoyaltyProgram />
+          </ScrollReveal>
+
+          <ScrollReveal>
+            <CareersContactEvents />
+          </ScrollReveal>
         </section>
       </main>
 

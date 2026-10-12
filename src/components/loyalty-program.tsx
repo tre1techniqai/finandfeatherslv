@@ -179,7 +179,6 @@ export default function LoyaltyProgram() {
                   apply. View our{" "}
                   <a
                     href="/privacy-policy"
-                    target="_blank"
                     rel="noopener noreferrer"
                     className="font-semibold text-white underline underline-offset-4 hover:text-[#ea1b24]"
                   >
@@ -188,7 +187,6 @@ export default function LoyaltyProgram() {
                   and{" "}
                   <a
                     href="/terms-of-service"
-                    target="_blank"
                     rel="noopener noreferrer"
                     className="font-semibold text-white underline underline-offset-4 hover:text-[#ea1b24]"
                   >
