@@ -34,24 +34,37 @@ export default function ScrollReveal({
       return;
     }
 
+    let revealTimeout: ReturnType<typeof setTimeout> | undefined;
+
     const observer = new IntersectionObserver(
       (entries) => {
         for (const entry of entries) {
           if (entry.isIntersecting) {
-            setIsVisible(true);
+            // Stop observing immediately so each section reveals only once.
             observer.unobserve(entry.target);
+
+            // Brief pause after the section enters the visible area.
+            revealTimeout = setTimeout(() => {
+              setIsVisible(true);
+            }, 180);
           }
         }
       },
       {
         threshold: 0.05,
-        rootMargin: "0px 0px -80px 0px",
+        rootMargin: "0px 0px -40px 0px",
       }
     );
 
     observer.observe(element);
 
-    return () => observer.disconnect();
+    return () => {
+      observer.disconnect();
+
+      if (revealTimeout) {
+        clearTimeout(revealTimeout);
+      }
+    };
   }, [desktopIntro]);
 
   const revealClass = [

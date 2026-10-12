@@ -285,10 +285,10 @@ body::before {
 
 .scroll-reveal {
   opacity: 0;
-  transform: translateY(10px);
+  transform: translateY(60px);
   transition:
-    opacity 550ms ease-out,
-    transform 550ms ease-out;
+    opacity 800ms ease-out,
+    transform 1000ms cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .scroll-reveal.is-visible {
@@ -301,17 +301,19 @@ body::before {
 }
 
 /* Desktop Virtual Tour and Ribeye intro:
-   start after the supporting slogan and buttons. */
+   begin when the slogan reveal finishes.
+   Slogan reveal starts at 1600ms and lasts 2000ms. */
 @media (min-width: 1280px) {
   .scroll-reveal--desktop-intro {
-    animation: scroll-reveal-desktop-intro 600ms ease-out 3900ms both;
+    animation: scroll-reveal-desktop-intro 800ms
+      cubic-bezier(0.22, 1, 0.36, 1) 3600ms both;
   }
 }
 
 @keyframes scroll-reveal-desktop-intro {
   from {
     opacity: 0;
-    transform: translateY(10px);
+    transform: translateY(60px);
   }
 
   to {
@@ -329,5 +331,6 @@ body::before {
     transform: none;
     transition: none;
     animation: none;
+    will-change: auto;
   }
 }
