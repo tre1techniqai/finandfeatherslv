@@ -80,7 +80,7 @@ export default function SiteHeader() {
             className="h-12 w-12 object-contain"
           />
 
-          <span className="ml-3 block max-w-full text-3xl font-light leading-tight tracking-[0.08em] text-yellow-400 sm:text-2xl md:text-3xl lg:text-3xl">
+          <span className="ml-3 block max-w-full text-xl font-light leading-tight tracking-[0.08em] text-yellow-400">
             Fin & Feathers
           </span>
         </Link>
