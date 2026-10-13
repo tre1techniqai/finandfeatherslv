@@ -69,18 +69,18 @@ export default function SiteHeader() {
         <Link
           href="/"
           aria-label="Fin & Feathers home"
-          className="min-w-0 flex-1 md:hidden"
+          className="min-w-0 flex-1 flex items-center gap-3 md:hidden"
         >
           <Image
             src="/img/fin-feathers-icon-blk-alpha.png"
-            alt="Fin & Feathers"
+            alt=""
             width={54}
             height={54}
             priority
-            className="h-12 w-12 object-contain"
+            className="h-12 w-12 shrink-0 object-contain"
           />
 
-          <span className="ml-3 block max-w-full text-xl font-light leading-tight tracking-[0.08em] text-yellow-400">
+          <span className="min-w-0 max-w-full text-2xl font-light leading-tight tracking-[0.08em] text-yellow-400">
             Fin & Feathers
           </span>
         </Link>
