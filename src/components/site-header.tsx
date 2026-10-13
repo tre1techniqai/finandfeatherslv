@@ -71,8 +71,17 @@ export default function SiteHeader() {
           aria-label="Fin & Feathers home"
           className="min-w-0 flex-1 md:hidden"
         >
-          <span className="block text-center text-sm font-extrabold leading-tight tracking-[0.08em] text-white sm:text-base">
-            ELEVATED DINING MEETS SOUTHERN SOUL
+          <Image
+            src="/img/fin-feathers-icon-blk-alpha.png"
+            alt="Fin & Feathers"
+            width={54}
+            height={54}
+            priority
+            className="h-12 w-12 object-contain"
+          />
+
+          <span className="ml-3 block max-w-full text-3xl font-light leading-tight tracking-[0.08em] text-yellow-400 sm:text-2xl md:text-3xl lg:text-3xl">
+            Fin & Feathers
           </span>
         </Link>
 

@@ -194,13 +194,7 @@ export default function LoyaltyProgram() {
                 >
                   By checking this box, I agree to receive recurring
                   promotional SMS text messages and/or emails from
-                  Fin &amp; Feathers as part of the F&amp;F FAM CLUB,
-                  including approximately 6–8 total promotional messages
-                  per month across SMS and email combined. Message
-                  frequency may vary. Consent is not a condition of
-                  purchase. Message and data rates may apply to SMS
-                  messages. Reply STOP to opt out of SMS or use the
-                  unsubscribe instructions in promotional emails. View our{" "}
+                  Fin &amp; Feathers as part of the F&amp;F FAM CLUB. Consent is not a condition of purchase. Message and data rates may apply to SMS messages. Reply STOP to opt out of SMS or use the unsubscribe instructions in promotional emails. View our{" "}
                   <a
                     href="/privacy-policy"
                     rel="noopener noreferrer"
