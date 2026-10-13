@@ -5,15 +5,14 @@ import Image from "next/image";
 import Link from "next/link";
 import { useState, type MouseEvent } from "react";
 
-const OPEN_RESERVATION_EVENT = "fin-feathers:open-reservation-modal";
 const OPEN_MENU_EVENT = "fin-feathers:open-menu-modal";
 
 const navigationLinks = [
   { label: "FULL MENU", href: "#full-menu" },
-  { label: "RESERVATIONS", href: "#reservations" },
+  { label: "RESERVATIONS", href: "/reservations" },
   {
     label: "ORDER ONLINE",
-    href: "https://toast.app/r/fin-feathers-las-vegas-1229-s-casino-center-blvd/order?utm_medium=redirect",
+    href: "https://www.360mall.shop/FIN_and_Feathers/",
     external: true,
   },
   {
@@ -30,34 +29,35 @@ export default function SiteHeader() {
     event: MouseEvent<HTMLAnchorElement>,
     label: string,
   ) => {
-    if (label !== "FULL MENU" && label !== "RESERVATIONS") return;
-
-    event.preventDefault();
-    setMenuOpen(false);
-
     if (label === "FULL MENU") {
+      event.preventDefault();
+      setMenuOpen(false);
       window.dispatchEvent(new Event(OPEN_MENU_EVENT));
-    } else {
-      window.dispatchEvent(new Event(OPEN_RESERVATION_EVENT));
+      return;
     }
+
+    setMenuOpen(false);
   };
 
+  const linkClass =
+    "text-sm font-bold tracking-wide text-white transition-colors duration-200 hover:text-white/75";
+
   return (
-    <header className="sticky top-0 z-50 w-full border-b border-white/30 bg-[rgb(234_27_36_/_60%)] text-white shadow-lg backdrop-blur-sm">
-      <div className="mx-auto flex min-h-20 w-full max-w-[1600px] items-center justify-between gap-4 px-4 sm:px-6 lg:px-10">
+    <header className="sticky top-0 z-50 w-full border-b border-white/10 bg-[rgb(234_27_36_/_40%)] backdrop-blur-md">
+      <div className="mx-auto flex min-h-16 w-full max-w-7xl items-center justify-between gap-4 px-4 py-3 sm:px-6 lg:px-8">
+        {/* Desktop brand */}
         <Link
           href="/"
           aria-label="Fin & Feathers home"
-          className="flex min-w-0 flex-1 items-center md:flex-none"
-          onClick={() => setMenuOpen(false)}
+          className="hidden shrink-0 items-center md:flex"
         >
           <Image
             src="/img/fin-feathers-icon-blk-alpha.png"
             alt="Fin & Feathers"
-            width={70}
-            height={70}
+            width={54}
+            height={54}
             priority
-            className="h-14 w-14 shrink-0 object-contain sm:h-14 sm:w-14 md:block"
+            className="h-12 w-12 object-contain"
           />
 
           <span className="ml-3 block max-w-full text-3xl font-light leading-tight tracking-[0.08em] text-yellow-400 sm:text-2xl md:text-3xl lg:text-3xl">
@@ -65,70 +65,96 @@ export default function SiteHeader() {
           </span>
         </Link>
 
+        {/* Mobile slogan */}
+        <Link
+          href="/"
+          aria-label="Fin & Feathers home"
+          className="min-w-0 flex-1 md:hidden"
+        >
+          <span className="block text-center text-sm font-extrabold leading-tight tracking-[0.08em] text-white sm:text-base">
+            ELEVATED DINING MEETS SOUTHERN SOUL
+          </span>
+        </Link>
+
+        {/* Desktop navigation */}
         <nav
           aria-label="Main navigation"
-          className="hidden items-center justify-end gap-5 md:flex lg:gap-8"
+          className="hidden flex-1 items-center justify-end gap-5 lg:gap-8 md:flex"
         >
           {navigationLinks.map((link) => (
             <a
               key={link.label}
               href={link.href}
-              target={link.external ? "_blank" : undefined}
-              rel={link.external ? "noopener noreferrer" : undefined}
+              className={linkClass}
               onClick={(event) => handleNavigation(event, link.label)}
-              className="whitespace-nowrap text-xs font-semibold tracking-[0.1em] text-white transition-colors hover:text-white/70 lg:text-sm"
+              {...("external" in link && link.external
+                ? { target: "_blank", rel: "noopener noreferrer" }
+                : {})}
             >
               {link.label}
             </a>
           ))}
         </nav>
 
+        {/* Mobile menu toggle */}
         <button
           type="button"
-          aria-label={
-            menuOpen ? "Close navigation menu" : "Open navigation menu"
-          }
+          aria-label={menuOpen ? "Close navigation menu" : "Open navigation menu"}
           aria-expanded={menuOpen}
           aria-controls="mobile-navigation"
           onClick={() => setMenuOpen((open) => !open)}
-          className="flex h-11 w-11 shrink-0 flex-col items-center justify-center gap-[5px] rounded-md border border-white/40 transition-colors hover:bg-white/10 md:hidden"
+          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md border border-white/30 text-white transition hover:bg-white/10 md:hidden"
         >
-          <span
-            className={`block h-0.5 w-5 bg-white transition-transform ${
-              menuOpen ? "translate-y-[7px] rotate-45" : ""
-            }`}
-          />
-          <span
-            className={`block h-0.5 w-5 bg-white transition-opacity ${
-              menuOpen ? "opacity-0" : "opacity-100"
-            }`}
-          />
-          <span
-            className={`block h-0.5 w-5 bg-white transition-transform ${
-              menuOpen ? "-translate-y-[7px] -rotate-45" : ""
-            }`}
-          />
+          {menuOpen ? (
+            <svg
+              aria-hidden="true"
+              viewBox="0 0 24 24"
+              fill="none"
+              className="h-6 w-6"
+              stroke="currentColor"
+              strokeWidth={2}
+              strokeLinecap="round"
+            >
+              <path d="M6 6l12 12M18 6L6 18" />
+            </svg>
+          ) : (
+            <svg
+              aria-hidden="true"
+              viewBox="0 0 24 24"
+              fill="none"
+              className="h-6 w-6"
+              stroke="currentColor"
+              strokeWidth={2}
+              strokeLinecap="round"
+            >
+              <path d="M4 7h16M4 12h16M4 17h16" />
+            </svg>
+          )}
         </button>
       </div>
 
+      {/* Mobile navigation */}
       {menuOpen && (
         <nav
           id="mobile-navigation"
           aria-label="Mobile navigation"
-          className="border-t border-white/20 bg-[rgb(190_20_29_/_40%)] px-5 py-3 md:hidden"
+          className="border-t border-white/10 bg-[rgb(234_27_36_/_40%)] px-4 py-3 backdrop-blur-md md:hidden"
         >
-          {navigationLinks.map((link) => (
-            <a
-              key={link.label}
-              href={link.href}
-              target={link.external ? "_blank" : undefined}
-              rel={link.external ? "noopener noreferrer" : undefined}
-              onClick={(event) => handleNavigation(event, link.label)}
-              className="block border-b border-white/15 py-4 text-sm font-semibold tracking-[0.1em] text-white last:border-b-0 hover:bg-white/5"
-            >
-              {link.label}
-            </a>
-          ))}
+          <div className="mx-auto flex w-full max-w-7xl flex-col">
+            {navigationLinks.map((link) => (
+              <a
+                key={link.label}
+                href={link.href}
+                className="border-b border-white/10 px-2 py-4 text-sm font-bold tracking-wide text-white transition-colors hover:bg-white/10 last:border-b-0"
+                onClick={(event) => handleNavigation(event, link.label)}
+                {...("external" in link && link.external
+                  ? { target: "_blank", rel: "noopener noreferrer" }
+                  : {})}
+              >
+                {link.label}
+              </a>
+            ))}
+          </div>
         </nav>
       )}
     </header>

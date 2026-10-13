@@ -1,7 +1,4 @@
-
-"use client";
-
-const OPEN_RESERVATION_EVENT = "fin-feathers:open-reservation-modal";
+import Link from "next/link";
 
 type ReservationTriggerProps = {
   children: React.ReactNode;
@@ -13,15 +10,8 @@ export default function ReservationTrigger({
   className,
 }: ReservationTriggerProps) {
   return (
-    <a
-      href="#reservations"
-      onClick={(event) => {
-        event.preventDefault();
-        window.dispatchEvent(new Event(OPEN_RESERVATION_EVENT));
-      }}
-      className={className}
-    >
+    <Link href="/reservations" className={className}>
       {children}
-    </a>
+    </Link>
   );
 }

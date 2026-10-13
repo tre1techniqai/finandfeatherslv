@@ -99,16 +99,22 @@ export default function TermsOfServicePage() {
               purchase at our physical restaurant location.
             </p>
             <h3 className="text-lg font-semibold text-white">
-              Loyalty Program Web Form Submission
+              F&F FAM CLUB Web Form Submission
             </h3>
             <p>
-              By entering your mobile phone number and checking the consent
-              box on our homepage &quot;Join Our Loyalty Program&quot; form,
-              you provide your explicit consent to receive recurring,
-              automated promotional marketing text messages and rewards
-              alerts from Fin &amp; Feathers. Consent to receive promotional
-              marketing texts is entirely voluntary and is not a condition of
-              purchase for dining at our restaurant.
+              By entering your contact information and checking the
+              marketing consent box on our homepage F&amp;F FAM CLUB
+              signup form, you agree to receive recurring promotional
+              marketing messages from Fin &amp; Feathers by SMS text
+              message and/or email, using the contact information you
+              provide. You can expect approximately 6–8 total
+              promotional messages per month across SMS and email
+              combined. Message frequency may vary. Consent to receive
+              promotional messages is voluntary and is not a condition
+              of purchase. Message and data rates may apply to SMS
+              messages. You may opt out of SMS messages by replying
+              STOP and unsubscribe from promotional emails using the
+              unsubscribe instructions included in the email.
             </p>
           </section>
 
@@ -117,14 +123,15 @@ export default function TermsOfServicePage() {
               2. Message and Data Rates
             </h2>
             <p>
-              Message and data rates may apply for any messages sent to you
-              from us and to us from you. You can expect to receive between 3
-              to 6 messages per reservation request to successfully complete
-              the screening and confirmation process. If you have any
-              questions about your text plan or data plan, it is best to
-              contact your wireless provider. For the Loyalty Program,
-              message frequency varies, but you can typically expect up to 4
-              promotional messages per month.
+              Message and data rates may apply for messages sent to you
+              from us and to us from you. For reservation requests, you
+              can expect between 3 and 6 messages per request to
+              complete the screening and confirmation process. For the
+              F&amp;F FAM CLUB, you can expect approximately 6–8 total
+              promotional messages per month across SMS and email
+              combined. Message frequency may vary. If you have
+              questions about your text or data plan, contact your
+              wireless provider.
             </p>
           </section>
 
@@ -153,6 +160,43 @@ export default function TermsOfServicePage() {
               stand.
             </p>
           </section>
+          
+          <section className="space-y-4">
+            <h2 className="text-xl font-bold text-white">
+              Establishment Policies &amp; Additional Charges
+            </h2>
+
+            <div>
+              <h3 className="font-semibold text-white">
+                21+ Establishment After 9:00 PM
+              </h3>
+              <p className="mt-2 text-white/80">
+                Fin &amp; Feathers is a 21+ establishment after 9:00 PM. All guests
+                visiting after 9:00 PM must have a valid government-issued
+                identification document ready for verification upon arrival.
+              </p>
+            </div>
+
+            <div>
+              <h3 className="font-semibold text-white">
+                Service Charge
+              </h3>
+              <p className="mt-2 text-white/80">
+                To support our dedicated team, a 20% service charge is added to
+                all checks over $100 and to parties of six or more.
+              </p>
+            </div>
+
+            <div>
+              <h3 className="font-semibold text-white">
+                To-Go Item Surcharge
+              </h3>
+              <p className="mt-2 text-white/80">
+                A $2.00 surcharge applies to each to-go item.
+              </p>
+            </div>
+          </section>
+
         </article>
 
         <div className="mt-12 border-t border-white/15 pt-6">

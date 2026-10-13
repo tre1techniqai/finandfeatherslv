@@ -6,7 +6,7 @@ import SiteFooter from "@/components/site-footer";
 export const metadata: Metadata = {
   title: "Privacy Policy | Fin & Feathers Las Vegas",
   description:
-    "Mobile messaging and SMS privacy policy for Fin & Feathers Las Vegas.",
+  "Privacy policy for Fin & Feathers Las Vegas reservation messaging and the F&F FAM CLUB promotional program.",
 };
 
 export default function PrivacyPolicyPage() {
@@ -61,9 +61,11 @@ export default function PrivacyPolicyPage() {
             </h2>
             <p>
               Fin &amp; Feathers (&quot;we,&quot; &quot;us,&quot; or
-              {" "}&quot;our&quot;) is committed to protecting your privacy.
-              This section describes how we collect and handle information
-              for our reservation-by-text and mobile messaging services.
+              &quot;our&quot;) is committed to protecting your privacy.
+              This policy explains how we collect, use, and protect
+              information provided through our restaurant reservation
+              services and the F&amp;F FAM CLUB promotional program,
+              including communications by SMS text message and email.
             </p>
           </section>
 
@@ -73,13 +75,15 @@ export default function PrivacyPolicyPage() {
             </h2>
             <p>
               When you interact with our reservation system—either by
-              submitting our online reservation form or by texting us
-              directly at (702) 546-6394—we collect your mobile phone number,
-              name, and any reservation details you provide (such as party
-              size, date, time, seating preferences, and email address). We
-              also collect your name, mobile phone number, and email address
-              when you voluntarily sign up for our &quot;Join Our Loyalty
-              Program&quot; form located on our homepage.
+              submitting an online reservation form or texting us
+              directly at (702) 546-6394—we may collect your mobile
+              phone number, name, email address, and reservation details
+              you provide, such as party size, date, time, and seating
+              preferences. When you voluntarily sign up for the
+              F&amp;F FAM CLUB, we collect the contact information you
+              submit, which may include your name, email address, and
+              mobile phone number. We also maintain records of
+              marketing consent where applicable.
             </p>
           </section>
 
@@ -88,29 +92,39 @@ export default function PrivacyPolicyPage() {
               2. How We Use Your Information
             </h2>
             <p>
-              We use your mobile information exclusively to process,
-              pre-qualify, coordinate, and confirm your restaurant reservation
-              requests, as well as to collect mandatory large-party deposit
-              information. We do not use your reservation phone number for
-              unsolicited promotional text marketing campaigns. For members
-              of our Loyalty Program, we use your information to send
-              exclusive rewards, birthday offers, special event invitations,
-              and promotional updates. You will only receive promotional
-              marketing messages if you explicitly opt-in via our homepage
-              loyalty form.
+              We use information submitted through our reservation
+              services to process, pre-qualify, coordinate, and confirm
+              restaurant reservation requests, including communicating
+              about large-party deposit requirements. We do not use
+              reservation contact information for promotional SMS
+              marketing unless you separately provide the required
+              marketing consent. For F&amp;F FAM CLUB members who opt in
+              to promotional communications, we use the contact
+              information they provide to send offers, dining specials,
+              rewards, birthday offers, special-event invitations, and
+              other promotional updates. Members can expect
+              approximately 6–8 total promotional messages per month
+              across SMS and email combined; actual frequency may vary.
+              Marketing consent is voluntary and is not a condition of
+              purchase.
             </p>
           </section>
 
           <section className="space-y-4">
             <h2 className="text-xl font-bold text-white">
-              3. Protection of SMS Opt-In Data (Carrier Compliance)
+              3. Protection of Mobile Marketing Consent Data
             </h2>
             <p>
-              We deeply value your privacy. Your mobile information, SMS
-              opt-in data, and consent details—for both reservations and our
-              Loyalty Program—will strictly NOT be shared, sold, rented, or
-              leased to any third parties, affiliates, or data brokers for
-              marketing or promotional purposes under any circumstances.
+              We do not sell or share mobile phone numbers or SMS
+              marketing opt-in data, including consent records, with
+              third parties or affiliates for their own marketing or
+              promotional purposes. Information is used to administer
+              our reservation services and the F&amp;F FAM CLUB
+              communications in accordance with this policy. Any
+              service providers involved in delivering communications
+              may process information as needed to provide those
+              services, subject to applicable obligations and
+              protections.
             </p>
           </section>
 
@@ -119,14 +133,16 @@ export default function PrivacyPolicyPage() {
               4. Your Choices and Opt-Out
             </h2>
             <p>
-              You can cancel the SMS service at any time. Just text
-              {" "}&quot;STOP&quot; to (702) 546-6394. After you send the SMS
-              message &quot;STOP&quot; to us, we will send you an SMS message
-              to confirm that you have been unsubscribed. After this, you
-              will no longer receive SMS messages from us unless you initiate
-              a new reservation request. If you want to join again, just sign
-              up as you did the first time or text us a new reservation
-              request.
+              You can opt out of promotional SMS messages at any time
+              by replying &quot;STOP&quot; to (702) 546-6394. You may
+              receive a confirmation message after opting out. To get
+              help with SMS messaging, reply &quot;HELP&quot;. To stop
+              receiving promotional emails, use the unsubscribe
+              instructions included in the email. Opting out of
+              promotional communications does not prevent us from
+              sending service-related messages necessary to respond
+              to a reservation request or other interaction you
+              initiate, where permitted. Marketing consent is optional.
             </p>
           </section>
         </article>

@@ -7,7 +7,6 @@ import VirtualTourModal from "@/components/virtual-tour-modal";
 import ImageGallery from "@/components/image-gallery";
 import SocialLinks from "@/components/social-links";
 import MerchModal from "@/components/merch-modal";
-import ReservationModal from "@/components/reservation-modal";
 import ReservationTrigger from "@/components/reservation-trigger";
 import MenuModal, { MenuTrigger } from "@/components/menu-modal";
 import LoyaltyProgram from "@/components/loyalty-program";
@@ -114,19 +113,19 @@ export default function HomePage() {
                 </div>
 
                 {/* Hours of Operation */}
-                <ScrollReveal className="mt-6">
+                <ScrollReveal className="mt-6 w-full min-w-0 px-3">
                   <section
                     aria-label="Hours of operation"
-                    className="flex flex-col items-center justify-center text-center"
+                    className="mx-auto flex w-full min-w-0 flex-col items-center justify-center text-center"
                   >
-                    <div className="flex items-center justify-center gap-2">
+                    <h2 className="flex items-center justify-center gap-2 text-lg font-semibold text-white">
                       <svg
                         xmlns="http://www.w3.org/2000/svg"
                         viewBox="0 0 24 24"
                         fill="none"
                         stroke="currentColor"
-                        strokeWidth="1.8"
-                        className="h-4 w-4 text-yellow-400"
+                        strokeWidth={1.8}
+                        className="h-5 w-5 shrink-0 text-yellow-400"
                         aria-hidden="true"
                       >
                         <circle cx="12" cy="12" r="9" />
@@ -136,21 +135,15 @@ export default function HomePage() {
                           d="M12 7v5l3 2"
                         />
                       </svg>
+                      HOURS OF OPERATION
+                    </h2>
 
-                      <h2 className="text-md font-medium text-white">
-                        HOURS OF OPERATION
-                      </h2>
+                    <div className="mt-2 grid w-full max-w-md grid-cols-2 gap-x-3 gap-y-1 text-sm leading-relaxed text-slate-400 sm:flex sm:max-w-none sm:flex-wrap sm:justify-center sm:gap-x-4">
+                      <span>Mon - Thu: 11am - 12am</span>
+                      <span>Fri: 11am - 2am</span>
+                      <span>Sat: 10am - 2am</span>
+                      <span>Sun: 10am - 12am</span>
                     </div>
-
-                    <p className="mt-2 text-sm leading-relaxed text-slate-400">
-                      Mon - Thu: 11am - 12am
-                      <span className="mx-2 hidden sm:inline">|</span>
-                      <span className="block sm:inline">Fri: 11am - 2am</span>
-                      <span className="mx-2 hidden sm:inline">|</span>
-                      <span className="block sm:inline">Sat: 10am - 2am</span>
-                      <span className="mx-2 hidden sm:inline">|</span>
-                      <span className="block sm:inline">Sun: 10am - 12am</span>
-                    </p>
                   </section>
                 </ScrollReveal>
 
@@ -235,7 +228,6 @@ export default function HomePage() {
 
       {/* Shared modals opened by homepage and header links */}
       <MenuModal />
-      <ReservationModal />
     </div>
   );
 }

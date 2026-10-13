@@ -2,6 +2,7 @@
 "use client";
 
 import { useState, type FormEvent } from "react";
+import Image from "next/image";
 
 type SubmissionStatus = "idle" | "submitting" | "success" | "error";
 
@@ -67,15 +68,34 @@ export default function LoyaltyProgram() {
         <div className="mx-auto max-w-2xl">
           <div className="mb-8 text-center">
             <p className="mb-3 text-sm font-bold tracking-[0.2em] text-yellow-400">
-              FIN &amp; FEATHERS
+              FIN &amp; FEATHERS · LAS VEGAS
             </p>
 
+            <div className="mt-3 flex justify-center">
+              <Image
+                src="/img/fin-feathers-icon-alpha.png"
+                alt="Fin & Feathers icon"
+                width={80}
+                height={80}
+                className="h-16 w-16 object-contain mb-3 sm:h-20 sm:w-20"
+                priority
+              />
+            </div>
+
             <h2 className="text-3xl font-bold tracking-tight text-white sm:text-4xl">
-              Join Our Loyalty Program
+              JOIN THE F&amp;F FAM CLUB
             </h2>
 
-            <p className="mt-3 text-lg text-white/80">
-              Get exclusive offers and rewards!
+            <p className="mt-3 text-xl font-medium text-white">
+              You&apos;re more than a guest. You&apos;re family.
+            </p>
+
+            <p className="text-left mx-auto mt-3 max-w-xl font-medium text-sm leading-7 text-white/80 sm:text-sm border-y border-yellow-400 pt-4 pb-4 mb-3">
+              Join the F&amp;F Fam Club for exclusive offers, dining
+              specials, insider announcements, and invitations to
+              special events. Get the inside scoop on what&apos;s happening
+              at Fin &amp; Feathers—and never miss a reason to come
+              through.
             </p>
           </div>
 
@@ -173,10 +193,14 @@ export default function LoyaltyProgram() {
                   className="text-sm leading-6 text-white/80"
                 >
                   By checking this box, I agree to receive recurring
-                  automated marketing SMS text messages and/or emails
-                  from Fin &amp; Feathers at the number provided. Consent
-                  is not a condition of purchase. Msg &amp; data rates may
-                  apply. View our{" "}
+                  promotional SMS text messages and/or emails from
+                  Fin &amp; Feathers as part of the F&amp;F FAM CLUB,
+                  including approximately 6–8 total promotional messages
+                  per month across SMS and email combined. Message
+                  frequency may vary. Consent is not a condition of
+                  purchase. Message and data rates may apply to SMS
+                  messages. Reply STOP to opt out of SMS or use the
+                  unsubscribe instructions in promotional emails. View our{" "}
                   <a
                     href="/privacy-policy"
                     rel="noopener noreferrer"
@@ -202,13 +226,16 @@ export default function LoyaltyProgram() {
               disabled={status === "submitting"}
               className="flex min-h-[54px] w-full items-center justify-center rounded-xl border border-white/20 bg-[#ea1b24] px-6 py-3 text-base font-bold text-white transition-colors hover:bg-[#c9161e] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white disabled:cursor-not-allowed disabled:opacity-60"
             >
-              {status === "submitting" ? "Joining..." : "Join Now"}
+              {status === "submitting"
+                ? "Joining the Fam..."
+                : "JOIN THE FAM"}
             </button>
 
             <div aria-live="polite" aria-atomic="true">
               {status === "success" && (
                 <p className="rounded-lg border border-green-500/40 bg-green-950/40 p-3 text-sm text-green-200">
-                  Thanks for joining! Your signup has been received.
+                  Welcome to the F&amp;F Fam! Your signup has been
+                  received.
                 </p>
               )}
 

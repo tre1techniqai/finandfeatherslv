@@ -1,5 +1,6 @@
-
 "use client";
+
+import Image from "next/image";
 
 const ORDER_ONLINE_URL = "https://toast.app/r/fin-feathers-las-vegas-1229-s-casino-center-blvd/order?utm_medium=redirect";
 
@@ -77,13 +78,21 @@ export default function SiteFooter() {
               href="#loyalty-program"
               className="group inline-flex items-center gap-3"
             >
-              <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full border border-white/30 text-white transition-colors group-hover:border-[#ea1b24] group-hover:text-[#ea1b24]">
-                <FooterIcon type="loyalty" size={25} />
-              </span>
 
-              <span className="text-lg font-bold tracking-wide">
-                FIN &amp; FEATHERS
-              </span>
+              <div className="flex items-center gap-2">
+                  <Image
+                    src="/img/fin-feathers-icon-alpha.png"
+                    alt=""
+                    aria-hidden="true"
+                    width={36}
+                    height={36}
+                    className="h-9 w-9 shrink-0 object-contain"
+                  />
+
+                  <span className="text-lg font-bold tracking-wide">
+                    FIN &amp; FEATHERS
+                  </span>
+              </div>
             </a>
 
             <p className="mt-5 max-w-md text-sm leading-6 text-white/65">
@@ -97,7 +106,7 @@ export default function SiteFooter() {
               className="mt-5 inline-flex items-center gap-2 rounded-lg border border-white/25 px-4 py-3 text-sm font-bold text-white transition-colors hover:border-[#ea1b24] hover:bg-[#ea1b24]"
             >
               <FooterIcon type="loyalty" size={18} />
-              JOIN OUR LOYALTY PROGRAM
+              JOIN OUR F&F FAM CLUB
             </a>
           </div>
 
@@ -122,13 +131,7 @@ export default function SiteFooter() {
                 </li>
 
                 <li>
-                  <a
-                    href="#reservations"
-                    onClick={(event) =>
-                      openModal(event, "fin-feathers:open-reservation-modal")
-                    }
-                    className={linkClass}
-                  >
+                  <a href="/reservations" className={linkClass}>
                     Reservations
                   </a>
                 </li>

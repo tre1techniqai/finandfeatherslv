@@ -35,19 +35,37 @@ function ArrowIcon({ direction }: { direction: "prev" | "next" }) {
 }
 
 export default function ImageGallery() {
-  const [currentIndex, setCurrentIndex] = useState(0);
-  const [isOpen, setIsOpen] = useState(false);
+  const [isHovered, setIsHovered] = useState(false);
 
   const totalImages = galleryImages.length;
 
+  const [trackIndex, setTrackIndex] = useState(1);
+  const [transitionEnabled, setTransitionEnabled] = useState(true);
+  const [isOpen, setIsOpen] = useState(false);
+
+  const currentIndex = (trackIndex - 1 + totalImages) % totalImages;
+
   const previousImage = useCallback(() => {
-    setCurrentIndex((index) => (index - 1 + totalImages) % totalImages);
-  }, [totalImages]);
+    setTrackIndex((index) => index - 1);
+  }, []);
 
   const nextImage = useCallback(() => {
-    setCurrentIndex((index) => (index + 1) % totalImages);
-  }, [totalImages]);
+    setTrackIndex((index) => index + 1);
+  }, []);
 
+  // Automatically advance every 3 seconds.
+  // Pause while hovered or while the enlarged image modal is open.
+  useEffect(() => {
+    if (isHovered || isOpen) return;
+
+    const interval = window.setInterval(() => {
+      nextImage();
+    }, 3000);
+
+    return () => window.clearInterval(interval);
+  }, [isHovered, isOpen, nextImage]);
+
+  // Preserve modal keyboard controls and page scroll locking.
   useEffect(() => {
     if (!isOpen) return;
 
@@ -72,6 +90,8 @@ export default function ImageGallery() {
     <section
       aria-label="Fin & Feathers photo gallery"
       className="mx-auto w-full max-w-4xl px-4 py-8 sm:px-6"
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
     >
       <div className="mb-5 text-center">
         <h2 className="text-2xl font-bold uppercase tracking-wide text-white sm:text-3xl">
@@ -87,17 +107,62 @@ export default function ImageGallery() {
         <button
           type="button"
           onClick={() => setIsOpen(true)}
-          className="block aspect-[4/3] w-full cursor-zoom-in focus:outline-none focus-visible:ring-2 focus-visible:ring-[#ea1b24]"
+          className="block aspect-[4/3] w-full overflow-hidden cursor-zoom-in focus:outline-none focus-visible:ring-2 focus-visible:ring-[#ea1b24]"
           aria-label={`Enlarge gallery image ${currentIndex + 1} of ${totalImages}`}
         >
-          <Image
-            src={galleryImages[currentIndex]}
-            alt={`Fin & Feathers gallery photo ${currentIndex + 1}`}
-            className="h-full w-full object-cover"
-            width={1200}
-            height={800}
-            sizes="(max-width: 768px) 100vw, 896px"
-          />
+          <div
+            className={`flex h-full ${
+              transitionEnabled
+                ? "transition-transform duration-500 ease-in-out"
+                : ""
+            }`}
+            style={{
+              width: `${(totalImages + 2) * 100}%`,
+              transform: `translateX(-${trackIndex * (100 / (totalImages + 2))}%)`,
+            }}
+            onTransitionEnd={(event) => {
+              if (event.target !== event.currentTarget) return;
+
+              if (trackIndex === 0 || trackIndex === totalImages + 1) {
+                const resetIndex = trackIndex === 0 ? totalImages : 1;
+
+                setTransitionEnabled(false);
+                setTrackIndex(resetIndex);
+
+                window.requestAnimationFrame(() => {
+                  window.requestAnimationFrame(() => {
+                    setTransitionEnabled(true);
+                  });
+                });
+              }
+            }}
+          >
+            {[
+              galleryImages[totalImages - 1],
+              ...galleryImages,
+              galleryImages[0],
+            ].map((image, slideIndex) => {
+              const originalIndex =
+                (slideIndex - 1 + totalImages) % totalImages;
+
+              return (
+                <div
+                  key={`${slideIndex}-${image}`}
+                  className="relative h-full flex-none"
+                  style={{ width: `${100 / (totalImages + 2)}%` }}
+                  aria-hidden={slideIndex !== trackIndex}
+                >
+                  <Image
+                    src={image}
+                    alt={`Fin & Feathers gallery photo ${originalIndex + 1}`}
+                    className="object-cover"
+                    fill
+                    sizes="(max-width: 768px) 100vw, 896px"
+                  />
+                </div>
+              );
+            })}
+          </div>
         </button>
 
         {/* Previous */}
@@ -135,7 +200,7 @@ export default function ImageGallery() {
           <button
             key={image}
             type="button"
-            onClick={() => setCurrentIndex(index)}
+            onClick={() => setTrackIndex(index + 1)}
             aria-label={`Show image ${index + 1}`}
             aria-current={currentIndex === index ? "true" : undefined}
             className={`h-3 w-3 rounded-full transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-[#ea1b24] focus-visible:ring-offset-2 focus-visible:ring-offset-black ${
@@ -175,9 +240,10 @@ export default function ImageGallery() {
 
             {/* Full image */}
             <Image
+              key={currentIndex}
               src={galleryImages[currentIndex]}
               alt={`Fin & Feathers gallery photo ${currentIndex + 1}`}
-              className="max-h-full max-w-full rounded-md object-contain"
+              className="gallery-slide-left max-h-full max-w-full rounded-md object-contain"
               width={1200}
               height={800}
               sizes="(max-width: 768px) 100vw, 1152px"
