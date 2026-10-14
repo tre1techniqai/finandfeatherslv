@@ -8,7 +8,6 @@ import ImageGallery from "@/components/image-gallery";
 import SocialLinks from "@/components/social-links";
 import MerchModal from "@/components/merch-modal";
 import ReservationTrigger from "@/components/reservation-trigger";
-import MenuModal, { MenuTrigger } from "@/components/menu-modal";
 import LoyaltyProgram from "@/components/loyalty-program";
 import CareersContactEvents from "@/components/careers-contact-events";
 import ScrollReveal from "@/components/scroll-reveal";

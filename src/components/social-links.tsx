@@ -125,7 +125,7 @@ export default function SocialLinks() {
             <span className="text-[#ea1b24] transition group-hover:scale-110">
               <CommunityIcon />
             </span>
-            <span className="font-semibold">Our Community</span>
+            <span className="font-semibold">Check In</span>
             <span className="text-xs text-white/60">
               Join the conversation
             </span>
