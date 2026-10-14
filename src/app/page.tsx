@@ -78,12 +78,13 @@ export default function HomePage() {
                   {homeButtons.map((button) => {
                     if (button.label === "FULL MENU") {
                       return (
-                        <MenuTrigger
+                        <a
                           key={button.label}
+                          href="/menu"
                           className={buttonClassName}
                         >
-                          {button.label}
-                        </MenuTrigger>
+                          FULL MENU
+                        </a>
                       );
                     }
 
@@ -225,9 +226,6 @@ export default function HomePage() {
       </main>
 
       <SiteFooter />
-
-      {/* Shared modals opened by homepage and header links */}
-      <MenuModal />
     </div>
   );
 }

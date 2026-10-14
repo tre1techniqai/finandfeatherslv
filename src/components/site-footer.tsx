@@ -96,9 +96,7 @@ export default function SiteFooter() {
             </a>
 
             <p className="mt-5 max-w-md text-sm leading-6 text-white/65">
-              Elevated dining meets Southern soul. Join our loyalty program
-              for exclusive offers, rewards, and updates from Fin &amp;
-              Feathers.
+              Join the F&amp;F Fam Club for exclusive offers, dining specials, insider announcements, and invitations to special events. Get the inside scoop on what&apos;s happening at Fin &amp; Feathers—and never miss a reason to come through.
             </p>
 
             <a

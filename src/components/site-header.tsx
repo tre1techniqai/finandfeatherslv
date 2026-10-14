@@ -5,14 +5,12 @@ import Image from "next/image";
 import Link from "next/link";
 import { useState, type MouseEvent } from "react";
 
-const OPEN_MENU_EVENT = "fin-feathers:open-menu-modal";
-
 const navigationLinks = [
-  { label: "FULL MENU", href: "#full-menu" },
+  { label: "FULL MENU", href: "/menu" },
   { label: "RESERVATIONS", href: "/reservations" },
   {
     label: "ORDER ONLINE",
-    href: "https://www.360mall.shop/FIN_and_Feathers/",
+    href: "https://toast.app/r/fin-feathers-las-vegas-1229-s-casino-center-blvd/order?utm_medium=redirect&utm_source=fin-feathers-website",
     external: true,
   },
   {
@@ -25,19 +23,11 @@ const navigationLinks = [
 export default function SiteHeader() {
   const [menuOpen, setMenuOpen] = useState(false);
 
-  const handleNavigation = (
-    event: MouseEvent<HTMLAnchorElement>,
-    label: string,
-  ) => {
-    if (label === "FULL MENU") {
-      event.preventDefault();
-      setMenuOpen(false);
-      window.dispatchEvent(new Event(OPEN_MENU_EVENT));
-      return;
-    }
-
+  
+  const handleNavigation = () => {
     setMenuOpen(false);
   };
+
 
   const linkClass =
     "text-sm font-bold tracking-wide text-white transition-colors duration-200 hover:text-white/75";
@@ -95,7 +85,7 @@ export default function SiteHeader() {
               key={link.label}
               href={link.href}
               className={linkClass}
-              onClick={(event) => handleNavigation(event, link.label)}
+              onClick={handleNavigation}
               {...("external" in link && link.external
                 ? { target: "_blank", rel: "noopener noreferrer" }
                 : {})}
@@ -155,7 +145,7 @@ export default function SiteHeader() {
                 key={link.label}
                 href={link.href}
                 className="border-b border-white/10 px-2 py-4 text-sm font-bold tracking-wide text-white transition-colors hover:bg-white/10 last:border-b-0"
-                onClick={(event) => handleNavigation(event, link.label)}
+                onClick={handleNavigation}
                 {...("external" in link && link.external
                   ? { target: "_blank", rel: "noopener noreferrer" }
                   : {})}

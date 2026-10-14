@@ -192,16 +192,17 @@ body::before {
 }
 
 /* =========================================
-   SUPPORTING SLOGAN — LEFT-TO-RIGHT WIPE
+   SUPPORTING SLOGAN — TOP-TO-BOTTOM REVEAL
    ========================================= */
 
 .slogan-reveal {
   opacity: 0;
-  clip-path: inset(0 100% 0 0);
+  clip-path: inset(0 0 100% 0);
+  transform: translateY(-12px);
 
   animation:
     slogan-reveal-visibility 1ms linear 1600ms both,
-    slogan-wipe 2000ms cubic-bezier(0.22, 1, 0.36, 1) 1600ms both;
+    slogan-slide-down 2000ms cubic-bezier(0.22, 1, 0.36, 1) 1600ms both;
 }
 
 @keyframes slogan-reveal-visibility {
@@ -214,13 +215,24 @@ body::before {
   }
 }
 
-@keyframes slogan-wipe {
+@keyframes slogan-slide-down {
   from {
-    clip-path: inset(0 100% 0 0);
+    clip-path: inset(0 0 100% 0);
+    transform: translateY(-12px);
   }
 
   to {
     clip-path: inset(0 0 0 0);
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .slogan-reveal {
+    opacity: 1;
+    clip-path: none;
+    transform: none;
+    animation: none;
   }
 }
 
@@ -305,8 +317,8 @@ body::before {
    Slogan reveal starts at 1600ms and lasts 2000ms. */
 @media (min-width: 1280px) {
   .scroll-reveal--desktop-intro {
-    animation: scroll-reveal-desktop-intro 800ms
-      cubic-bezier(0.22, 1, 0.36, 1) 2600ms both;
+    animation: scroll-reveal-desktop-intro 2000ms
+      cubic-bezier(0.22, 1, 0.36, 1) 1600ms both;
   }
 }
 

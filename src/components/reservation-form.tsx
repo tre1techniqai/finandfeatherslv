@@ -367,25 +367,24 @@ export default function ReservationForm() {
             </div>
 
             <div className="grid gap-5 sm:grid-cols-2">
-              <div>
+              <div className="min-w-0 w-full">
                 <label
-                  htmlFor="reservation-date"
-                  className="mb-2 block text-sm font-semibold"
+                    htmlFor="reservation-date"
+                    className="mb-2 block text-sm font-semibold text-white"
                 >
-                  Preferred Date <span className="text-red-400">*</span>
+                    Preferred Date
                 </label>
-
                 <input
-                  id="reservation-date"
-                  name="date"
-                  type="date"
-                  required
-                  min={minimumDate}
-                  max={maximumDate}
-                  disabled={!now}
-                  value={date}
-                  onChange={(event) => handleDateChange(event.target.value)}
-                  className="w-full rounded-lg border border-white/20 bg-black/50 px-4 py-3 text-base text-white outline-none transition focus:border-red-500 focus:ring-2 focus:ring-red-500/30 disabled:opacity-50"
+                    id="reservation-date"
+                    name="date"
+                    type="date"
+                    required
+                    min={minimumDate}
+                    max={maximumDate}
+                    disabled={!now}
+                    value={date}
+                    onChange={(event) => handleDateChange(event.target.value)}
+                    className="block min-w-0 w-full max-w-full box-border rounded-lg border border-white/20 bg-black/50 px-4 py-3 text-base text-white outline-none transition focus:border-red-500 focus:ring-2 focus:ring-red-500/30 disabled:opacity-50"
                 />
 
                 <p className="mt-2 text-xs leading-5 text-white/60">
