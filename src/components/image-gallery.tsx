@@ -4,6 +4,16 @@
 import { useCallback, useEffect, useState } from "react";
 import Image from "next/image";
 
+export type GalleryImage = {
+  id: string;
+  title: string;
+  alt_text: string;
+  category: string;
+  storage_path: string;
+  display_order: number;
+  src: string;
+};
+
 const galleryImages = [
   "/img/gallery-pic-01.jpg",
   "/img/gallery-pic-02.jpg",
@@ -34,16 +44,23 @@ function ArrowIcon({ direction }: { direction: "prev" | "next" }) {
   );
 }
 
-export default function ImageGallery() {
+export default function ImageGallery({
+  images,
+  loadError = false,
+}: {
+  images: GalleryImage[];
+  loadError?: boolean;
+}) {
   const [isHovered, setIsHovered] = useState(false);
 
+  const galleryImages = images;
   const totalImages = galleryImages.length;
 
   const [trackIndex, setTrackIndex] = useState(1);
   const [transitionEnabled, setTransitionEnabled] = useState(true);
   const [isOpen, setIsOpen] = useState(false);
 
-  const currentIndex = (trackIndex - 1 + totalImages) % totalImages;
+  const currentIndex = totalImages > 0 ? (trackIndex - 1 + totalImages) % totalImages : 0;
 
   const previousImage = useCallback(() => {
     setTrackIndex((index) => index - 1);
@@ -56,14 +73,14 @@ export default function ImageGallery() {
   // Automatically advance every 3 seconds.
   // Pause while hovered or while the enlarged image modal is open.
   useEffect(() => {
-    if (isHovered || isOpen) return;
+    if (isHovered || isOpen || totalImages < 2) return;
 
     const interval = window.setInterval(() => {
       nextImage();
     }, 3000);
 
     return () => window.clearInterval(interval);
-  }, [isHovered, isOpen, nextImage]);
+  }, [isHovered, isOpen, nextImage, totalImages]);
 
   // Preserve modal keyboard controls and page scroll locking.
   useEffect(() => {
@@ -85,6 +102,24 @@ export default function ImageGallery() {
       window.removeEventListener("keydown", handleKeyDown);
     };
   }, [isOpen, nextImage, previousImage]);
+
+  if (totalImages === 0) {
+    return (
+      <section
+        aria-label="Fin & Feathers photo gallery"
+        className="mx-auto w-full max-w-4xl px-4 py-8 text-center sm:px-6"
+      >
+        <h2 className="text-2xl font-bold uppercase tracking-wide text-white sm:text-3xl">
+          Gallery
+        </h2>
+        <p className="mt-2 text-sm text-white/70">
+          {loadError
+            ? "Our gallery is temporarily unavailable. Please check back soon."
+            : "Gallery photos are coming soon."}
+        </p>
+      </section>
+    );
+  }
 
   return (
     <section
@@ -137,13 +172,14 @@ export default function ImageGallery() {
               }
             }}
           >
-            {[
-              galleryImages[totalImages - 1],
-              ...galleryImages,
-              galleryImages[0],
-            ].map((image, slideIndex) => {
-              const originalIndex =
-                (slideIndex - 1 + totalImages) % totalImages;
+            {
+              [
+                galleryImages[totalImages - 1],
+                ...galleryImages,
+                galleryImages[0],
+              ].map((image, slideIndex) => {
+                const originalIndex =
+                  (slideIndex - 1 + totalImages) % totalImages;
 
               return (
                 <div
@@ -153,8 +189,8 @@ export default function ImageGallery() {
                   aria-hidden={slideIndex !== trackIndex}
                 >
                   <Image
-                    src={image}
-                    alt={`Fin & Feathers gallery photo ${originalIndex + 1}`}
+                    src={image.src}
+                    alt={image.alt_text}
                     className="object-cover"
                     fill
                     sizes="(max-width: 768px) 100vw, 896px"
@@ -198,7 +234,7 @@ export default function ImageGallery() {
       >
         {galleryImages.map((image, index) => (
           <button
-            key={image}
+            key={image.id}
             type="button"
             onClick={() => setTrackIndex(index + 1)}
             aria-label={`Show image ${index + 1}`}
@@ -241,8 +277,8 @@ export default function ImageGallery() {
             {/* Full image */}
             <Image
               key={currentIndex}
-              src={galleryImages[currentIndex]}
-              alt={`Fin & Feathers gallery photo ${currentIndex + 1}`}
+              src={galleryImages[currentIndex].src}
+              alt={galleryImages[currentIndex].alt_text}
               className="gallery-slide-left max-h-full max-w-full rounded-md object-contain"
               width={1200}
               height={800}

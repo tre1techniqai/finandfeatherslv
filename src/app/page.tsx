@@ -1,10 +1,9 @@
-
 import Image from "next/image";
 import SiteHeader from "@/components/site-header";
 import SiteFooter from "@/components/site-footer";
 import RibeyeVideo from "@/components/ribeye-video";
 import VirtualTourModal from "@/components/virtual-tour-modal";
-import ImageGallery from "@/components/image-gallery";
+import GalleryData from "@/components/gallery-data";
 import SocialLinks from "@/components/social-links";
 import MerchModal from "@/components/merch-modal";
 import ReservationTrigger from "@/components/reservation-trigger";
@@ -36,9 +35,10 @@ export default function HomePage() {
       <SiteHeader />
 
       <main className="flex-1">
+        {/* Main two-column homepage layout */}
         <section className="mx-auto w-full max-w-[1500px] px-0 py-6 sm:px-6">
-          <div className="grid grid-cols-1 items-center gap-8 xl:grid-cols-[minmax(0,896px)_minmax(0,500px)] xl:justify-between xl:gap-10">
-            {/* Main content column */}
+          <div className="grid grid-cols-1 items-start gap-8 xl:grid-cols-[minmax(0,896px)_minmax(0,500px)] xl:justify-between xl:gap-10">
+            {/* Left column: logo, links, and hours */}
             <div className="mx-auto w-full min-w-0 max-w-4xl">
               {/* Mobile logo */}
               <Image
@@ -146,52 +146,41 @@ export default function HomePage() {
                     </div>
                   </section>
                 </ScrollReveal>
-
-              </div>
-
-              {/* Mobile virtual tour and ribeye video */}
-              <div className="mt-12 px-[10px] xl:hidden">
-                <ScrollReveal>
-                  <h2 className="mb-3 text-center text-xl font-bold tracking-[0.12em] text-white sm:text-2xl">
-                    TAKE A VIRTUAL TOUR
-                  </h2>
-
-                  <div className="flex w-full justify-center">
-                    <VirtualTourModal />
-                  </div>
-                </ScrollReveal>
-
-                <ScrollReveal className="mt-12 w-full">
-                  <RibeyeVideo />
-                </ScrollReveal>
               </div>
             </div>
 
-            {/* Desktop virtual tour and ribeye video */}
-            <ScrollReveal
-              desktopIntro
-              className="hidden w-full flex-col items-center justify-center justify-self-center xl:flex"
-            >
-              <h2 className="mb-3 w-full text-center text-xl font-bold tracking-[0.12em] text-white sm:text-xl">
-                TAKE A VIRTUAL TOUR
-              </h2>
-
-              <VirtualTourModal />
-
-              <div className="mt-12 w-full">
+            {/* Right column: Ribeye video, then Gallery */}
+            <div className="mx-auto w-full min-w-0 max-w-4xl xl:max-w-none">
+              <ScrollReveal className="w-full px-[10px] xl:px-0">
                 <RibeyeVideo />
-              </div>
-            </ScrollReveal>
+              </ScrollReveal>
+
+              {/* Gallery follows the video in the right column on desktop */}
+              <section
+                id="image-gallery"
+                className="mt-8 w-full border-t border-white/15 bg-transparent px-0 py-6"
+              >
+                <ScrollReveal>
+                  <GalleryData />
+                </ScrollReveal>
+              </section>
+            </div>
           </div>
         </section>
 
-        {/* Image gallery */}
+        {/* Virtual tour: its own row below the hours and main columns */}
         <section
-          id="image-gallery"
-          className="mx-auto mt-8 w-full max-w-[1500px] border-t border-white/15 bg-transparent px-0 py-6 sm:px-6"
+          id="virtual-tour"
+          className="mx-auto mt-4 w-full max-w-[1500px] border-t border-white/15 bg-transparent px-4 py-8 sm:px-6"
         >
           <ScrollReveal>
-            <ImageGallery />
+            <h2 className="mb-5 text-center text-xl font-bold tracking-[0.12em] text-white sm:text-2xl">
+              TAKE A VIRTUAL TOUR
+            </h2>
+
+            <div className="flex w-full justify-center">
+              <VirtualTourModal />
+            </div>
           </ScrollReveal>
         </section>
 

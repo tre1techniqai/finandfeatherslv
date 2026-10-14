@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useEffect, useState } from "react";
@@ -9,11 +8,19 @@ const FACEBOOK_URL =
 const INSTAGRAM_URL =
   "https://www.instagram.com/finandfeatherslasvegas/";
 
+const TIKTOK_URL =
+  "https://www.tiktok.com/@finandfeatherslasvegas";
+
 const COMMUNITY_URL = "https://finandfeathers.live/checkin";
 
 function FacebookIcon() {
   return (
-    <svg viewBox="0 0 24 24" className="h-8 w-8" fill="currentColor" aria-hidden="true">
+    <svg
+      viewBox="0 0 24 24"
+      className="h-8 w-8"
+      fill="currentColor"
+      aria-hidden="true"
+    >
       <path d="M13.5 21v-8.2h2.8l.4-3.2h-3.2V7.5c0-.9.3-1.5 1.6-1.5h1.7V3.1c-.3 0-1.3-.1-2.5-.1-2.5 0-4.2 1.5-4.2 4.3v2.3H7.3v3.2h2.8V21h3.4Z" />
     </svg>
   );
@@ -21,17 +28,52 @@ function FacebookIcon() {
 
 function InstagramIcon() {
   return (
-    <svg viewBox="0 0 24 24" className="h-8 w-8" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
+    <svg
+      viewBox="0 0 24 24"
+      className="h-8 w-8"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      aria-hidden="true"
+    >
       <rect x="3" y="3" width="18" height="18" rx="5" />
       <circle cx="12" cy="12" r="4" />
-      <circle cx="17.5" cy="6.7" r="1" fill="currentColor" stroke="none" />
+      <circle
+        cx="17.5"
+        cy="6.7"
+        r="1"
+        fill="currentColor"
+        stroke="none"
+      />
+    </svg>
+  );
+}
+
+function TikTokIcon() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      className="h-8 w-8"
+      fill="currentColor"
+      aria-hidden="true"
+    >
+      <path d="M19.6 7.3a6.7 6.7 0 0 1-4.1-1.4v8.2a6.1 6.1 0 1 1-5.3-6.1v3.4a2.8 2.8 0 1 0 1.9 2.7V2.5h3.4c.2 2.1 1.7 3.8 4.1 4.1v.7Z" />
     </svg>
   );
 }
 
 function CommunityIcon() {
   return (
-    <svg viewBox="0 0 24 24" className="h-8 w-8" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <svg
+      viewBox="0 0 24 24"
+      className="h-8 w-8"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
       <path d="M16 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
       <circle cx="10" cy="7" r="4" />
       <path d="M20 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75" />
@@ -83,23 +125,24 @@ export default function SocialLinks() {
           </p>
         </div>
 
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-          <a
-            href={FACEBOOK_URL}
-            target="_blank"
-            rel="noopener noreferrer"
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          {/* 1. Check-In */}
+          <button
+            type="button"
+            onClick={() => setIsCommunityOpen(true)}
             className={linkClass}
-            aria-label="Visit Fin & Feathers on Facebook"
+            aria-label="Open the Fin & Feathers community"
           >
-            <span className="text-[#1877F2] transition group-hover:scale-110">
-              <FacebookIcon />
+            <span className="text-[#ea1b24] transition group-hover:scale-110">
+              <CommunityIcon />
             </span>
-            <span className="font-semibold">Facebook</span>
+            <span className="font-semibold">Check-In</span>
             <span className="text-xs text-white/60">
-              Follow our page
+              Join the conversation
             </span>
-          </a>
+          </button>
 
+          {/* 2. Instagram */}
           <a
             href={INSTAGRAM_URL}
             target="_blank"
@@ -116,20 +159,39 @@ export default function SocialLinks() {
             </span>
           </a>
 
-          <button
-            type="button"
-            onClick={() => setIsCommunityOpen(true)}
+          {/* 3. TikTok */}
+          <a
+            href={TIKTOK_URL}
+            target="_blank"
+            rel="noopener noreferrer"
             className={linkClass}
-            aria-label="Open the Fin & Feathers community"
+            aria-label="Visit Fin & Feathers on TikTok"
           >
-            <span className="text-[#ea1b24] transition group-hover:scale-110">
-              <CommunityIcon />
+            <span className="text-white transition group-hover:scale-110">
+              <TikTokIcon />
             </span>
-            <span className="font-semibold">Check In</span>
+            <span className="font-semibold">TikTok</span>
             <span className="text-xs text-white/60">
-              Join the conversation
+              Follow our videos
             </span>
-          </button>
+          </a>
+
+          {/* 4. Facebook */}
+          <a
+            href={FACEBOOK_URL}
+            target="_blank"
+            rel="noopener noreferrer"
+            className={linkClass}
+            aria-label="Visit Fin & Feathers on Facebook"
+          >
+            <span className="text-[#1877F2] transition group-hover:scale-110">
+              <FacebookIcon />
+            </span>
+            <span className="font-semibold">Facebook</span>
+            <span className="text-xs text-white/60">
+              Follow our page
+            </span>
+          </a>
         </div>
       </section>
 
