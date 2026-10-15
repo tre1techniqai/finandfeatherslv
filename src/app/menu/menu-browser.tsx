@@ -296,7 +296,7 @@ export default function MenuBrowser({
             Back to Home
           </a>
 
-          <label className="block min-w-0">
+          {/* <label className="block min-w-0">
             <span className="sr-only">Search the menu</span>
             <input
               type="search"
@@ -315,7 +315,7 @@ export default function MenuBrowser({
               className="h-4 w-4 accent-[#ea1b24]"
             />
             <span>Show $5 Specials Only</span>
-          </label>
+          </label> */}
         </div>
 
         {/* Subcategory filter buttons */}
