@@ -182,11 +182,11 @@ export default function SiteFooter() {
               </a>
 
               <a
-                href="mailto:lasvegs@finandfeathersrestaurants.com"
+                href="mailto:info@finandfeatherslv.live"
                 className={`flex items-start gap-3 break-all ${linkClass}`}
               >
                 <FooterIcon type="email" />
-                <span>lasvegs@finandfeathersrestaurants.com</span>
+                <span>info@finandfeatherslv.live</span>
               </a>
 
               <a
