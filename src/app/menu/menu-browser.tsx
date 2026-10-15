@@ -200,6 +200,39 @@ export default function MenuBrowser({
             occasion.
           </p>
 
+        {/* Hours of Operation */}
+          <section
+            aria-label="Hours of operation"
+            className="mx-auto mt-6 flex w-full min-w-0 flex-col items-center justify-center text-center"
+          >
+            <h2 className="flex items-center justify-center gap-2 text-lg font-semibold text-white">
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth={1.8}
+                className="h-5 w-5 shrink-0 text-yellow-400"
+                aria-hidden="true"
+              >
+                <circle cx="12" cy="12" r="9" />
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M12 7v5l3 2"
+                />
+              </svg>
+              HOURS OF OPERATION
+            </h2>
+
+            <div className="mt-2 grid w-full max-w-md grid-cols-2 gap-x-3 gap-y-1 text-sm leading-relaxed text-slate-400 sm:flex sm:max-w-none sm:flex-wrap sm:justify-center sm:gap-x-4">
+              <span>Mon - Thu: 11am - 12am</span>
+              <span>Fri: 11am - 2am</span>
+              <span>Sat: 10am - 2am</span>
+              <span>Sun: 10am - 12am</span>
+            </div>
+          </section>
+
           <div className="mt-7 flex flex-col justify-center gap-3 sm:flex-row">
             <a
               href="/reservations"
