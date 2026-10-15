@@ -2,6 +2,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import TodaySpecials from "@/components/todays-specials";
 
 export type MenuItem = {
   id: number;
@@ -232,6 +233,8 @@ export default function MenuBrowser({
               <span>Sun: 10am - 12am</span>
             </div>
           </section>
+
+          <TodaySpecials />
 
           <div className="mt-7 flex flex-col justify-center gap-3 sm:flex-row">
             <a

@@ -10,6 +10,7 @@ import ReservationTrigger from "@/components/reservation-trigger";
 import LoyaltyProgram from "@/components/loyalty-program";
 import CareersContactEvents from "@/components/careers-contact-events";
 import ScrollReveal from "@/components/scroll-reveal";
+import TodaySpecials from "@/components/todays-specials";
 
 const homeButtons = [
   { label: "FULL MENU", href: "#full-menu" },
@@ -148,41 +149,44 @@ export default function HomePage() {
                 </ScrollReveal>
               </div>
             </div>
+            
+          {/* Right column: Today's Special, then Ribeye video */}
+          <div className="mx-auto w-full min-w-0 max-w-4xl xl:max-w-none">
+            <ScrollReveal className="w-full px-[10px] xl:px-0 xl:mt-[150px]">
+              <TodaySpecials />
+            </ScrollReveal>
 
-            {/* Right column: Ribeye video, then Gallery */}
-            <div className="mx-auto w-full min-w-0 max-w-4xl xl:max-w-none">
-              <ScrollReveal className="w-full px-[10px] xl:px-0">
-                <RibeyeVideo />
-              </ScrollReveal>
+            <ScrollReveal className="mt-8 w-full px-[10px] xl:mt-[50px] xl:px-0">
+              <RibeyeVideo />
+            </ScrollReveal>
+          </div>
 
-              {/* Gallery follows the video in the right column on desktop */}
-              <section
-                id="image-gallery"
-                className="mt-8 w-full border-t border-white/15 bg-transparent px-0 py-6"
-              >
-                <ScrollReveal>
-                  <GalleryData />
-                </ScrollReveal>
-              </section>
-            </div>
           </div>
         </section>
 
-        {/* Virtual tour: its own row below the hours and main columns */}
-        <section
-          id="virtual-tour"
-          className="mx-auto mt-4 w-full max-w-[1500px] border-t border-white/15 bg-transparent px-4 py-8 sm:px-6"
-        >
-          <ScrollReveal>
-            <h2 className="mb-5 text-center text-xl font-bold tracking-[0.12em] text-white sm:text-2xl">
-              TAKE A VIRTUAL TOUR
-            </h2>
+        
+        {/* Virtual Tour and Gallery: side by side on desktop */}
+        <section className="mx-auto mt-4 flex w-full max-w-[1500px] flex-col gap-8 border-t border-white/15 bg-transparent px-4 py-8 sm:px-6">
+          {/* Image Gallery */}
+          <div id="image-gallery" className="w-full min-w-0">
+            <ScrollReveal>
+              <GalleryData />
+            </ScrollReveal>
+          </div>
 
-            <div className="flex w-full justify-center">
-              <VirtualTourModal />
-            </div>
-          </ScrollReveal>
+          {/* Virtual Tour */}
+          <div id="virtual-tour" className="w-full min-w-0">
+            <ScrollReveal>
+              <h2 className="mb-5 text-center text-xl font-bold tracking-[0.12em] text-white sm:text-2xl">
+                TAKE A VIRTUAL TOUR
+              </h2>
+              <div className="flex w-full justify-center">
+                <VirtualTourModal />
+              </div>
+            </ScrollReveal>
+          </div>
         </section>
+
 
         {/* Social links */}
         <section
