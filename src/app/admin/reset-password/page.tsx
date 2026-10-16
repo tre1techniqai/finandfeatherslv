@@ -1,6 +1,8 @@
+import { createHmac, timingSafeEqual } from "node:crypto";
 import type { Metadata } from "next";
 import { Suspense } from "react";
 import Link from "next/link";
+import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { connection } from "next/server";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
@@ -10,6 +12,9 @@ export const metadata: Metadata = {
   description: "Securely update your Fin & Feathers account password.",
 };
 
+const RECOVERY_COOKIE_NAME = "ff_password_recovery";
+const RECOVERY_TTL_SECONDS = 15 * 60;
+
 type ResetPasswordPageProps = {
   searchParams: Promise<{
     error?: string;
@@ -17,8 +22,87 @@ type ResetPasswordPageProps = {
   }>;
 };
 
+function verifyRecoveryAuthorization(
+  authorization: string | undefined,
+  userId: string,
+): boolean {
+  const secret = process.env.PASSWORD_RECOVERY_SECRET;
+
+  if (!secret || secret.length < 32 || !authorization) {
+    return false;
+  }
+
+  const parts = authorization.split(".");
+
+  if (parts.length !== 4) {
+    return false;
+  }
+
+  const [authorizedUserId, expiration, nonce, signature] = parts;
+
+  if (
+    authorizedUserId !== userId ||
+    !/^\d+$/.test(expiration) ||
+    !/^[a-f0-9]{32}$/.test(nonce) ||
+    !/^[a-f0-9]{64}$/.test(signature)
+  ) {
+    return false;
+  }
+
+  const expiresAt = Number(expiration);
+  const now = Math.floor(Date.now() / 1000);
+
+  if (
+    !Number.isSafeInteger(expiresAt) ||
+    expiresAt <= now ||
+    expiresAt > now + RECOVERY_TTL_SECONDS
+  ) {
+    return false;
+  }
+
+  const payload = `${authorizedUserId}.${expiration}.${nonce}`;
+
+  const expectedSignature = createHmac("sha256", secret)
+    .update(payload)
+    .digest();
+
+  const providedSignature = Buffer.from(signature, "hex");
+
+  if (expectedSignature.length !== providedSignature.length) {
+    return false;
+  }
+
+  return timingSafeEqual(expectedSignature, providedSignature);
+}
+
+async function hasValidRecoveryAuthorization(
+  userId: string,
+): Promise<boolean> {
+  const cookieStore = await cookies();
+
+  return verifyRecoveryAuthorization(
+    cookieStore.get(RECOVERY_COOKIE_NAME)?.value,
+    userId,
+  );
+}
+
 async function updatePassword(formData: FormData) {
   "use server";
+
+  const supabase = await createSupabaseServerClient();
+
+  const {
+    data: { user },
+    error: userError,
+  } = await supabase.auth.getUser();
+
+  if (
+    userError ||
+    !user ||
+    !(await hasValidRecoveryAuthorization(user.id))
+  ) {
+    redirect("/admin/reset-password?error=session");
+  }
 
   const password = formData.get("password");
   const confirmPassword = formData.get("confirmPassword");
@@ -36,17 +120,6 @@ async function updatePassword(formData: FormData) {
     redirect("/admin/reset-password?error=mismatch");
   }
 
-  const supabase = await createSupabaseServerClient();
-
-  const {
-    data: { user },
-    error: userError,
-  } = await supabase.auth.getUser();
-
-  if (userError || !user) {
-    redirect("/admin/reset-password?error=session");
-  }
-
   const { error } = await supabase.auth.updateUser({
     password,
   });
@@ -57,7 +130,24 @@ async function updatePassword(formData: FormData) {
     redirect("/admin/reset-password?error=update-failed");
   }
 
-  await supabase.auth.signOut();
+  const cookieStore = await cookies();
+
+  cookieStore.set(RECOVERY_COOKIE_NAME, "", {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "lax",
+    path: "/admin/reset-password",
+    maxAge: 0,
+  });
+
+  const { error: signOutError } = await supabase.auth.signOut();
+
+  if (signOutError) {
+    console.error(
+      "Sign-out after password reset failed:",
+      signOutError.code,
+    );
+  }
 
   redirect("/admin/reset-password?updated=1");
 }
@@ -86,7 +176,8 @@ async function ResetPasswordContent({
     data: { user },
   } = await supabase.auth.getUser();
 
-  const hasSession = Boolean(user);
+  const hasRecoveryAuthorization =
+    !!user && (await hasValidRecoveryAuthorization(user.id));
 
   const errorMessages: Record<string, string> = {
     "invalid-link":
@@ -141,7 +232,7 @@ async function ResetPasswordContent({
               </p>
             )}
 
-            {hasSession ? (
+            {hasRecoveryAuthorization ? (
               <form action={updatePassword} className="space-y-5">
                 <div>
                   <label
@@ -197,8 +288,9 @@ async function ResetPasswordContent({
             ) : (
               <div className="space-y-5">
                 <p className="rounded-lg border border-white/15 bg-white/5 px-4 py-4 text-sm leading-6 text-zinc-300">
-                  No verified recovery session was found. Please request
-                  a new password-reset email to continue.
+                  No valid recovery authorization was found. Your reset
+                  link may have expired, or your recovery session may
+                  have ended.
                 </p>
 
                 <Link
