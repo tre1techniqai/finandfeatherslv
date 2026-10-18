@@ -55,5 +55,5 @@ export async function signInManager(
     return { error: LOGIN_ERROR };
   }
 
-  redirect("/admin/menu");
+  redirect("/admin");
 }

@@ -41,12 +41,12 @@ export default function HomePage() {
           <div className="grid grid-cols-1 items-start gap-8 xl:grid-cols-[minmax(0,896px)_minmax(0,500px)] xl:justify-between xl:gap-10">
             {/* Left column: logo, links, and hours */}
             <div className="mx-auto w-full min-w-0 max-w-4xl">
-              {/* Mobile logo */}
+                            {/* Mobile logo */}
               <Image
-                src="/img/fin-feathers-lv-logo-500.png"
+                src="/img/fin-feathers-lv-logo-01.png"
                 alt="Fin & Feathers Las Vegas"
                 width={500}
-                height={273}
+                height={174}
                 priority
                 sizes="100vw"
                 className="neon-flicker mb-6 block h-auto w-full object-contain md:hidden"
@@ -54,10 +54,10 @@ export default function HomePage() {
 
               {/* Desktop logo */}
               <Image
-                src="/img/fin-feathers-lv-logo-1000.png"
+                src="/img/fin-feathers-lv-logo-01.png"
                 alt="Fin & Feathers Las Vegas"
-                width={1000}
-                height={546}
+                width={861}
+                height={300}
                 priority
                 sizes="(min-width: 1280px) 896px, (min-width: 768px) calc(100vw - 48px), 100vw"
                 className="neon-flicker mb-6 hidden h-auto w-full object-contain md:block"

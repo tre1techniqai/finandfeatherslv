@@ -367,3 +367,18 @@ body::before {
     animation: none;
   }
 }
+
+/* Reservation date inputs — prevent mobile overflow */
+input[type="date"] {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+@media (max-width: 639px) {
+  input[type="date"] {
+    padding-left: 0.5rem;
+    padding-right: 0.5rem;
+  }
+}
