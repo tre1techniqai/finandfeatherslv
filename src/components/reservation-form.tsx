@@ -6,7 +6,7 @@ import Image from "next/image";
 const RESERVATION_PHONE = "17025466394";
 const RESERVATION_PHONE_DISPLAY = "(702) 546-6394";
 const TIME_ZONE = "America/Los_Angeles";
-const MAX_DAYS_AHEAD = 30;
+const MAX_DAYS_AHEAD = 90;
 const MIN_HOURS_AHEAD = 2;
 
 const OCCASIONS = [
@@ -487,7 +487,7 @@ export default function ReservationForm() {
                     htmlFor="reservation-date"
                     className="mb-2 block text-sm font-semibold text-white"
                 >
-                    Preferred Date
+                    Preferred Date <span className="text-red-400">*</span>
                 </label>
                 <input
                     id="reservation-date"
@@ -503,7 +503,7 @@ export default function ReservationForm() {
                 />
 
                 <p className="mt-2 text-xs leading-5 text-white/60">
-                  Requests may be made up to 30 calendar days in advance.
+                  Requests may be made up to 90 calendar days in advance.
                 </p>
               </div>
 
