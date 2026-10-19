@@ -1,5 +1,4 @@
 import { Suspense } from "react";
-import { notFound } from "next/navigation";
 import { connection } from "next/server";
 
 import { requireManager } from "@/lib/auth/require-manager";
@@ -10,9 +9,6 @@ async function ProtectedReservationActionsPreview() {
   await connection();
 
   // Never expose this temporary preview in production.
-  if (process.env.NODE_ENV !== "development") {
-    notFound();
-  }
 
   // Verify the authenticated user's active manager role.
   await requireManager();

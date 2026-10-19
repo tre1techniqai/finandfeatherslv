@@ -172,9 +172,6 @@ async function ProtectedReservationDetail({
 }) {
   await connection();
 
-  if (process.env.NODE_ENV !== "development") {
-    notFound();
-  }
 
   await requireManager();
 

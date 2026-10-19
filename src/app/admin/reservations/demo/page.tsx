@@ -2,7 +2,6 @@
 import { Suspense } from "react";
 import Link from "next/link";
 import { connection } from "next/server";
-import { notFound } from "next/navigation";
 import { requireManager } from "@/lib/auth/require-manager";
 import {
   demoReservations,
@@ -216,9 +215,6 @@ function ReservationTable() {
 async function ProtectedDemoDashboard() {
   await connection();
 
-  if (process.env.NODE_ENV !== "development") {
-    notFound();
-  }
 
   await requireManager();
 
