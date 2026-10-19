@@ -183,7 +183,8 @@ function isMobileDevice() {
 }
 
 function buildReservationMessage(details: {
-  name: string;
+  first_name: string;
+  last_name: string;
   date: string;
   time: string;
   partySize: string;
@@ -192,7 +193,8 @@ function buildReservationMessage(details: {
   return [
     "Hello Fin & Feathers! I'd like to request a reservation.",
     "",
-    `Name: ${details.name.trim()}`,
+    `First Name: ${details.first_name.trim()}`,
+    `Last Name: ${details.last_name.trim()}`,
     `Date: ${formatDate(details.date)}`,
     `Time: ${formatTime(details.time)}`,
     `Guests: ${details.partySize}`,
@@ -207,7 +209,8 @@ function buildReservationMessage(details: {
 export default function ReservationForm() {
   const [now, setNow] = useState<Date | null>(null);
 
-  const [name, setName] = useState("");
+  const [first_name, setFirstName] = useState("");
+  const [last_name, setLastName] = useState("");
   const [date, setDate] = useState("");
   const [time, setTime] = useState("");
   const [partySize, setPartySize] = useState("2");
@@ -282,13 +285,23 @@ export default function ReservationForm() {
       return;
     }
 
-    if (!name.trim()) {
-      setFormError("Please enter your name.");
+    if (!first_name.trim()) {
+      setFormError("Please enter your first name.");
       return;
     }
 
-    if (name.trim().length > 100) {
-      setFormError("Please keep your name to 100 characters or fewer.");
+    if (!last_name.trim()) {
+      setFormError("Please enter your last name.");
+      return;
+    }
+
+    if (first_name.trim().length > 50 || last_name.trim().length > 50) {
+      setFormError("Please keep each name to 50 characters or fewer.");
+      return;
+    }
+
+    if (`${first_name.trim()} ${last_name.trim()}`.length > 100) {
+      setFormError("Please keep your full name to 100 characters or fewer.");
       return;
     }
 
@@ -339,7 +352,8 @@ export default function ReservationForm() {
     }
 
     const message = buildReservationMessage({
-      name,
+      first_name,
+      last_name,
       date,
       time,
       partySize,
@@ -421,26 +435,50 @@ export default function ReservationForm() {
 
         <div className="min-w-0 px-4 py-5 sm:px-8 sm:py-7">
           <form onSubmit={handleSubmit} className="space-y-6">
-            <div>
-              <label
-                htmlFor="reservation-name"
-                className="mb-2 block text-sm font-semibold"
-              >
-                Full Name <span className="text-red-400">*</span>
-              </label>
+            <div className="grid min-w-0 grid-cols-1 gap-5 sm:grid-cols-2">
+              <div className="min-w-0">
+                <label
+                  htmlFor="reservation-first-name"
+                  className="mb-2 block text-sm font-semibold"
+                >
+                  First Name <span className="text-red-400">*</span>
+                </label>
 
-              <input
-                id="reservation-name"
-                name="name"
-                type="text"
-                autoComplete="name"
-                maxLength={100}
-                required
-                value={name}
-                onChange={(event) => setName(event.target.value)}
-                className="w-full rounded-lg border border-white/20 bg-black/50 px-4 py-3 text-base text-white outline-none transition placeholder:text-white/40 focus:border-red-500 focus:ring-2 focus:ring-red-500/30"
-                placeholder="Enter your full name"
-              />
+                <input
+                  id="reservation-first-name"
+                  name="first_name"
+                  type="text"
+                  autoComplete="given-name"
+                  maxLength={50}
+                  required
+                  value={first_name}
+                  onChange={(event) => setFirstName(event.target.value)}
+                  className="w-full min-w-0 rounded-lg border border-white/20 bg-black/50 px-4 py-3 text-base text-white outline-none transition placeholder:text-white/40 focus:border-red-500 focus:ring-2 focus:ring-red-500/30"
+                  placeholder="Enter your first name"
+                />
+              </div>
+
+              <div className="min-w-0">
+                <label
+                  htmlFor="reservation-last-name"
+                  className="mb-2 block text-sm font-semibold"
+                >
+                  Last Name <span className="text-red-400">*</span>
+                </label>
+
+                <input
+                  id="reservation-last-name"
+                  name="last_name"
+                  type="text"
+                  autoComplete="family-name"
+                  maxLength={50}
+                  required
+                  value={last_name}
+                  onChange={(event) => setLastName(event.target.value)}
+                  className="w-full min-w-0 rounded-lg border border-white/20 bg-black/50 px-4 py-3 text-base text-white outline-none transition placeholder:text-white/40 focus:border-red-500 focus:ring-2 focus:ring-red-500/30"
+                  placeholder="Enter your last name"
+                />
+              </div>
             </div>
 
             <div className="grid min-w-0 grid-cols-1 gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
