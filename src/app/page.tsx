@@ -41,9 +41,9 @@ export default function HomePage() {
           <div className="grid grid-cols-1 items-start gap-8 xl:grid-cols-[minmax(0,896px)_minmax(0,500px)] xl:justify-between xl:gap-10">
             {/* Left column: logo, links, and hours */}
             <div className="mx-auto w-full min-w-0 max-w-4xl">
-                            {/* Mobile logo */}
+              {/* Mobile logo */}
               <Image
-                src="/img/fin-feathers-lv-logo-01.png"
+                src="/img/fin-feathers-lv-logo-1000.png"
                 alt="Fin & Feathers Las Vegas"
                 width={500}
                 height={174}
@@ -54,10 +54,10 @@ export default function HomePage() {
 
               {/* Desktop logo */}
               <Image
-                src="/img/fin-feathers-lv-logo-01.png"
+                src="/img/fin-feathers-lv-logo-1000.png"
                 alt="Fin & Feathers Las Vegas"
-                width={861}
-                height={300}
+                width={1000}
+                height={348}
                 priority
                 sizes="(min-width: 1280px) 896px, (min-width: 768px) calc(100vw - 48px), 100vw"
                 className="neon-flicker mb-6 hidden h-auto w-full object-contain md:block"
@@ -149,22 +149,20 @@ export default function HomePage() {
                 </ScrollReveal>
               </div>
             </div>
-            
-          {/* Right column: Today's Special, then Ribeye video */}
-          <div className="mx-auto w-full min-w-0 max-w-4xl xl:max-w-none">
-            <ScrollReveal className="w-full px-[10px] xl:px-0 xl:mt-[150px]">
-              <TodaySpecials />
-            </ScrollReveal>
 
-            <ScrollReveal className="mt-8 w-full px-[10px] xl:mt-[50px] xl:px-0">
-              <RibeyeVideo />
-            </ScrollReveal>
-          </div>
+            {/* Right column: Today's Special, then Ribeye video */}
+            <div className="mx-auto w-full min-w-0 max-w-4xl xl:max-w-none">
+              <ScrollReveal className="w-full px-[10px] xl:mt-[150px] xl:px-0">
+                <TodaySpecials />
+              </ScrollReveal>
 
+              <ScrollReveal className="mt-8 w-full px-[10px] xl:mt-[50px] xl:px-0">
+                <RibeyeVideo />
+              </ScrollReveal>
+            </div>
           </div>
         </section>
 
-        
         {/* Virtual Tour and Gallery: side by side on desktop */}
         <section className="mx-auto mt-4 flex w-full max-w-[1500px] flex-col gap-8 border-t border-white/15 bg-transparent px-4 py-8 sm:px-6">
           {/* Image Gallery */}
@@ -186,7 +184,6 @@ export default function HomePage() {
             </ScrollReveal>
           </div>
         </section>
-
 
         {/* Social links */}
         <section

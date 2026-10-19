@@ -1,9 +1,8 @@
-
 "use client";
 
 import Image from "next/image";
 import Link from "next/link";
-import { useState, type MouseEvent } from "react";
+import { useState } from "react";
 
 const navigationLinks = [
   { label: "FULL MENU", href: "/menu" },
@@ -23,11 +22,9 @@ const navigationLinks = [
 export default function SiteHeader() {
   const [menuOpen, setMenuOpen] = useState(false);
 
-  
   const handleNavigation = () => {
     setMenuOpen(false);
   };
-
 
   const linkClass =
     "text-sm font-bold tracking-wide text-white transition-colors duration-200 hover:text-white/75";
@@ -35,50 +32,44 @@ export default function SiteHeader() {
   return (
     <header className="sticky top-0 z-50 w-full border-b border-white/10 bg-[rgb(234_27_36_/_40%)] backdrop-blur-md">
       <div className="mx-auto flex min-h-16 w-full max-w-7xl items-center justify-between gap-4 px-4 py-3 sm:px-6 lg:px-8">
-        {/* Desktop brand */}
+        {/* Desktop brand logo */}
         <Link
           href="/"
           aria-label="Fin & Feathers home"
-          className="hidden shrink-0 items-center md:flex"
+          className="hidden min-w-0 shrink-0 items-center md:flex"
         >
           <Image
-            src="/img/fin-feathers-icon-blk-alpha.png"
-            alt="Fin & Feathers"
-            width={54}
-            height={54}
+            src="/img/fin-feathers-lv-logo-01-400.png"
+            alt="Fin & Feathers Las Vegas"
+            width={400}
+            height={140}
             priority
-            className="h-12 w-12 object-contain"
+            sizes="(min-width: 1024px) 240px, 180px"
+            className="h-auto w-[180px] max-w-full object-contain lg:w-[240px]"
           />
-
-          <span className="ml-3 block max-w-full text-3xl font-light leading-tight tracking-[0.08em] text-yellow-400 sm:text-2xl md:text-3xl lg:text-3xl">
-            Fin & Feathers
-          </span>
         </Link>
 
-        {/* Mobile slogan */}
+        {/* Mobile brand logo */}
         <Link
           href="/"
           aria-label="Fin & Feathers home"
-          className="min-w-0 flex-1 flex items-center gap-3 md:hidden"
+          className="flex min-w-0 flex-1 items-center md:hidden"
         >
           <Image
-            src="/img/fin-feathers-icon-blk-alpha.png"
-            alt=""
-            width={54}
-            height={54}
+            src="/img/fin-feathers-lv-logo-01-400.png"
+            alt="Fin & Feathers Las Vegas"
+            width={400}
+            height={140}
             priority
-            className="h-12 w-12 shrink-0 object-contain"
+            sizes="(max-width: 374px) 180px, 220px"
+            className="h-auto w-[180px] max-w-full object-contain min-[375px]:w-[220px]"
           />
-
-          <span className="min-w-0 max-w-full text-2xl font-light leading-tight tracking-[0.08em] text-yellow-400">
-            Fin & Feathers
-          </span>
         </Link>
 
         {/* Desktop navigation */}
         <nav
           aria-label="Main navigation"
-          className="hidden flex-1 items-center justify-end gap-5 lg:gap-8 md:flex"
+          className="hidden min-w-0 flex-1 items-center justify-end gap-3 md:flex lg:gap-8"
         >
           {navigationLinks.map((link) => (
             <a

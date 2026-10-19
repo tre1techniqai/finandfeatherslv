@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useEffect, useMemo, useState, type FormEvent } from "react";
@@ -91,11 +90,83 @@ function formatTime(timeString: string) {
   }).format(date);
 }
 
-function getTimeSlots() {
-  const slots: string[] = [];
+function getLocalDateStringForUTC(date: Date) {
+  return [
+    date.getUTCFullYear(),
+    String(date.getUTCMonth() + 1).padStart(2, "0"),
+    String(date.getUTCDate()).padStart(2, "0"),
+  ].join("-");
+}
 
-  // Reservation request times: 10:00 AM through 10:00 PM.
-  for (let minutes = 10 * 60; minutes <= 22 * 60; minutes += 30) {
+function getReservationTimestamp(dateString: string, timeString: string) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dateString)) return null;
+  if (!/^\d{2}:\d{2}$/.test(timeString)) return null;
+
+  const [year, month, day] = dateString.split("-").map(Number);
+  const [hour, minute] = timeString.split(":").map(Number);
+
+  const desired = new Date(Date.UTC(year, month - 1, day, hour, minute));
+
+  if (
+    getLocalDateStringForUTC(
+      new Date(Date.UTC(year, month - 1, day)),
+    ) !== dateString ||
+    hour > 23 ||
+    minute > 59
+  ) {
+    return null;
+  }
+
+  // Search actual UTC instants so DST changes are handled correctly.
+  const approximate = desired.getTime();
+
+  for (let offset = -14; offset <= 14; offset++) {
+    const candidate = new Date(approximate + offset * 60 * 60 * 1000);
+    const parts = getDateTimeParts(candidate);
+
+    if (
+      parts.year === year &&
+      parts.month === month &&
+      parts.day === day &&
+      parts.hour === hour &&
+      parts.minute === minute
+    ) {
+      return candidate.getTime();
+    }
+  }
+
+  return null;
+}
+
+function meetsAdvanceNotice(
+  dateString: string,
+  timeString: string,
+  currentTime: Date,
+) {
+  const reservationTimestamp = getReservationTimestamp(dateString, timeString);
+
+  return (
+    reservationTimestamp !== null &&
+    reservationTimestamp - currentTime.getTime() >=
+      MIN_HOURS_AHEAD * 60 * 60 * 1000
+  );
+}
+
+function getTimeSlots(dateString: string) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dateString)) return [];
+
+  const [year, month, day] = dateString.split("-").map(Number);
+  const selectedDate = new Date(Date.UTC(year, month - 1, day));
+  if (getLocalDateStringForUTC(selectedDate) !== dateString) return [];
+
+  const dayOfWeek = selectedDate.getUTCDay();
+  const opensAt = dayOfWeek === 0 || dayOfWeek === 6 ? 10 * 60 : 11 * 60;
+  const closesForReservationsAt = dayOfWeek === 5 || dayOfWeek === 6
+    ? 23 * 60 + 30
+    : 22 * 60;
+
+  const slots: string[] = [];
+  for (let minutes = opensAt; minutes <= closesForReservationsAt; minutes += 30) {
     const hour = Math.floor(minutes / 60);
     const minute = minutes % 60;
 
@@ -122,9 +193,9 @@ function buildReservationMessage(details: {
     "Hello Fin & Feathers! I'd like to request a reservation.",
     "",
     `Name: ${details.name.trim()}`,
-    `Preferred date: ${formatDate(details.date)}`,
-    `Preferred time: ${formatTime(details.time)}`,
-    `Party size: ${details.partySize}`,
+    `Date: ${formatDate(details.date)}`,
+    `Time: ${formatTime(details.time)}`,
+    `Guests: ${details.partySize}`,
     `Occasion: ${details.occasion}`,
     "",
     "I understand reservations are for a maximum of two hours, subject to restaurant policy.",
@@ -173,23 +244,21 @@ export default function ReservationForm() {
   );
 
   const availableTimes = useMemo(() => {
-    const slots = getTimeSlots();
+    if (!now || !date) return [];
 
-    if (!now || !date) return slots;
-
-    const today = getLocalDateString(now);
-
-    if (date !== today) return slots;
-
-    const localParts = getDateTimeParts(now);
-    const currentMinutes = localParts.hour * 60 + localParts.minute;
-    const earliestMinutes = currentMinutes + MIN_HOURS_AHEAD * 60;
-
-    return slots.filter((slot) => {
-      const [hour, minute] = slot.split(":").map(Number);
-      return hour * 60 + minute >= earliestMinutes;
-    });
+    return getTimeSlots(date).filter((slot) =>
+      meetsAdvanceNotice(date, slot, now),
+    );
   }, [date, now]);
+
+  useEffect(() => {
+    if (time && !availableTimes.includes(time)) {
+      setTime("");
+      setPreparedMessage("");
+      setShowFallback(false);
+      setSmsHandoffAttempted(false);
+    }
+  }, [time, availableTimes]);
 
   const handleDateChange = (value: string) => {
     setDate(value);
@@ -228,14 +297,22 @@ export default function ReservationForm() {
       return;
     }
 
-    if (date < minimumDate || date > maximumDate) {
+    if (date < getLocalDateString(new Date()) || date > addCalendarDays(getLocalDateString(new Date()), MAX_DAYS_AHEAD)) {
       setFormError(
         `Please choose a date within the next ${MAX_DAYS_AHEAD} calendar days.`,
       );
       return;
     }
 
-    if (!availableTimes.includes(time)) {
+    // Recheck against the actual submission time, not the last UI refresh.
+    const submissionNow = new Date();
+    const submissionToday = getLocalDateString(submissionNow);
+
+    if (
+      date < submissionToday ||
+      !getTimeSlots(date).includes(time) ||
+      !meetsAdvanceNotice(date, time, submissionNow)
+    ) {
       setFormError(
         "That time is no longer available to select. Please choose another time.",
       );
@@ -366,8 +443,8 @@ export default function ReservationForm() {
               />
             </div>
 
-            <div className="grid gap-5 sm:grid-cols-2">
-              <div className="min-w-0 w-full">
+            <div className="grid min-w-0 grid-cols-1 gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+              <div className="w-full min-w-0">
                 <label
                     htmlFor="reservation-date"
                     className="mb-2 block text-sm font-semibold text-white"
@@ -384,7 +461,7 @@ export default function ReservationForm() {
                     disabled={!now}
                     value={date}
                     onChange={(event) => handleDateChange(event.target.value)}
-                    className="block min-w-0 w-full max-w-full box-border rounded-lg border border-white/20 bg-black/50 px-4 py-3 text-base text-white outline-none transition focus:border-red-500 focus:ring-2 focus:ring-red-500/30 disabled:opacity-50"
+                    className="block w-full min-w-0 max-w-full appearance-none rounded-lg border border-white/20 bg-black/50 px-2 py-3 text-base text-white [box-sizing:border-box] [&::-webkit-date-and-time-value]:min-w-0 [&::-webkit-date-and-time-value]:text-left [&::-webkit-datetime-edit]:min-w-0 focus:border-red-500 focus:outline-none focus:ring-2 focus:ring-red-500/30 disabled:opacity-50 sm:px-3"
                 />
 
                 <p className="mt-2 text-xs leading-5 text-white/60">
@@ -392,7 +469,7 @@ export default function ReservationForm() {
                 </p>
               </div>
 
-              <div>
+              <div className="w-full min-w-0">
                 <label
                   htmlFor="reservation-time"
                   className="mb-2 block text-sm font-semibold"
