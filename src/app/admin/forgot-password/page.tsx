@@ -1,6 +1,8 @@
+
 import type { Metadata } from "next";
 import { Suspense } from "react";
 import Link from "next/link";
+import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
@@ -8,9 +10,6 @@ export const metadata: Metadata = {
   title: "Reset Manager Password | Fin & Feathers Las Vegas",
   description: "Request a password reset for your manager account.",
 };
-
-const RECOVERY_REDIRECT_URL =
-  "https://finandfeatherslv.live/admin/reset-password";
 
 async function requestPasswordReset(formData: FormData) {
   "use server";
@@ -25,12 +24,20 @@ async function requestPasswordReset(formData: FormData) {
     redirect("/admin/forgot-password?error=invalid-email");
   }
 
+  const requestHeaders = await headers();
+  const host = requestHeaders.get("host");
+
+  const recoveryRedirectUrl =
+    host === "localhost:3000"
+      ? "http://localhost:3000/auth/recovery"
+      : "https://finandfeatherslv.live/auth/recovery";
+
   const supabase = await createSupabaseServerClient();
 
   const { error } = await supabase.auth.resetPasswordForEmail(
     emailValue.trim(),
     {
-      redirectTo: RECOVERY_REDIRECT_URL,
+      redirectTo: recoveryRedirectUrl,
     },
   );
 
