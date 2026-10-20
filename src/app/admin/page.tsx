@@ -1,3 +1,4 @@
+
 import { Suspense } from "react";
 import { connection } from "next/server";
 import Link from "next/link";
@@ -34,6 +35,22 @@ const adminSections = [
     href: "/admin/menu",
     label: "Manage Menu",
     status: "Available",
+  },
+  {
+    title: "Gallery Management",
+    description:
+      "Manage gallery images, categories, visibility, and display order.",
+    href: "/admin/gallery",
+    label: "Manage Gallery",
+    status: "Testing",
+  },
+  {
+    title: "SPECIALS Management",
+    description:
+      "Manage daily promotions, special offers, advertised hours, media, and visibility.",
+    href: "/admin/specials",
+    label: "Manage SPECIALS",
+    status: "Testing",
   },
 ];
 

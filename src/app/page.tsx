@@ -10,7 +10,7 @@ import ReservationTrigger from "@/components/reservation-trigger";
 import LoyaltyProgram from "@/components/loyalty-program";
 import CareersContactEvents from "@/components/careers-contact-events";
 import ScrollReveal from "@/components/scroll-reveal";
-import TodaySpecials from "@/components/todays-specials";
+import TodaySpecialsData from "@/components/todays-specials-data";
 
 const homeButtons = [
   { label: "FULL MENU", href: "#full-menu" },
@@ -153,7 +153,7 @@ export default function HomePage() {
             {/* Right column: Today's Special, then Ribeye video */}
             <div className="mx-auto w-full min-w-0 max-w-4xl xl:max-w-none">
               <ScrollReveal className="w-full px-[10px] xl:mt-[150px] xl:px-0">
-                <TodaySpecials />
+                <TodaySpecialsData />
               </ScrollReveal>
 
               <ScrollReveal className="mt-8 w-full px-[10px] xl:mt-[50px] xl:px-0">

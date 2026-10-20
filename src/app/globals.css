@@ -52,18 +52,18 @@ body::before {
   z-index: -1;
   pointer-events: none;
 
-  background-image: url("/img/fin-feathers-bg-desktop.jpg");
+  background-image: url("/img/fin-feathers-bg-desktop-02.jpg");
   background-position: center center;
   background-repeat: no-repeat;
   background-size: cover;
 
-  opacity: 0.5;
+  opacity: 0.4;
 }
 
 /* Use the portrait-oriented artwork on mobile screens. */
 @media (max-width: 767px) {
   body::before {
-    background-image: url("/img/fin-feathers-bg-mobile.jpg");
+    background-image: url("/img/fin-feathers-bg-mobile-02.jpg");
   }
 }
 

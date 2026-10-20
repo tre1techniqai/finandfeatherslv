@@ -4,7 +4,7 @@
 import { createPortal } from "react-dom";
 import { useEffect, useState } from "react";
 
-type Special = {
+export type Special = {
   day: string;
   title: string;
   offers: string[];
@@ -18,15 +18,24 @@ type Special = {
   enabled: boolean;
 };
 
-const SPECIALS: Special[] = [
+type TodaySpecialsProps = {
+  specials?: Special[];
+};
+
+// Temporary fallback during the database integration.
+// Remove this array after the server-side loader and homepage
+// integration have been verified.
+const ORIGINAL_SPECIALS: Special[] = [
   {
     day: "Monday",
     title: "Margarita Monday",
     offers: ["$5 Margaritas"],
     start: "11:00 AM",
     end: "12:00 AM",
-    thumbnail: "https://ikxruiemlczfritxrjqr.supabase.co/storage/v1/object/public/website-media/specials/margarita-monday-thumb.jpg",
-    video: "https://ikxruiemlczfritxrjqr.supabase.co/storage/v1/object/public/website-media/specials/Special_Mon.mp4",
+    thumbnail:
+      "https://ikxruiemlczfritxrjqr.supabase.co/storage/v1/object/public/website-media/specials/margarita-monday-thumb.jpg",
+    video:
+      "https://ikxruiemlczfritxrjqr.supabase.co/storage/v1/object/public/website-media/specials/Special_Mon.mp4",
     description: "",
     details: "",
     finePrint: "",
@@ -38,8 +47,10 @@ const SPECIALS: Special[] = [
     offers: ["$5 Tito's Margaritas", "$5 for 2 Tacos"],
     start: "11:00 AM",
     end: "12:00 AM",
-    thumbnail: "https://ikxruiemlczfritxrjqr.supabase.co/storage/v1/object/public/website-media/specials/tito-tuesday-thumb.jpg",
-    video: "https://ikxruiemlczfritxrjqr.supabase.co/storage/v1/object/public/website-media/specials/Special_Tue.mp4",
+    thumbnail:
+      "https://ikxruiemlczfritxrjqr.supabase.co/storage/v1/object/public/website-media/specials/tito-tuesday-thumb.jpg",
+    video:
+      "https://ikxruiemlczfritxrjqr.supabase.co/storage/v1/object/public/website-media/specials/Special_Tue.mp4",
     description: "",
     details: "",
     finePrint: "",
@@ -55,10 +66,13 @@ const SPECIALS: Special[] = [
     ],
     start: "11:00 AM",
     end: "12:00 AM",
-    thumbnail: "https://ikxruiemlczfritxrjqr.supabase.co/storage/v1/object/public/website-media/specials/wine-down-wednesday-thumb.jpg",
-    video: "https://ikxruiemlczfritxrjqr.supabase.co/storage/v1/object/public/website-media/specials/Special_Wed.mp4",
+    thumbnail:
+      "https://ikxruiemlczfritxrjqr.supabase.co/storage/v1/object/public/website-media/specials/wine-down-wednesday-thumb.jpg",
+    video:
+      "https://ikxruiemlczfritxrjqr.supabase.co/storage/v1/object/public/website-media/specials/Special_Wed.mp4",
     description: "Midweek wine and whiskey specials.",
-    details: "Enjoy $5 select wine glasses, $10 select bottles, or $6 select whiskey shots.",
+    details:
+      "Enjoy $5 select wine glasses, $10 select bottles, or $6 select whiskey shots.",
     finePrint: "",
     enabled: true,
   },
@@ -68,8 +82,10 @@ const SPECIALS: Special[] = [
     offers: ["$5 Martinis"],
     start: "11:00 AM",
     end: "12:00 AM",
-    thumbnail: "https://ikxruiemlczfritxrjqr.supabase.co/storage/v1/object/public/website-media/specials/martini-thursday-thumb.jpg",
-    video: "https://ikxruiemlczfritxrjqr.supabase.co/storage/v1/object/public/website-media/specials/Special_Thu.mp4",
+    thumbnail:
+      "https://ikxruiemlczfritxrjqr.supabase.co/storage/v1/object/public/website-media/specials/martini-thursday-thumb.jpg",
+    video:
+      "https://ikxruiemlczfritxrjqr.supabase.co/storage/v1/object/public/website-media/specials/Special_Thu.mp4",
     description: "",
     details: "",
     finePrint: "",
@@ -81,8 +97,10 @@ const SPECIALS: Special[] = [
     offers: ["$6 Select Premium Shots"],
     start: "5:00 PM",
     end: "8:00 PM",
-    thumbnail: "https://ikxruiemlczfritxrjqr.supabase.co/storage/v1/object/public/website-media/specials/premium-friday-thumb.jpg",
-    video: "https://ikxruiemlczfritxrjqr.supabase.co/storage/v1/object/public/website-media/specials/Special_Fri.mp4",
+    thumbnail:
+      "https://ikxruiemlczfritxrjqr.supabase.co/storage/v1/object/public/website-media/specials/premium-friday-thumb.jpg",
+    video:
+      "https://ikxruiemlczfritxrjqr.supabase.co/storage/v1/object/public/website-media/specials/Special_Fri.mp4",
     description: "",
     details: "",
     finePrint: "",
@@ -99,10 +117,13 @@ const SPECIALS: Special[] = [
     ],
     start: "5:00 PM",
     end: "8:00 PM",
-    thumbnail: "https://ikxruiemlczfritxrjqr.supabase.co/storage/v1/object/public/website-media/specials/5-weekend-thumb.jpg",
-    video: "https://ikxruiemlczfritxrjqr.supabase.co/storage/v1/object/public/website-media/specials/Special_Sat_Sun.mp4",
+    thumbnail:
+      "https://ikxruiemlczfritxrjqr.supabase.co/storage/v1/object/public/website-media/specials/5-weekend-thumb.jpg",
+    video:
+      "https://ikxruiemlczfritxrjqr.supabase.co/storage/v1/object/public/website-media/specials/Special_Sat_Sun.mp4",
     description: "Weekend food & drink specials for $5",
-    details: "Select from a dozen of our weekend $5 Happy Hour food & drink specials.",
+    details:
+      "Select from a dozen of our weekend $5 Happy Hour food & drink specials.",
     finePrint: "",
     enabled: true,
   },
@@ -117,8 +138,10 @@ const SPECIALS: Special[] = [
     ],
     start: "6:00 PM",
     end: "12:00 AM",
-    thumbnail: "https://ikxruiemlczfritxrjqr.supabase.co/storage/v1/object/public/website-media/specials/5-weekend-thumb.jpg",
-    video: "https://ikxruiemlczfritxrjqr.supabase.co/storage/v1/object/public/website-media/specials/Special_Sat_Sun.mp4",
+    thumbnail:
+      "https://ikxruiemlczfritxrjqr.supabase.co/storage/v1/object/public/website-media/specials/5-weekend-thumb.jpg",
+    video:
+      "https://ikxruiemlczfritxrjqr.supabase.co/storage/v1/object/public/website-media/specials/Special_Sat_Sun.mp4",
     description: "",
     details: "",
     finePrint: "",
@@ -133,7 +156,9 @@ function getLasVegasDay() {
   }).format(new Date());
 }
 
-export default function TodaySpecials() {
+export default function TodaySpecials({
+  specials = ORIGINAL_SPECIALS,
+}: TodaySpecialsProps) {
   const [today, setToday] = useState<string | null>(null);
   const [activeDay, setActiveDay] = useState("Monday");
   const [isOpen, setIsOpen] = useState(false);
@@ -164,8 +189,8 @@ export default function TodaySpecials() {
     };
   }, [isOpen]);
 
-  const special = SPECIALS.find((item) => item.day === today);
-  const active = SPECIALS.find((item) => item.day === activeDay);
+  const special = specials.find((item) => item.day === today);
+  const active = specials.find((item) => item.day === activeDay);
 
   if (!special?.enabled || !active) return null;
 
@@ -185,13 +210,13 @@ export default function TodaySpecials() {
           aria-label={`Open ${special.day}'s special details`}
           className="group flex w-full min-w-0 overflow-hidden rounded-xl border border-white/15 bg-[#101010] text-left shadow-lg transition hover:border-[#ea1b24]/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#ea1b24]"
         >
-          <div className="w-24 shrink-0 overflow-hidden bg-black sm:w-36">
+          <div className="relative w-24 shrink-0 overflow-hidden bg-black sm:w-36">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src={special.thumbnail}
               alt=""
               loading="lazy"
-              className="h-full min-h-28 w-full object-cover transition duration-300 group-hover:scale-105"
+              className="absolute inset-0 h-full w-full object-cover object-center transition duration-300 group-hover:scale-105"
             />
           </div>
 
@@ -200,6 +225,7 @@ export default function TodaySpecials() {
               <span className="text-[10px] font-extrabold uppercase tracking-[0.2em] text-[#ea1b24] sm:text-xs">
                 Today's Special
               </span>
+
               <span className="text-[10px] font-bold uppercase tracking-wider text-[#d4af67] sm:text-xs">
                 {special.day}
               </span>
@@ -224,6 +250,7 @@ export default function TodaySpecials() {
               <span className="text-[11px] font-semibold uppercase tracking-wide text-white/50">
                 {special.start} – {special.end}
               </span>
+
               <span className="text-[10px] font-extrabold uppercase tracking-wider text-[#d4af67]">
                 View Special ↗
               </span>
@@ -254,6 +281,7 @@ export default function TodaySpecials() {
                   <p className="text-[10px] font-bold uppercase tracking-[0.25em] text-[#ea1b24]">
                     Fin &amp; Feathers Las Vegas
                   </p>
+
                   <h2
                     id="today-special-title"
                     className="mt-1 text-lg font-black text-white sm:text-xl"
@@ -276,7 +304,7 @@ export default function TodaySpecials() {
                 aria-label="Specials by day"
                 className="flex shrink-0 gap-1 overflow-x-auto border-b border-white/10 px-3 pt-3 sm:px-5"
               >
-                {SPECIALS.map((item) => (
+                {specials.map((item) => (
                   <button
                     key={item.day}
                     type="button"
@@ -302,6 +330,7 @@ export default function TodaySpecials() {
                       poster={active.thumbnail}
                       controls
                       autoPlay
+                      loop
                       muted
                       playsInline
                       preload="metadata"
