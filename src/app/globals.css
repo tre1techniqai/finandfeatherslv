@@ -57,7 +57,7 @@ body::before {
   background-repeat: no-repeat;
   background-size: cover;
 
-  opacity: 0.4;
+  opacity: 0.3;
 }
 
 /* Use the portrait-oriented artwork on mobile screens. */
@@ -79,7 +79,7 @@ body::before {
 @keyframes fin-feathers-neon-startup {
   /* Start almost completely dark */
   0% {
-    filter: brightness(0.03);
+    filter: brightness(0.04);
   }
 
   /* Flicker cycle 1: weak initial ignition */
