@@ -14,14 +14,7 @@ export type GalleryImage = {
   src: string;
 };
 
-const galleryImages = [
-  "/img/gallery-pic-01.jpg",
-  "/img/gallery-pic-02.jpg",
-  "/img/gallery-pic-03.jpg",
-  "/img/gallery-pic-04.jpg",
-  "/img/gallery-pic-05.jpg",
-  "/img/gallery-pic-06.jpg",
-];
+const AUTOPLAY_INTERVAL = 3000;
 
 function ArrowIcon({ direction }: { direction: "prev" | "next" }) {
   return (
@@ -51,36 +44,130 @@ export default function ImageGallery({
   images: GalleryImage[];
   loadError?: boolean;
 }) {
-  const [isHovered, setIsHovered] = useState(false);
-
   const galleryImages = images;
   const totalImages = galleryImages.length;
 
+  const [isHovered, setIsHovered] = useState(false);
+  const [isPageVisible, setIsPageVisible] = useState(true);
   const [trackIndex, setTrackIndex] = useState(1);
   const [transitionEnabled, setTransitionEnabled] = useState(true);
   const [isOpen, setIsOpen] = useState(false);
 
-  const currentIndex = totalImages > 0 ? (trackIndex - 1 + totalImages) % totalImages : 0;
+  // Always resolve the displayed image to a valid index.
+  const currentIndex =
+    totalImages > 0
+      ? ((trackIndex - 1) % totalImages + totalImages) %
+        totalImages
+      : 0;
+
+  // Restore the real slide position without a visible jump.
+  // This also recovers from a transitionend event missed by
+  // the browser while the tab was inactive.
+  const normalizeTrackPosition = useCallback(() => {
+    if (totalImages === 0) return;
+
+    setTransitionEnabled(false);
+
+    setTrackIndex((index) => {
+      const normalized =
+        ((index - 1) % totalImages + totalImages) %
+          totalImages +
+        1;
+
+      return normalized;
+    });
+
+    window.requestAnimationFrame(() => {
+      window.requestAnimationFrame(() => {
+        setTransitionEnabled(true);
+      });
+    });
+  }, [totalImages]);
 
   const previousImage = useCallback(() => {
-    setTrackIndex((index) => index - 1);
-  }, []);
+    if (totalImages === 0) return;
+
+    setTrackIndex((index) => {
+      // Prevent movement beyond the leading clone.
+      if (index <= 0) {
+        return Math.max(1, totalImages - 1);
+      }
+
+      return index - 1;
+    });
+  }, [totalImages]);
 
   const nextImage = useCallback(() => {
-    setTrackIndex((index) => index + 1);
-  }, []);
+    if (totalImages === 0) return;
 
-  // Automatically advance every 3 seconds.
-  // Pause while hovered or while the enlarged image modal is open.
+    setTrackIndex((index) => {
+      // Prevent movement beyond the trailing clone,
+      // even when transitionend has not fired.
+      if (index >= totalImages + 1) {
+        return totalImages > 1 ? 2 : 1;
+      }
+
+      return index + 1;
+    });
+  }, [totalImages]);
+
+  // Pause autoplay in background tabs and recover the
+  // track position when the visitor returns.
   useEffect(() => {
-    if (isHovered || isOpen || totalImages < 2) return;
+    function handleVisibilityChange() {
+      const visible = document.visibilityState === "visible";
+
+      setIsPageVisible(visible);
+
+      if (visible) {
+        normalizeTrackPosition();
+      }
+    }
+
+    handleVisibilityChange();
+
+    document.addEventListener(
+      "visibilitychange",
+      handleVisibilityChange,
+    );
+
+    return () => {
+      document.removeEventListener(
+        "visibilitychange",
+        handleVisibilityChange,
+      );
+    };
+  }, [normalizeTrackPosition]);
+
+  // Automatically advance every three seconds.
+  // Pause while hovered, the modal is open, or the
+  // browser tab is hidden.
+  useEffect(() => {
+    if (
+      !isPageVisible ||
+      isHovered ||
+      isOpen ||
+      totalImages < 2
+    ) {
+      return;
+    }
 
     const interval = window.setInterval(() => {
-      nextImage();
-    }, 3000);
+      if (document.visibilityState === "visible") {
+        nextImage();
+      }
+    }, AUTOPLAY_INTERVAL);
 
-    return () => window.clearInterval(interval);
-  }, [isHovered, isOpen, nextImage, totalImages]);
+    return () => {
+      window.clearInterval(interval);
+    };
+  }, [
+    isPageVisible,
+    isHovered,
+    isOpen,
+    nextImage,
+    totalImages,
+  ]);
 
   // Preserve modal keyboard controls and page scroll locking.
   useEffect(() => {
@@ -112,6 +199,7 @@ export default function ImageGallery({
         <h2 className="text-2xl font-bold uppercase tracking-wide text-white sm:text-3xl">
           Gallery
         </h2>
+
         <p className="mt-2 text-sm text-white/70">
           {loadError
             ? "Our gallery is temporarily unavailable. Please check back soon."
@@ -132,6 +220,7 @@ export default function ImageGallery({
         <h2 className="text-2xl font-bold uppercase tracking-wide text-white sm:text-3xl">
           Gallery
         </h2>
+
         <p className="mt-2 text-sm text-white/70">
           Take a closer look at Fin &amp; Feathers.
         </p>
@@ -142,7 +231,7 @@ export default function ImageGallery({
         <button
           type="button"
           onClick={() => setIsOpen(true)}
-          className="block aspect-[4/3] w-full overflow-hidden cursor-zoom-in focus:outline-none focus-visible:ring-2 focus-visible:ring-[#ea1b24]"
+          className="block aspect-[4/3] w-full cursor-zoom-in overflow-hidden focus:outline-none focus-visible:ring-2 focus-visible:ring-[#ea1b24]"
           aria-label={`Enlarge gallery image ${currentIndex + 1} of ${totalImages}`}
         >
           <div
@@ -153,51 +242,49 @@ export default function ImageGallery({
             }`}
             style={{
               width: `${(totalImages + 2) * 100}%`,
-              transform: `translateX(-${trackIndex * (100 / (totalImages + 2))}%)`,
+              transform: `translateX(-${
+                trackIndex * (100 / (totalImages + 2))
+              }%)`,
             }}
             onTransitionEnd={(event) => {
-              if (event.target !== event.currentTarget) return;
+              if (event.target !== event.currentTarget) {
+                return;
+              }
 
-              if (trackIndex === 0 || trackIndex === totalImages + 1) {
-                const resetIndex = trackIndex === 0 ? totalImages : 1;
+              if (event.propertyName !== "transform") {
+                return;
+              }
 
-                setTransitionEnabled(false);
-                setTrackIndex(resetIndex);
-
-                window.requestAnimationFrame(() => {
-                  window.requestAnimationFrame(() => {
-                    setTransitionEnabled(true);
-                  });
-                });
+              if (
+                trackIndex === 0 ||
+                trackIndex === totalImages + 1
+              ) {
+                normalizeTrackPosition();
               }
             }}
           >
-            {
-              [
-                galleryImages[totalImages - 1],
-                ...galleryImages,
-                galleryImages[0],
-              ].map((image, slideIndex) => {
-                const originalIndex =
-                  (slideIndex - 1 + totalImages) % totalImages;
-
-              return (
-                <div
-                  key={`${slideIndex}-${image}`}
-                  className="relative h-full flex-none"
-                  style={{ width: `${100 / (totalImages + 2)}%` }}
-                  aria-hidden={slideIndex !== trackIndex}
-                >
-                  <Image
-                    src={image.src}
-                    alt={image.alt_text}
-                    className="object-cover"
-                    fill
-                    sizes="(max-width: 768px) 100vw, 896px"
-                  />
-                </div>
-              );
-            })}
+            {[
+              galleryImages[totalImages - 1],
+              ...galleryImages,
+              galleryImages[0],
+            ].map((image, slideIndex) => (
+              <div
+                key={`${slideIndex}-${image.id}`}
+                className="relative h-full flex-none"
+                style={{
+                  width: `${100 / (totalImages + 2)}%`,
+                }}
+                aria-hidden={slideIndex !== trackIndex}
+              >
+                <Image
+                  src={image.src}
+                  alt={image.alt_text}
+                  className="object-cover"
+                  fill
+                  sizes="(max-width: 768px) 100vw, 896px"
+                />
+              </div>
+            ))}
           </div>
         </button>
 
@@ -236,9 +323,13 @@ export default function ImageGallery({
           <button
             key={image.id}
             type="button"
-            onClick={() => setTrackIndex(index + 1)}
+            onClick={() => {
+              setTrackIndex(index + 1);
+            }}
             aria-label={`Show image ${index + 1}`}
-            aria-current={currentIndex === index ? "true" : undefined}
+            aria-current={
+              currentIndex === index ? "true" : undefined
+            }
             className={`h-3 w-3 rounded-full transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-[#ea1b24] focus-visible:ring-offset-2 focus-visible:ring-offset-black ${
               currentIndex === index
                 ? "scale-110 bg-[#ea1b24]"
