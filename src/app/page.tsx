@@ -12,6 +12,7 @@ import CareersContactEvents from "@/components/careers-contact-events";
 import ScrollReveal from "@/components/scroll-reveal";
 import TodaySpecialsData from "@/components/todays-specials-data";
 import ReservationsTextHero from "@/components/reservations-text-hero";
+import ManagerInviteRedirect from "@/components/manager-invite-redirect";
 
 const homeButtons = [
   { label: "FULL MENU", href: "#full-menu" },
@@ -34,6 +35,8 @@ const buttonClassName =
 export default function HomePage() {
   return (
     <div className="flex min-h-screen flex-col bg-transparent text-white">
+      <ManagerInviteRedirect />
+
       <SiteHeader />
 
       <main className="flex-1">
