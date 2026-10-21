@@ -218,6 +218,7 @@ export default function ReservationForm() {
     useState<(typeof OCCASIONS)[number]>("JUST DINING");
 
   const [smsConsent, setSmsConsent] = useState(false);
+  const [smsDetailsOpen, setSmsDetailsOpen] = useState(false);
   const [durationAcknowledged, setDurationAcknowledged] = useState(false);
 
   const [preparedMessage, setPreparedMessage] = useState("");
@@ -624,38 +625,52 @@ export default function ReservationForm() {
                 </span>
               </label>
 
-              <label className="flex items-start gap-3 text-sm leading-6 text-white/80">
-                <input
-                  type="checkbox"
-                  required
-                  checked={smsConsent}
-                  onChange={(event) => setSmsConsent(event.target.checked)}
-                  className="mt-1 h-4 w-4 shrink-0 accent-red-500"
-                />
+              <div className="space-y-2">
+                <label className="flex items-start gap-3 text-sm leading-6 text-white/80">
+                  <input
+                    type="checkbox"
+                    required
+                    checked={smsConsent}
+                    onChange={(event) => setSmsConsent(event.target.checked)}
+                    className="mt-1 h-4 w-4 shrink-0 accent-red-500"
+                  />
 
-                <span>
-                  I agree to send my reservation request by text message to
-                  Fin &amp; Feathers at {RESERVATION_PHONE_DISPLAY}. I
-                  understand that selecting this box prepares a message on my
-                  device; I must send the message myself. My reservation is
-                  not confirmed until the restaurant responds. See our{" "}
-                  <a
-                    href="/terms-of-service"
-                    className="font-semibold text-red-300 underline underline-offset-4 hover:text-red-200"
-                  >
-                    Terms of Service
-                  </a>{" "}
-                  and{" "}
-                  <a
-                    href="/privacy-policy"
-                    className="font-semibold text-red-300 underline underline-offset-4 hover:text-red-200"
-                  >
-                    Privacy Policy
-                  </a>
-                  .
-                  <span className="text-red-400"> *</span>
-                </span>
-              </label>
+                  <span>
+                    I agree to receive reservation-related SMS/text messages,
+                    including automated and staff-assisted replies, from
+                    Fin &amp; Feathers Las Vegas. See{" "}
+                    <a
+                      href="#reservation-sms-details"
+                      onClick={() => setSmsDetailsOpen(true)}
+                      className="font-semibold text-red-300 underline underline-offset-4 hover:text-red-200"
+                    >
+                      SMS Messaging Details
+                    </a>
+                    ,{" "}
+                    <a
+                      href="/terms-of-service"
+                      className="font-semibold text-red-300 underline underline-offset-4 hover:text-red-200"
+                    >
+                      Terms of Service
+                    </a>
+                    , and{" "}
+                    <a
+                      href="/privacy-policy"
+                      className="font-semibold text-red-300 underline underline-offset-4 hover:text-red-200"
+                    >
+                      Privacy Policy
+                    </a>
+                    .
+                    <span className="text-red-400"> *</span>
+                  </span>
+                </label>
+                <p className="pl-7 text-xs leading-5 text-white/65">
+                  Reservation updates and follow-ups. Typically 3–6 messages
+                  per request; frequency varies. Msg &amp; data rates may
+                  apply. Reply STOP to cancel, HELP for help when using our
+                  Twilio messaging service.
+                </p>
+              </div>
             </div>
 
             {formError && (
@@ -678,6 +693,70 @@ export default function ReservationForm() {
             <p className="text-center text-xs leading-5 text-white/50">
               Required fields are marked with an asterisk (*).
             </p>
+
+            <div
+              id="reservation-sms-details"
+              className="scroll-mt-6 rounded-xl border border-white/15 bg-black/30"
+            >
+              <button
+                type="button"
+                onClick={() => setSmsDetailsOpen((open) => !open)}
+                aria-expanded={smsDetailsOpen}
+                aria-controls="reservation-sms-details-content"
+                className="flex w-full items-center justify-between gap-4 rounded-xl px-4 py-4 text-left text-sm font-semibold text-white transition hover:bg-white/5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-400 sm:px-5"
+              >
+                <span>SMS Messaging Details</span>
+                <span aria-hidden="true" className="text-lg text-red-300">
+                  {smsDetailsOpen ? "−" : "+"}
+                </span>
+              </button>
+
+              {smsDetailsOpen && (
+                <div
+                  id="reservation-sms-details-content"
+                  className="space-y-3 border-t border-white/15 px-4 py-4 text-xs leading-6 text-white/75 sm:px-5 sm:text-sm"
+                >
+                  <p>
+                    Reservation-related replies may include request
+                    acknowledgments, questions about missing details,
+                    deposit requirements, VIP seating preferences,
+                    availability updates, and confirmation or cancellation
+                    information. A typical reservation conversation involves
+                    approximately 3–6 text messages; frequency may vary.
+                    Message and data rates may apply.
+                  </p>
+
+                  <p>
+                    The current website prepares a reservation text for you
+                    to send to {RESERVATION_PHONE_DISPLAY} from your own
+                    device. You must send the message yourself, and your
+                    reservation is not confirmed until the restaurant
+                    confirms it. The planned Twilio reservation service
+                    at (725) 308-2066 will be activated only after approval.
+                  </p>
+
+                  <p>
+                    When the Twilio service is active, reply STOP to opt out
+                    or HELP for assistance. For restaurant assistance,
+                    call (725) 204-9655. Reservation messaging is separate
+                    from optional promotional marketing. See our{ " "}
+                    <a
+                      href="/terms-of-service"
+                      className="font-semibold text-red-300 underline underline-offset-4 hover:text-red-200"
+                    >
+                      Terms of Service
+                    </a>{ " "}
+                    and{" "}
+                    <a
+                      href="/privacy-policy"
+                      className="font-semibold text-red-300 underline underline-offset-4 hover:text-red-200"
+                    >
+                      Privacy Policy
+                    </a>.
+                  </p>
+                </div>
+              )}
+            </div>
           </form>
 
           {preparedMessage && showFallback && (
