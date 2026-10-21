@@ -82,6 +82,25 @@ function CommunityIcon() {
   );
 }
 
+function ExternalLinkIcon() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      className="h-4 w-4"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M14 3h7v7" />
+      <path d="M21 3 10 14" />
+      <path d="M21 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h6" />
+    </svg>
+  );
+}
+
 export default function SocialLinks() {
   const [isCommunityOpen, setIsCommunityOpen] = useState(false);
   const [isMounted, setIsMounted] = useState(false);
@@ -115,7 +134,7 @@ export default function SocialLinks() {
 
   const communityModal = (
     <div
-      className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/85 p-3 sm:p-6"
+      className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/85 p-3 sm:p-6 landscape:p-1"
       onMouseDown={(event) => {
         if (event.target === event.currentTarget) {
           setIsCommunityOpen(false);
@@ -126,27 +145,40 @@ export default function SocialLinks() {
         role="dialog"
         aria-modal="true"
         aria-label="Fin & Feathers community"
-        className="relative flex h-[88dvh] w-full max-w-5xl flex-col overflow-hidden rounded-xl border border-white/20 bg-black shadow-2xl"
+        className="relative flex h-[88dvh] max-h-full w-full max-w-5xl flex-col overflow-hidden rounded-xl border border-white/20 bg-black shadow-2xl landscape:h-[calc(100dvh-0.5rem)] landscape:rounded-lg"
       >
-        <div className="flex shrink-0 items-center justify-between gap-3 border-b border-white/15 bg-black px-4 py-3">
-          <h3 className="font-semibold text-white">
+        <div className="flex shrink-0 items-center justify-between gap-2 border-b border-white/15 bg-black px-3 py-2 sm:px-4 sm:py-3 landscape:py-1">
+          <h3 className="min-w-0 truncate text-sm font-semibold text-white sm:text-base">
             Fin &amp; Feathers Community
           </h3>
 
-          <button
-            type="button"
-            onClick={() => setIsCommunityOpen(false)}
-            aria-label="Close community"
-            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-3xl leading-none text-white transition hover:bg-[#ea1b24] focus:outline-none focus-visible:ring-2 focus-visible:ring-white"
-          >
-            &times;
-          </button>
+          <div className="flex shrink-0 items-center gap-2">
+            <a
+              href={COMMUNITY_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              aria-label="Open Check-In full page in a new tab"
+              className="inline-flex min-h-10 items-center justify-center gap-2 rounded-lg border border-white/25 px-3 text-xs font-semibold text-white transition hover:border-[#ea1b24] hover:bg-[#ea1b24]/20 focus:outline-none focus-visible:ring-2 focus-visible:ring-white sm:text-sm"
+            >
+              <ExternalLinkIcon />
+              <span>Open Full Page</span>
+            </a>
+
+            <button
+              type="button"
+              onClick={() => setIsCommunityOpen(false)}
+              aria-label="Close community"
+              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-3xl leading-none text-white transition hover:bg-[#ea1b24] focus:outline-none focus-visible:ring-2 focus-visible:ring-white"
+            >
+              &times;
+            </button>
+          </div>
         </div>
 
         <iframe
           src={COMMUNITY_URL}
           title="Fin & Feathers Community"
-          className="min-h-0 w-full flex-1 border-0 bg-white"
+          className="block min-h-0 w-full flex-1 border-0 bg-white"
           allow="fullscreen"
           allowFullScreen
         />
