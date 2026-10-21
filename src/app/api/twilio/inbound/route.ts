@@ -45,47 +45,11 @@ function isConfigured(): boolean {
 export async function POST(request: Request): Promise<Response> {
   try {
     if (!isConfigured()) {
-      const authTokenPresent = Boolean(
-        process.env.TWILIO_AUTH_TOKEN?.trim()
-      );
-
-      const webhookUrlPresent = Boolean(
-        process.env.TWILIO_WEBHOOK_URL?.trim()
-      );
-
-      let webhookUrlValid = false;
-
-      if (webhookUrlPresent) {
-        try {
-          const url = new URL(
-            process.env.TWILIO_WEBHOOK_URL!
-          );
-
-          webhookUrlValid =
-            url.protocol === "https:" &&
-            url.pathname === "/api/twilio/inbound" &&
-            !url.username &&
-            !url.password &&
-            !url.hash;
-        } catch {
-          webhookUrlValid = false;
-        }
-      }
-
-      // Temporary production configuration diagnostic.
-      // Log booleans only. Never log secrets or token values.
-      console.error(
-        "Twilio inbound configuration diagnostic:",
-        {
-          authTokenPresent,
-          webhookUrlPresent,
-          webhookUrlValid,
-        }
-      );
+     console.error("Twilio inbound webhook is not configured.");
 
       return NextResponse.json(
         { error: "Service unavailable." },
-        { status: 503 }
+        { status: 503 },
       );
     }
 
