@@ -3,8 +3,8 @@
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import Image from "next/image";
 
-const RESERVATION_PHONE = "17025466394";
-const RESERVATION_PHONE_DISPLAY = "(702) 546-6394";
+const RESERVATION_PHONE = "17253082066";
+const RESERVATION_PHONE_DISPLAY = "(725) 308-2066";
 const TIME_ZONE = "America/Los_Angeles";
 const MAX_DAYS_AHEAD = 90;
 const MIN_HOURS_AHEAD = 2;
@@ -777,18 +777,17 @@ export default function ReservationForm() {
                   </p>
 
                   <p>
-                    The current website prepares a reservation text for you
-                    to send to {RESERVATION_PHONE_DISPLAY} from your own
-                    device. You must send the message yourself, and your
-                    reservation is not confirmed until the restaurant
-                    confirms it. The planned Twilio reservation service
-                    at (725) 308-2066 will be activated only after approval.
+                    The website prepares a reservation text for you to send to{" "}
+                    {RESERVATION_PHONE_DISPLAY} from your own device. You must
+                    send the message yourself. Submitting a reservation request
+                    does not guarantee availability, and your reservation is
+                    not confirmed until our staff sends you a confirmation.
                   </p>
 
                   <p>
-                    When the Twilio service is active, reply STOP to opt out
-                    or HELP for assistance. For restaurant assistance,
-                    call (725) 204-9655. Reservation messaging is separate
+                    Reply STOP to opt out of reservation-related text messages
+                    or HELP for assistance. For restaurant assistance, call
+                    (725) 204-9655. Reservation messaging is separate
                     from optional promotional marketing. See our{ " "}
                     <a
                       href="/terms-of-service"
