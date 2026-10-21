@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 
 const FACEBOOK_URL =
   "https://www.facebook.com/finandfeatherslasvegas";
@@ -83,6 +84,11 @@ function CommunityIcon() {
 
 export default function SocialLinks() {
   const [isCommunityOpen, setIsCommunityOpen] = useState(false);
+  const [isMounted, setIsMounted] = useState(false);
+
+  useEffect(() => {
+    setIsMounted(true);
+  }, []);
 
   useEffect(() => {
     if (!isCommunityOpen) return;
@@ -106,6 +112,47 @@ export default function SocialLinks() {
 
   const linkClass =
     "group flex min-h-36 flex-col items-center justify-center gap-3 rounded-xl border border-white/15 bg-black/50 p-5 text-center text-white transition hover:-translate-y-1 hover:border-[#ea1b24] hover:bg-[#ea1b24]/15 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#ea1b24]";
+
+  const communityModal = (
+    <div
+      className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/85 p-3 sm:p-6"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget) {
+          setIsCommunityOpen(false);
+        }
+      }}
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label="Fin & Feathers community"
+        className="relative flex h-[88dvh] w-full max-w-5xl flex-col overflow-hidden rounded-xl border border-white/20 bg-black shadow-2xl"
+      >
+        <div className="flex shrink-0 items-center justify-between gap-3 border-b border-white/15 bg-black px-4 py-3">
+          <h3 className="font-semibold text-white">
+            Fin &amp; Feathers Community
+          </h3>
+
+          <button
+            type="button"
+            onClick={() => setIsCommunityOpen(false)}
+            aria-label="Close community"
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-3xl leading-none text-white transition hover:bg-[#ea1b24] focus:outline-none focus-visible:ring-2 focus-visible:ring-white"
+          >
+            &times;
+          </button>
+        </div>
+
+        <iframe
+          src={COMMUNITY_URL}
+          title="Fin & Feathers Community"
+          className="min-h-0 w-full flex-1 border-0 bg-white"
+          allow="fullscreen"
+          allowFullScreen
+        />
+      </div>
+    </div>
+  );
 
   return (
     <>
@@ -195,46 +242,9 @@ export default function SocialLinks() {
         </div>
       </section>
 
-      {isCommunityOpen && (
-        <div
-          className="fixed inset-0 z-[120] flex items-center justify-center bg-black/85 p-3 sm:p-6"
-          onMouseDown={(event) => {
-            if (event.target === event.currentTarget) {
-              setIsCommunityOpen(false);
-            }
-          }}
-        >
-          <div
-            role="dialog"
-            aria-modal="true"
-            aria-label="Fin & Feathers community"
-            className="relative flex h-[88dvh] w-full max-w-5xl flex-col overflow-hidden rounded-xl border border-white/20 bg-black shadow-2xl"
-          >
-            <div className="flex shrink-0 items-center justify-between gap-3 border-b border-white/15 bg-black px-4 py-3">
-              <h3 className="font-semibold text-white">
-                Fin &amp; Feathers Community
-              </h3>
-
-              <button
-                type="button"
-                onClick={() => setIsCommunityOpen(false)}
-                aria-label="Close community"
-                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-3xl leading-none text-white transition hover:bg-[#ea1b24] focus:outline-none focus-visible:ring-2 focus-visible:ring-white"
-              >
-                &times;
-              </button>
-            </div>
-
-            <iframe
-              src={COMMUNITY_URL}
-              title="Fin & Feathers Community"
-              className="min-h-0 w-full flex-1 border-0 bg-white"
-              allow="fullscreen"
-              allowFullScreen
-            />
-          </div>
-        </div>
-      )}
+      {isMounted &&
+        isCommunityOpen &&
+        createPortal(communityModal, document.body)}
     </>
   );
 }
