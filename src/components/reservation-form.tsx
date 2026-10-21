@@ -185,6 +185,7 @@ function isMobileDevice() {
 function buildReservationMessage(details: {
   first_name: string;
   last_name: string;
+  mobilePhone: string;
   date: string;
   time: string;
   partySize: string;
@@ -195,6 +196,7 @@ function buildReservationMessage(details: {
     "",
     `First Name: ${details.first_name.trim()}`,
     `Last Name: ${details.last_name.trim()}`,
+    `Mobile Phone: ${details.mobilePhone}`,
     `Date: ${formatDate(details.date)}`,
     `Time: ${formatTime(details.time)}`,
     `Guests: ${details.partySize}`,
@@ -211,6 +213,7 @@ export default function ReservationForm() {
 
   const [first_name, setFirstName] = useState("");
   const [last_name, setLastName] = useState("");
+  const [mobilePhone, setMobilePhone] = useState("");
   const [date, setDate] = useState("");
   const [time, setTime] = useState("");
   const [partySize, setPartySize] = useState("2");
@@ -306,6 +309,22 @@ export default function ReservationForm() {
       return;
     }
 
+    const phoneDigits = mobilePhone.replace(/\D/g, "");
+    const normalizedPhone =
+      phoneDigits.length === 11 && phoneDigits.startsWith("1")
+        ? phoneDigits.slice(1)
+        : phoneDigits;
+
+    if (
+      normalizedPhone.length !== 10 ||
+      !/^[2-9]\d{2}[2-9]\d{6}$/.test(normalizedPhone)
+    ) {
+      setFormError("Please enter a valid 10-digit U.S. mobile phone number.");
+      return;
+    }
+
+    const formattedMobilePhone = `+1${normalizedPhone}`;
+
     if (!date || !time) {
       setFormError("Please select your preferred date and time.");
       return;
@@ -355,6 +374,7 @@ export default function ReservationForm() {
     const message = buildReservationMessage({
       first_name,
       last_name,
+      mobilePhone: formattedMobilePhone,
       date,
       time,
       partySize,
@@ -480,6 +500,36 @@ export default function ReservationForm() {
                   placeholder="Enter your last name"
                 />
               </div>
+            </div>
+
+            <div className="min-w-0">
+              <label
+                htmlFor="reservation-mobile-phone"
+                className="mb-2 block text-sm font-semibold"
+              >
+                Mobile Phone Number <span className="text-red-400">*</span>
+              </label>
+              <input
+                id="reservation-mobile-phone"
+                name="mobilePhone"
+                type="tel"
+                inputMode="tel"
+                autoComplete="tel"
+                required
+                maxLength={20}
+                value={mobilePhone}
+                onChange={(event) => setMobilePhone(event.target.value)}
+                placeholder="(702) 555-0123"
+                aria-describedby="reservation-mobile-phone-hint"
+                className="w-full min-w-0 rounded-lg border border-white/20 bg-black/50 px-4 py-3 text-base text-white outline-none transition placeholder:text-white/40 focus:border-red-500 focus:ring-2 focus:ring-red-500/30"
+              />
+              <p
+                id="reservation-mobile-phone-hint"
+                className="mt-2 text-xs leading-5 text-white/60"
+              >
+                This number will be included in your prepared reservation text
+                so our team can contact you about your request.
+              </p>
             </div>
 
             <div className="grid min-w-0 grid-cols-1 gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
