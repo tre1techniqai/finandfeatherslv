@@ -77,6 +77,14 @@ function formatDate(dateString: string) {
   }).format(new Date(Date.UTC(year, month - 1, day)));
 }
 
+function formatDateForSms(dateString: string) {
+  if (!dateString) return "";
+
+  const [year, month, day] = dateString.split("-");
+
+  return `${month}/${day}/${year}`;
+}
+
 function formatTime(timeString: string) {
   if (!timeString) return "";
 
@@ -197,7 +205,7 @@ function buildReservationMessage(details: {
     `First Name: ${details.first_name.trim()}`,
     `Last Name: ${details.last_name.trim()}`,
     `Mobile Phone: ${details.mobilePhone}`,
-    `Date: ${formatDate(details.date)}`,
+    `Date: ${formatDateForSms(details.date)}`,
     `Time: ${formatTime(details.time)}`,
     `Guests: ${details.partySize}`,
     `Occasion: ${details.occasion}`,
