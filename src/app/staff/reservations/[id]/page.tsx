@@ -51,6 +51,12 @@ type ReservationWorkflow = {
   yelp_confirmation_number: string | null;
 };
 
+type ConfirmationNotification = {
+  notification_status: string;
+  twilio_message_sid: string | null;
+  failure_code: string | null;
+};
+
 type PageProps = {
   params: Promise<{ id: string }>;
 };
@@ -250,6 +256,22 @@ async function ProtectedReservationDetail({ params }: PageProps) {
 
   const workflow = workflowData as ReservationWorkflow | null;
 
+  // The notification is read through the existing manager session.
+  // A query error must not enable the SMS action or block guest details.
+  const { data: notificationData, error: notificationError } =
+    error || !reservation || workflowError
+      ? { data: null, error: null }
+      : await supabase
+          .from("reservation_notification_events")
+          .select("notification_status, twilio_message_sid, failure_code")
+          .eq("reservation_request_id", id)
+          .eq("notification_type", "reservation_confirmed")
+          .maybeSingle();
+
+  const confirmationNotification = notificationError
+    ? null
+    : (notificationData as ConfirmationNotification | null);
+
   return (
     <main className="min-h-screen bg-black px-3 py-6 text-white sm:px-8 sm:py-12">
       <div className="mx-auto max-w-5xl">
@@ -441,7 +463,22 @@ async function ProtectedReservationDetail({ params }: PageProps) {
                   </p>
                 </section>
               ) : (
-                <ReservationWorkflowActions
+                <>
+                  {notificationError && (
+                    <section
+                      role="alert"
+                      className="rounded-xl border border-amber-500/30 bg-amber-950/20 p-5 sm:p-6"
+                    >
+                      <h2 className="text-base font-semibold text-white">
+                        Guest Notification Status Unavailable
+                      </h2>
+                      <p className="mt-3 text-sm leading-6 text-amber-200">
+                        The confirmation notification could not be loaded.
+                        Sending is disabled until its status can be verified.
+                      </p>
+                    </section>
+                  )}
+                  <ReservationWorkflowActions
                   key={`${reservation.id}:${workflow?.workflow_status ?? "awaiting_review"}:${reservation.deposit_status}`}
                   reservationId={reservation.id}
                   requestedDate={reservation.reservation_date}
@@ -451,7 +488,9 @@ async function ProtectedReservationDetail({ params }: PageProps) {
                   depositAmount={reservation.deposit_amount}
                   depositStatus={reservation.deposit_status}
                   workflow={workflow}
+                  confirmationNotification={confirmationNotification}
                 />
+                </>
               )}
             </div>
 
