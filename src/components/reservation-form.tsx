@@ -349,7 +349,7 @@ export default function ReservationForm() {
       return;
     }
 
-    const formattedMobilePhone = `+1${normalizedPhone}`;
+    const formattedMobilePhone = formatMobilePhoneInput(normalizedPhone);
 
     if (!date || !time) {
       setFormError("Please select your preferred date and time.");

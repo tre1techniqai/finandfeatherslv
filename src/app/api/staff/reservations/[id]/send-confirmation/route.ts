@@ -169,7 +169,7 @@ function buildConfirmationMessage(
   const finalTime =
     workflow.accepted_time ?? reservation.reservation_time;
 
-  const guestName = reservation.customer_name.trim();
+  const guestName = reservation.customer_name.trim().split(/\s+/)[0];
   const date = formatDate(reservation.reservation_date);
   const time = formatTime(finalTime);
 
@@ -182,6 +182,9 @@ function buildConfirmationMessage(
     `Time: ${time}`,
     `Party Size: ${reservation.party_size}`,
     `Confirmation #: ${workflow.yelp_confirmation_number.trim()}`,
+    "",
+    "Feel free to browse our MENU ahead of time.",
+    "https://www.finandfeatherslv.live/menu",
     "",
     "We look forward to welcoming you!",
   ].join("\n");
