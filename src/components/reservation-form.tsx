@@ -186,6 +186,24 @@ function getTimeSlots(dateString: string) {
   return slots;
 }
 
+function formatMobilePhoneInput(value: string) {
+  const enteredDigits = value.replace(/\D/g, "");
+  const nationalDigits =
+    enteredDigits.startsWith("1")
+      ? enteredDigits.slice(1)
+      : enteredDigits;
+
+  const digits = nationalDigits.slice(0, 10);
+
+  if (!digits) return "";
+  if (digits.length < 4) return `(${digits}`;
+  if (digits.length < 7) {
+    return `(${digits.slice(0, 3)}) ${digits.slice(3)}`;
+  }
+
+  return `(${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6)}`;
+}
+
 function isMobileDevice() {
   return /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
 }
@@ -526,7 +544,9 @@ export default function ReservationForm() {
                 required
                 maxLength={20}
                 value={mobilePhone}
-                onChange={(event) => setMobilePhone(event.target.value)}
+                onChange={(event) =>
+                  setMobilePhone(formatMobilePhoneInput(event.target.value))
+                }
                 placeholder="(702) 555-0123"
                 aria-describedby="reservation-mobile-phone-hint"
                 className="w-full min-w-0 rounded-lg border border-white/20 bg-black/50 px-4 py-3 text-base text-white outline-none transition placeholder:text-white/40 focus:border-red-500 focus:ring-2 focus:ring-red-500/30"
