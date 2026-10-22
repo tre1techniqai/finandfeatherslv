@@ -3,6 +3,7 @@ import { connection } from "next/server";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireReservationStaff } from "@/lib/auth/require-reservation-staff";
+import ReservationWorkflowActions from "@/components/staff/reservation-workflow-actions";
 
 export const metadata = {
   title: "Reservation Details | Fin & Feathers Las Vegas",
@@ -30,6 +31,24 @@ type ReservationRequest = {
   closed_at: string | null;
   created_at: string;
   updated_at: string;
+};
+
+type ReservationWorkflow = {
+  workflow_status:
+    | "awaiting_review"
+    | "available"
+    | "unavailable"
+    | "alternatives_proposed"
+    | "alternatives_communicated"
+    | "alternative_accepted"
+    | "confirmed";
+  proposed_times: string[];
+  accepted_time: string | null;
+  offer_channel: string | null;
+  offer_evidence: string | null;
+  acceptance_channel: string | null;
+  acceptance_evidence: string | null;
+  yelp_confirmation_number: string | null;
 };
 
 type PageProps = {
@@ -207,6 +226,30 @@ async function ProtectedReservationDetail({ params }: PageProps) {
 
   const reservation = data as ReservationRequest | null;
 
+  // This table is introduced by the manager-only workflow migration.
+  // A missing table or permission error must not block reservation details.
+  const { data: workflowData, error: workflowError } =
+    error || !reservation
+      ? { data: null, error: null }
+      : await supabase
+          .from("reservation_staff_workflows")
+          .select(
+            [
+              "workflow_status",
+              "proposed_times",
+              "accepted_time",
+              "offer_channel",
+              "offer_evidence",
+              "acceptance_channel",
+              "acceptance_evidence",
+              "yelp_confirmation_number",
+            ].join(","),
+          )
+          .eq("reservation_request_id", id)
+          .maybeSingle();
+
+  const workflow = workflowData as ReservationWorkflow | null;
+
   return (
     <main className="min-h-screen bg-black px-3 py-6 text-white sm:px-8 sm:py-12">
       <div className="mx-auto max-w-5xl">
@@ -383,24 +426,33 @@ async function ProtectedReservationDetail({ params }: PageProps) {
                 />
               </Section>
 
-              <section className="rounded-xl border border-white/10 bg-zinc-950/90 p-5 sm:p-6">
-                <h2 className="text-base font-semibold text-white">
-                  Reservation Actions
-                </h2>
-
-                <p className="mt-3 text-sm leading-6 text-zinc-400">
-                  Availability approval, alternative times,
-                  Yelp confirmation, and final guest notification
-                  will be enabled after the authorized workflow
-                  is implemented.
-                </p>
-
-                <p className="mt-3 text-xs text-zinc-500">
-                  This page currently displays reservation
-                  information only. No changes or SMS messages
-                  are sent.
-                </p>
-              </section>
+              {workflowError ? (
+                <section
+                  role="alert"
+                  className="rounded-xl border border-amber-500/30 bg-amber-950/20 p-5 sm:p-6"
+                >
+                  <h2 className="text-base font-semibold text-white">
+                    Reservation Actions Unavailable
+                  </h2>
+                  <p className="mt-3 text-sm leading-6 text-amber-200">
+                    The manager workflow database is not ready or cannot be
+                    accessed. Reservation details remain available, but no
+                    booking actions can be submitted.
+                  </p>
+                </section>
+              ) : (
+                <ReservationWorkflowActions
+                  key={`${reservation.id}:${workflow?.workflow_status ?? "awaiting_review"}:${reservation.deposit_status}`}
+                  reservationId={reservation.id}
+                  requestedDate={reservation.reservation_date}
+                  requestedTime={reservation.reservation_time}
+                  requestStatus={reservation.request_status}
+                  detailsValidated={reservation.details_validated}
+                  depositAmount={reservation.deposit_amount}
+                  depositStatus={reservation.deposit_status}
+                  workflow={workflow}
+                />
+              )}
             </div>
 
             <footer className="mt-8 border-t border-white/10 pt-5">
