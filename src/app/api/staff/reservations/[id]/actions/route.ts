@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { dispatchReservationConfirmation } from "@/lib/reservations/dispatch-reservation-confirmation";
 
 const MAX_BODY_BYTES = 8192;
 
@@ -430,15 +431,87 @@ export async function POST(
     );
   }
 
-  return NextResponse.json(
-    {
-      success: true,
-      reservation: result,
-    },
-    {
-      headers: {
-        "Cache-Control": "no-store",
+  // Record the Yelp booking first; SMS delivery must never undo a confirmed
+  // reservation. All other staff actions retain their existing behavior.
+  if (validatedAction !== "confirm_yelp_booking") {
+    return NextResponse.json(
+      { success: true, reservation: result },
+      { headers: { "Cache-Control": "no-store" } },
+    );
+  }
+
+  // Dispatch within this authenticated server request, not via a second
+  // browser action or a fire-and-forget task. The shared dispatcher checks
+  // the confirmed state and atomically claims the queued notification.
+  try {
+    const dispatchResponse = await dispatchReservationConfirmation(supabase, id);
+    const rawDispatchResult: unknown = await dispatchResponse.json();
+    const dispatchResult =
+      rawDispatchResult !== null &&
+      typeof rawDispatchResult === "object" &&
+      !Array.isArray(rawDispatchResult)
+        ? (rawDispatchResult as Record<string, unknown>)
+        : {};
+
+    const accepted =
+      dispatchResponse.ok &&
+      dispatchResult.success === true &&
+      dispatchResult.accepted === true;
+
+    if (!accepted) {
+      console.error("Automatic guest confirmation not verified:", {
+        reservationId: id,
+        httpStatus: dispatchResponse.status,
+        failureCode:
+          typeof dispatchResult.failureCode === "string"
+            ? dispatchResult.failureCode
+            : "DISPATCH_NOT_VERIFIED",
+      });
+    }
+
+    return NextResponse.json(
+      {
+        success: true,
+        reservation: result,
+        notification: {
+          attempted: true,
+          accepted,
+          status: accepted ? "sent" : "needs_attention",
+          messageSid:
+            accepted && typeof dispatchResult.messageSid === "string"
+              ? dispatchResult.messageSid
+              : null,
+          failureCode:
+            !accepted && typeof dispatchResult.failureCode === "string"
+              ? dispatchResult.failureCode
+              : null,
+          message: accepted
+            ? "Twilio accepted the guest confirmation SMS. Handset delivery is not yet verified."
+            : "Yelp booking confirmed, but the guest SMS was not verified. Review notification status and Twilio logs; do not resend automatically.",
+        },
       },
-    },
-  );
+      { headers: { "Cache-Control": "no-store" } },
+    );
+  } catch (error) {
+    console.error("Automatic confirmation dispatch failed unexpectedly:", {
+      reservationId: id,
+      errorName: error instanceof Error ? error.name : "UnknownError",
+    });
+
+    return NextResponse.json(
+      {
+        success: true,
+        reservation: result,
+        notification: {
+          attempted: true,
+          accepted: false,
+          status: "needs_attention",
+          messageSid: null,
+          failureCode: "DISPATCH_EXCEPTION",
+          message: "Yelp booking confirmed, but SMS status could not be verified. Check notification status before any retry.",
+        },
+      },
+      { headers: { "Cache-Control": "no-store" } },
+    );
+  }
 }

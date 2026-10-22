@@ -134,11 +134,9 @@ export default function ReservationWorkflowActions({
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [changingAvailability, setChangingAvailability] = useState(false);
-  const [sendBusy, setSendBusy] = useState(false);
-  const [sendError, setSendError] = useState("");
-  const [sendSuccess, setSendSuccess] = useState("");
-  const [sendAcknowledged, setSendAcknowledged] = useState(false);
-  const [sentLocally, setSentLocally] = useState(false);
+  const [notificationResult, setNotificationResult] = useState<{
+    accepted: boolean;
+  } | null>(null);
 
   const [alternativeTimes, setAlternativeTimes] = useState([
     "",
@@ -197,6 +195,7 @@ export default function ReservationWorkflowActions({
 
     setError("");
     setSuccess("");
+    setNotificationResult(null);
     setBusy(action);
 
     try {
@@ -233,9 +232,22 @@ export default function ReservationWorkflowActions({
 
       setChangingAvailability(false);
 
-      setSuccess(
-        "Reservation action saved successfully.",
-      );
+      if (action === "confirm_yelp_booking") {
+        // Booking success and SMS dispatch are separate outcomes.
+        // The API records the Yelp booking before attempting delivery.
+        const notification =
+          resultObject.notification !== null &&
+          typeof resultObject.notification === "object" &&
+          !Array.isArray(resultObject.notification)
+            ? (resultObject.notification as Record<string, unknown>)
+            : null;
+
+        const accepted = notification?.accepted === true;
+        setSuccess("Yelp reservation confirmed successfully.");
+        setNotificationResult({ accepted });
+      } else {
+        setSuccess("Reservation action saved successfully.");
+      }
 
       router.refresh();
     } catch (caught) {
@@ -246,67 +258,6 @@ export default function ReservationWorkflowActions({
       );
     } finally {
       setBusy(null);
-    }
-  }
-
-  async function sendGuestConfirmation() {
-    if (
-      sendBusy ||
-      sentLocally ||
-      !sendAcknowledged ||
-      !isConfirmed ||
-      confirmationNotification?.notification_status !== "pending"
-    ) {
-      return;
-    }
-
-    setSendError("");
-    setSendSuccess("");
-    setSendBusy(true);
-
-    try {
-      const response = await fetch(
-        `/api/staff/reservations/${encodeURIComponent(reservationId)}/send-confirmation`,
-        {
-          method: "POST",
-          credentials: "same-origin",
-        },
-      );
-
-      const result: unknown = await response.json();
-      const resultObject =
-        result !== null && typeof result === "object" && !Array.isArray(result)
-          ? (result as Record<string, unknown>)
-          : {};
-
-      if (!response.ok || resultObject.success !== true) {
-        throw new Error(
-          typeof resultObject.error === "string"
-            ? resultObject.error
-            : "Unable to verify confirmation SMS send. Check notification status before trying again.",
-        );
-      }
-
-      setSentLocally(true);
-      const messageSid =
-        typeof resultObject.messageSid === "string"
-          ? resultObject.messageSid
-          : null;
-      setSendSuccess(
-        messageSid
-          ? `Twilio accepted the SMS. Message SID: ${messageSid}. Delivery is not yet verified.`
-          : "Twilio accepted the SMS. Delivery is not yet verified.",
-      );
-      router.refresh();
-    } catch (caught) {
-      setSendError(
-        caught instanceof Error
-          ? caught.message
-          : "SMS outcome could not be verified. Check Twilio and Supabase before retrying.",
-      );
-      router.refresh();
-    } finally {
-      setSendBusy(false);
     }
   }
 
@@ -468,8 +419,7 @@ export default function ReservationWorkflowActions({
                   type="button"
                   disabled={actionPending}
                   onClick={() => setChangingAvailability(true)}
-                  className={`${buttonClass} border border-white/20 bg-white/5 text-zinc-200 hover:bg-white/10`}
-                >
+                  className={`${buttonClass} border border-white/20 bg-white/5 text-zinc-200 hover:bg-white/10`}                >
                   Change Decision
                 </button>
               </div>
@@ -834,94 +784,74 @@ export default function ReservationWorkflowActions({
               </button>
 
               <p className="mt-3 text-xs leading-5 text-zinc-500">
-                This records the confirmed reservation and
-                queues a guest notification event. It does
-                not send an SMS automatically.
+                Confirming the Yelp booking automatically requests a guest
+                confirmation SMS. Its status appears below after confirmation.
               </p>
             </div>
           )}
         </div>
       )}
 
-      {isConfirmed && (
+      {(isConfirmed || notificationResult) && (
         <div className="mt-6 space-y-4 border-t border-white/10 pt-6">
-          <div>
-            <h3 className="text-base font-semibold text-white">
-              Send Guest Confirmation SMS
-            </h3>
-            <p className="mt-2 text-sm leading-6 text-zinc-400">
-              The reservation is confirmed. Send its queued guest notification
-              through the Twilio confirmation service.
-            </p>
-          </div>
+          <h3 className="text-base font-semibold text-white">
+            Guest Confirmation
+          </h3>
+          <p className="text-sm leading-6 text-zinc-400">
+            A confirmation text is requested automatically when the Yelp
+            booking is confirmed. No additional staff action is required.
+          </p>
 
-          {!confirmationNotification ? (
-            <p className="text-sm text-amber-200">
-              No confirmation notification record is available. Sending is disabled.
-            </p>
-          ) : (
-            <div className="rounded-lg border border-white/10 bg-black/40 p-4">
-              <p className="text-sm text-zinc-300">
-                Notification status: {" "}
-                <strong className="capitalize text-white">
-                  {formatStatus(confirmationNotification.notification_status)}
-                </strong>
-              </p>
-              {confirmationNotification.twilio_message_sid && (
-                <p className="mt-2 break-all text-xs text-zinc-400">
-                  Twilio Message SID: {confirmationNotification.twilio_message_sid}
-                </p>
-              )}
-              {confirmationNotification.failure_code && (
-                <p className="mt-2 text-sm text-amber-200">
-                  Notification code: {confirmationNotification.failure_code}
-                </p>
-              )}
+          {(() => {
+            // Prefer the latest action result until refreshed server props arrive.
+            // A successful send request is not proof of handset delivery.
+            const savedStatus = confirmationNotification?.notification_status;
+            const state = notificationResult
+              ? notificationResult.accepted
+                ? "sent"
+                : "attention"
+              : savedStatus === "delivered"
+                ? "delivered"
+                : savedStatus === "sent"
+                  ? "sent"
+                  : savedStatus === "pending"
+                    ? "pending"
+                    : "attention";
 
-              {confirmationNotification.notification_status === "pending" && !sentLocally ? (
-                <div className="mt-4 space-y-4">
-                  <label className="flex items-start gap-3 text-sm text-zinc-300">
-                    <input
-                      type="checkbox"
-                      checked={sendAcknowledged}
-                      disabled={sendBusy}
-                      onChange={(event) => setSendAcknowledged(event.target.checked)}
-                      className="mt-1"
-                    />
-                    I intend to send this confirmation SMS to the guest phone
-                    number on the reservation. This is a real SMS send.
-                  </label>
-                  <button
-                    type="button"
-                    onClick={sendGuestConfirmation}
-                    disabled={sendBusy || !sendAcknowledged}
-                    className={`${buttonClass} w-full bg-[#ea1b24] text-white hover:bg-red-700`}
-                  >
-                    {sendBusy ? "Sending confirmation..." : "Send Guest Confirmation SMS"}
-                  </button>
-                </div>
-              ) : (
-                <p className="mt-3 text-sm text-zinc-300">
-                  {sentLocally || confirmationNotification.notification_status === "sent"
-                    ? "Twilio accepted the send request. Handset delivery is not yet verified."
-                    : confirmationNotification.notification_status === "delivered"
-                      ? "Twilio reports this notification as delivered."
-                      : "This notification is already claimed or processed. Verify its status in Supabase and Twilio before considering another send."}
-                </p>
-              )}
-            </div>
-          )}
+            const heading =
+              state === "delivered"
+                ? "Confirmation Delivered"
+                : state === "sent"
+                  ? "Confirmation Sent"
+                  : state === "pending"
+                    ? "Confirmation Pending"
+                    : "Notification Needs Attention";
 
-          {sendError && (
-            <p role="alert" className="rounded-lg border border-red-500/40 bg-red-950/30 p-3 text-sm text-red-200">
-              {sendError}
-            </p>
-          )}
-          {sendSuccess && (
-            <p role="status" className="rounded-lg border border-emerald-500/30 bg-emerald-950/20 p-3 text-sm text-emerald-200">
-              {sendSuccess}
-            </p>
-          )}
+            const description =
+              state === "delivered"
+                ? "The guest's reservation confirmation was delivered."
+                : state === "sent"
+                  ? "The guest's reservation confirmation has been sent successfully."
+                  : state === "pending"
+                    ? "The reservation is confirmed. The guest notification is being processed."
+                    : "The reservation is confirmed, but we couldn't verify that the guest received the text message. Please contact the guest or notify a manager. Do not resend the text until its status has been checked.";
+
+            return (
+              <div
+                role={state === "attention" ? "alert" : "status"}
+                className={`rounded-lg border p-4 text-sm leading-6 ${
+                  state === "attention"
+                    ? "border-amber-500/30 bg-amber-950/20 text-amber-200"
+                    : state === "pending"
+                      ? "border-white/20 bg-white/5 text-zinc-200"
+                      : "border-emerald-500/30 bg-emerald-950/20 text-emerald-200"
+                }`}
+              >
+                <p className="font-semibold">{heading}</p>
+                <p className="mt-1">{description}</p>
+              </div>
+            );
+          })()}
         </div>
       )}
     </section>
