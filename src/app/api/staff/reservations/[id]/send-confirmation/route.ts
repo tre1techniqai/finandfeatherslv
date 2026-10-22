@@ -1,4 +1,3 @@
-
 import { createHmac } from "node:crypto";
 import { NextResponse } from "next/server";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
@@ -54,7 +53,36 @@ type TwilioResult = {
   messageSid?: string;
   messageStatus?: string;
   eventKey?: string;
+  error?: string;
 };
+
+const TWILIO_FAILURE_CODES = [
+  "SECRET_NOT_CONFIGURED",
+  "AUTHENTICATION_FAILED",
+  "REQUEST_TIMESTAMP_EXPIRED",
+  "INVALID_EVENT_KEY",
+  "INVALID_RECIPIENT",
+  "INVALID_MESSAGE",
+  "SENDER_NOT_CONFIGURED",
+  "TWILIO_SEND_FAILED",
+  "MESSAGE_SID_MISSING",
+  "UNEXPECTED_ERROR",
+] as const;
+
+function safeFailureCode(value: unknown): string {
+  return typeof value === "string" &&
+    (TWILIO_FAILURE_CODES as readonly string[]).includes(value)
+    ? value
+    : "UNRECOGNIZED_TWILIO_RESPONSE";
+}
+
+class DispatchError extends Error {
+  constructor(readonly code: string) {
+    super(code);
+    this.name = "DispatchError";
+  }
+}
+
 
 function jsonError(message: string, status: number) {
   return NextResponse.json(
@@ -248,19 +276,22 @@ async function sendToTwilio(
   });
 
   if (!response.ok) {
-    throw new Error(
-      `Twilio Function returned HTTP ${response.status}.`,
-    );
+    throw new DispatchError(`TWILIO_FUNCTION_HTTP_${response.status}`);
   }
 
-  const parsed: unknown = await response.json();
+  let parsed: unknown;
+  try {
+    parsed = await response.json();
+  } catch {
+    throw new DispatchError("TWILIO_INVALID_JSON_RESPONSE");
+  }
 
   if (
     !parsed ||
     typeof parsed !== "object" ||
     Array.isArray(parsed)
   ) {
-    throw new Error("Invalid Twilio Function response.");
+    throw new DispatchError("TWILIO_INVALID_RESPONSE");
   }
 
   return parsed as TwilioResult;
@@ -514,7 +545,7 @@ export async function POST(
   // if the Twilio request or result becomes uncertain.
   let twilioResult: TwilioResult | null = null;
   let acceptedMessageSid: string | null = null;
-  let sendError: string | null = null;
+  let sendErrorCode: string | null = null;
 
   try {
     if (
@@ -540,13 +571,18 @@ export async function POST(
     ) {
       acceptedMessageSid = twilioResult.messageSid;
     } else {
-      sendError = "Twilio did not provide a verified acceptance.";
+      sendErrorCode =
+        twilioResult.success === false || twilioResult.accepted === false
+          ? safeFailureCode(twilioResult.error)
+          : "TWILIO_ACCEPTANCE_UNVERIFIED";
     }
   } catch (error) {
-    sendError =
-      error instanceof Error
-        ? error.message
-        : "Unknown Twilio communication error.";
+    sendErrorCode =
+      error instanceof DispatchError
+        ? error.code
+        : error instanceof Error && error.name === "TimeoutError"
+          ? "TWILIO_REQUEST_TIMEOUT"
+          : "TWILIO_REQUEST_FAILED";
   }
 
   const { data: finishData, error: finishError } =
@@ -587,12 +623,16 @@ export async function POST(
     console.error("Confirmation SMS outcome uncertain:", {
       reservationId: id,
       notificationEventId: claim.notification_event_id,
-      reason: sendError,
+      failureCode: sendErrorCode ?? "TWILIO_ACCEPTANCE_UNVERIFIED",
     });
 
-    return jsonError(
-      "SMS delivery request could not be verified. Check Twilio message logs. Automatic resend is disabled.",
-      502,
+    return NextResponse.json(
+      {
+        success: false,
+        error: "SMS delivery request could not be verified. Check Twilio message logs. Automatic resend is disabled.",
+        failureCode: sendErrorCode ?? "TWILIO_ACCEPTANCE_UNVERIFIED",
+      },
+      { status: 502, headers: { "Cache-Control": "no-store" } },
     );
   }
 
