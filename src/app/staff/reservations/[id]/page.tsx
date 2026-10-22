@@ -128,6 +128,17 @@ function formatDeposit(value: number | null) {
   }).format(value);
 }
 
+function formatUsPhone(value: string) {
+  const digits = value.replace(/\D/g, "");
+  const national = digits.length === 11 && digits.startsWith("1")
+    ? digits.slice(1)
+    : digits;
+
+  if (national.length !== 10) return value;
+
+  return `(${national.slice(0, 3)}) ${national.slice(3, 6)}-${national.slice(6)}`;
+}
+
 function displayStatus(reservation: ReservationRequest) {
   if (
     (reservation.request_status === "incomplete" ||
@@ -338,7 +349,7 @@ async function ProtectedReservationDetail({ params }: PageProps) {
 
                 <Detail
                   label="Phone"
-                  value={reservation.customer_phone}
+                  value={formatUsPhone(reservation.customer_phone)}
                 />
 
                 <Detail
