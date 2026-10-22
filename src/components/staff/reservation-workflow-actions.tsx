@@ -133,6 +133,7 @@ export default function ReservationWorkflowActions({
   const [busy, setBusy] = useState<ActionName | null>(null);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+  const [changingAvailability, setChangingAvailability] = useState(false);
   const [sendBusy, setSendBusy] = useState(false);
   const [sendError, setSendError] = useState("");
   const [sendSuccess, setSendSuccess] = useState("");
@@ -229,6 +230,8 @@ export default function ReservationWorkflowActions({
             : "Unable to complete this reservation action.",
         );
       }
+
+      setChangingAvailability(false);
 
       setSuccess(
         "Reservation action saved successfully.",
@@ -403,26 +406,30 @@ export default function ReservationWorkflowActions({
       {eligible && (
         <div className="mt-6 space-y-6">
           {(status === "awaiting_review" ||
-            status === "available" ||
-            status === "unavailable" ||
-            status === "alternatives_proposed") && (
+            ((status === "available" || status === "unavailable") &&
+              changingAvailability)) && (
             <div className="border-b border-white/10 pb-6">
               <h3 className="text-base font-semibold text-white">
                 1. Requested Time Availability
               </h3>
 
               <p className="mt-2 text-sm text-zinc-400">
-                Check availability for the original requested
-                date and time.
+                Check availability for the original requested date and time.
               </p>
+
+              {changingAvailability && (
+                <p className="mt-3 text-sm leading-6 text-amber-200">
+                  Current saved decision: {status === "available" ? "Available" : "Unavailable"}.
+                  A revised selection must be accepted by the reservation system
+                  before the saved status changes.
+                </p>
+              )}
 
               <div className="mt-4 grid gap-3 sm:grid-cols-2">
                 <button
                   type="button"
-                  disabled={actionPending}
-                  onClick={() =>
-                    performAction("approve_availability")
-                  }
+                  disabled={actionPending || status === "available"}
+                  onClick={() => performAction("approve_availability")}
                   className={`${buttonClass} border border-emerald-500/40 bg-emerald-950/30 text-emerald-200 hover:bg-emerald-900/40`}
                 >
                   YES — Available
@@ -430,20 +437,46 @@ export default function ReservationWorkflowActions({
 
                 <button
                   type="button"
-                  disabled={actionPending}
-                  onClick={() =>
-                    performAction("decline_availability")
-                  }
+                  disabled={actionPending || status === "unavailable"}
+                  onClick={() => performAction("decline_availability")}
                   className={`${buttonClass} border border-red-500/40 bg-red-950/30 text-red-200 hover:bg-red-900/40`}
                 >
                   NO — Unavailable
                 </button>
               </div>
+
+              {changingAvailability && (
+                <button
+                  type="button"
+                  disabled={actionPending}
+                  onClick={() => setChangingAvailability(false)}
+                  className={`${buttonClass} mt-3 border border-white/20 bg-white/5 text-zinc-200 hover:bg-white/10`}
+                >
+                  Cancel — Keep Saved Decision
+                </button>
+              )}
             </div>
           )}
 
-          {(status === "unavailable" ||
-            status === "alternatives_proposed") && (
+          {(status === "available" || status === "unavailable") &&
+            !changingAvailability && (
+              <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/10 pb-6">
+                <p className="text-sm font-medium text-white">
+                  Availability: {status === "available" ? "YES — Available" : "NO — Unavailable"}
+                </p>
+                <button
+                  type="button"
+                  disabled={actionPending}
+                  onClick={() => setChangingAvailability(true)}
+                  className={`${buttonClass} border border-white/20 bg-white/5 text-zinc-200 hover:bg-white/10`}
+                >
+                  Change Decision
+                </button>
+              </div>
+            )}
+          {!changingAvailability &&
+            (status === "unavailable" ||
+              status === "alternatives_proposed") && (
             <div className="border-b border-white/10 pb-6">
               <h3 className="text-base font-semibold text-white">
                 2. Alternative Times
@@ -724,7 +757,7 @@ export default function ReservationWorkflowActions({
               </div>
             )}
 
-          {canConfirm && (
+          {canConfirm && !changingAvailability && (
             <div>
               <h3 className="text-base font-semibold text-white">
                 Final Yelp Booking Confirmation
