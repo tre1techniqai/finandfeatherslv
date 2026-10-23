@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { dispatchReservationConfirmation } from "@/lib/reservations/dispatch-reservation-confirmation";
+import { dispatchReservationAlternatives } from "@/lib/reservations/dispatch-reservation-alternatives";
 
 const MAX_BODY_BYTES = 8192;
 
@@ -17,6 +18,7 @@ const ALLOWED_ACTIONS = [
   "approve_availability",
   "decline_availability",
   "propose_alternatives",
+  "send_alternatives",
   "record_alternative_offer",
   "accept_alternative",
   "verify_deposit",
@@ -140,6 +142,9 @@ function validatePayload(
       return new Set(payload.times).size === payload.times.length;
     }
 
+        case "send_alternatives":
+          return Object.keys(payload).length === 0;
+
         case "record_alternative_offer":
           return (
             Object.keys(payload).length === 3 &&
@@ -164,14 +169,14 @@ function validatePayload(
       );
 
     case "confirm_yelp_booking":
+      // The database retrieves the guest phone number as the Yelp lookup
+      // reference. Large-party confirmation requires staff acknowledgment
+      // that the deposit payment link has been emailed, not that it was paid.
+      // The database independently checks whether the acknowledgment is needed.
       return (
-        Object.keys(payload).length === 1 &&
-        typeof payload.yelp_confirmation_number === "string" &&
-        payload.yelp_confirmation_number.trim().length > 0 &&
-        payload.yelp_confirmation_number.trim().length <= 100 &&
-        !UNSUPPORTED_CONTROLS.test(
-          payload.yelp_confirmation_number,
-        )
+        Object.keys(payload).length === 0 ||
+        (Object.keys(payload).length === 1 &&
+          payload.deposit_link_sent === true)
       );
 
     default:
@@ -375,6 +380,14 @@ export async function POST(
     );
   }
 
+  // Send the previously saved alternative times.
+  // The authenticated manager has already been verified above.
+  // The dispatcher performs independent reservation checks and
+  // uses database claims to prevent duplicate SMS requests.
+  if (validatedAction === "send_alternatives") {
+    return dispatchReservationAlternatives(supabase, id);
+  }
+
   // The database function independently checks manager authorization
   // and enforces reservation state transitions.
   const { data, error } = await supabase.rpc(
@@ -431,8 +444,8 @@ export async function POST(
     );
   }
 
-  // Record the Yelp booking first; SMS delivery must never undo a confirmed
-  // reservation. All other staff actions retain their existing behavior.
+  // Record the reservation confirmation first; SMS delivery must never undo
+  // a confirmed reservation. All other actions retain their existing behavior.
   if (validatedAction !== "confirm_yelp_booking") {
     return NextResponse.json(
       { success: true, reservation: result },
@@ -487,7 +500,7 @@ export async function POST(
               : null,
           message: accepted
             ? "Twilio accepted the guest confirmation SMS. Handset delivery is not yet verified."
-            : "Yelp booking confirmed, but the guest SMS was not verified. Review notification status and Twilio logs; do not resend automatically.",
+            : "Reservation confirmed, but the guest SMS was not verified. Review notification status and Twilio logs; do not resend automatically.",
         },
       },
       { headers: { "Cache-Control": "no-store" } },
@@ -508,7 +521,7 @@ export async function POST(
           status: "needs_attention",
           messageSid: null,
           failureCode: "DISPATCH_EXCEPTION",
-          message: "Yelp booking confirmed, but SMS status could not be verified. Check notification status before any retry.",
+          message: "Reservation confirmed, but SMS status could not be verified. Check notification status before any retry.",
         },
       },
       { headers: { "Cache-Control": "no-store" } },
