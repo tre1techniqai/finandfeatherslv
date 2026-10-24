@@ -1,6 +1,7 @@
 import { Suspense } from "react";
 import { connection } from "next/server";
 import Link from "next/link";
+import GuestAssistanceActions from "@/components/staff/guest-assistance-actions";
 import { requireReservationStaff } from "@/lib/auth/require-reservation-staff";
 
 export const metadata = {
@@ -30,6 +31,14 @@ type ReservationRequest = {
   interruption_stage: string | null;
   deposit_amount: number | null;
   deposit_status: string;
+  created_at: string;
+};
+
+type GuestAssistanceAlert = {
+  id: string;
+  reservation_request_id: string;
+  twilio_message_sid: string;
+  alert_status: "open" | "acknowledged";
   created_at: string;
 };
 
@@ -266,6 +275,108 @@ function ReservationCard({
   );
 }
 
+function GuestAssistanceSection({
+  alerts,
+  error,
+  reservations,
+}: {
+  alerts: GuestAssistanceAlert[];
+  error: string | null;
+  reservations: ReservationRequest[];
+}) {
+  const reservationById = new Map(
+    reservations.map((reservation) => [reservation.id, reservation]),
+  );
+
+  const openCount = alerts.filter((alert) => alert.alert_status === "open").length;
+
+  return (
+    <section aria-labelledby="guest-assistance-heading" className="mb-8">
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3 border-b border-white/10 pb-4">
+        <div>
+          <h2 id="guest-assistance-heading" className="text-xl font-bold text-white">
+            Guest Assistance Required
+          </h2>
+          <p className="mt-1 text-sm text-zinc-400">
+            Incoming guest messages awaiting a reservations manager.
+          </p>
+        </div>
+        {!error && (
+          <span className="rounded-full border border-amber-500/40 bg-amber-500/10 px-3 py-1 text-xs font-semibold text-amber-200">
+            {openCount} open · {alerts.length} outstanding
+          </span>
+        )}
+      </div>
+
+      {error ? (
+        <div role="alert" className="rounded-xl border border-amber-500/30 bg-amber-950/20 p-5">
+          <p className="font-semibold text-amber-200">Assistance alerts unavailable</p>
+          <p className="mt-2 text-sm text-amber-100">
+            We couldn&apos;t retrieve the guest assistance queue. Refresh the page or contact an administrator.
+          </p>
+          <p className="mt-2 text-xs text-amber-200/80">Database error code: {error}</p>
+        </div>
+      ) : alerts.length === 0 ? (
+        <div className="rounded-xl border border-white/10 bg-zinc-950/90 p-5">
+          <p className="text-sm font-medium text-white">No outstanding assistance alerts</p>
+          <p className="mt-2 text-sm text-zinc-400">
+            Alerts will appear here after the Studio guest-assistance workflow is connected and tested.
+          </p>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {alerts.map((alert) => {
+            const reservation = reservationById.get(alert.reservation_request_id);
+            return (
+              <article key={alert.id} className="rounded-xl border border-amber-500/25 bg-zinc-950/90 p-4 sm:p-5">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="text-sm font-bold text-white">
+                      {reservation?.customer_name || "Guest assistance requested"}
+                    </p>
+                    {reservation && (
+                      <p className="mt-1 text-xs text-zinc-400">
+                        {formatUsPhone(reservation.customer_phone)} · Reservation {formatDate(reservation.reservation_date)}
+                      </p>
+                    )}
+                    <p className="mt-2 text-xs text-zinc-500">
+                      Alert created {formatTimestamp(alert.created_at)}
+                    </p>
+                  </div>
+                  <span className={`rounded-full border px-3 py-1 text-xs font-semibold ${
+                    alert.alert_status === "open"
+                      ? "border-amber-500/40 bg-amber-500/10 text-amber-200"
+                      : "border-blue-400/30 bg-blue-400/10 text-blue-200"
+                  }`}>
+                    {alert.alert_status === "open" ? "Needs Attention" : "Acknowledged"}
+                  </span>
+                </div>
+                <p className="mt-3 text-sm leading-6 text-zinc-300">
+                  An incoming guest message requires review. Open the reservation to read the SMS in Guest Conversation.
+                </p>
+                <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-start">
+                  <Link
+                    href={`/staff/reservations/${alert.reservation_request_id}#guest-conversation`}
+                    className="inline-flex min-h-11 w-full items-center justify-center rounded-lg bg-[#ea1b24] px-4 py-3 text-sm font-semibold text-white transition hover:bg-red-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white sm:w-auto"
+                  >
+                    Open Reservation →
+                  </Link>
+                  <GuestAssistanceActions alertId={alert.id} status={alert.alert_status} />
+                </div>
+              </article>
+            );
+          })}
+          {alerts.length === 100 && (
+            <p className="text-xs text-amber-200">
+              Showing the newest 100 outstanding alerts. Additional alerts may exist.
+            </p>
+          )}
+        </div>
+      )}
+    </section>
+  );
+}
+
 function Loading() {
   return (
     <main className="flex min-h-screen items-center justify-center bg-black px-5 text-white">
@@ -290,6 +401,17 @@ async function ProtectedReservationQueue() {
     .limit(100);
 
   const reservations = (data ?? []) as ReservationRequest[];
+
+  // Fetch pending assistance alerts with the same manager-scoped Supabase
+  // session. Manager-only SELECT is enforced by the table's RLS policy.
+  const { data: assistanceData, error: assistanceError } = await supabase
+    .from("reservation_guest_assistance_alerts")
+    .select("id, reservation_request_id, twilio_message_sid, alert_status, created_at")
+    .in("alert_status", ["open", "acknowledged"])
+    .order("created_at", { ascending: false })
+    .limit(100);
+
+  const assistanceAlerts = (assistanceData ?? []) as GuestAssistanceAlert[];
 
   const counts = {
     pending: reservations.filter(
@@ -346,6 +468,12 @@ async function ProtectedReservationQueue() {
           <SummaryCard label="Confirmed" count={counts.confirmed} />
           <SummaryCard label="Closed" count={counts.closed} />
         </section>
+
+        <GuestAssistanceSection
+          alerts={assistanceAlerts}
+          error={assistanceError?.code ?? null}
+          reservations={reservations}
+        />
 
         <section aria-labelledby="staff-queue-heading">
           <div className="mb-5 flex flex-col gap-2 border-b border-white/10 pb-4 sm:flex-row sm:items-center sm:justify-between">

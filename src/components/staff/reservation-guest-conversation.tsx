@@ -3,6 +3,7 @@
 import {
   useCallback,
   useEffect,
+  useRef,
   useState,
 } from "react";
 
@@ -109,6 +110,7 @@ export default function ReservationGuestConversation({
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState("");
   const [loaded, setLoaded] = useState(false);
+  const [expanded, setExpanded] = useState(false);
 
   const [
     historyMayBeTruncated,
@@ -126,6 +128,98 @@ export default function ReservationGuestConversation({
   const [sending, setSending] = useState(false);
   const [sendError, setSendError] = useState("");
   const [sendSuccess, setSendSuccess] = useState("");
+
+  // The controls are transient and indicate the direction of active scrolling.
+  const messageListRef = useRef<HTMLOListElement | null>(null);
+  const lastScrollTopRef = useRef(0);
+  const scrollHideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const didInitialScrollRef = useRef(false);
+  const followLatestRef = useRef(true);
+  const [scrollDirection, setScrollDirection] = useState<"up" | "down" | null>(null);
+  const [canScrollUp, setCanScrollUp] = useState(false);
+  const [canScrollDown, setCanScrollDown] = useState(false);
+
+  const clearScrollHideTimer = useCallback(() => {
+    if (scrollHideTimerRef.current !== null) {
+      clearTimeout(scrollHideTimerRef.current);
+      scrollHideTimerRef.current = null;
+    }
+  }, []);
+
+  const updateScrollBounds = useCallback(() => {
+    const list = messageListRef.current;
+    if (!list) {
+      setCanScrollUp(false);
+      setCanScrollDown(false);
+      return;
+    }
+    const remaining = list.scrollHeight - list.clientHeight - list.scrollTop;
+    setCanScrollUp(list.scrollTop > 3);
+    setCanScrollDown(remaining > 3);
+  }, []);
+
+  const handleMessageScroll = useCallback(() => {
+    const list = messageListRef.current;
+    if (!list) return;
+
+    const position = list.scrollTop;
+    const movement = position - lastScrollTopRef.current;
+    lastScrollTopRef.current = position;
+    followLatestRef.current = list.scrollHeight - list.clientHeight - position <= 48;
+    updateScrollBounds();
+
+    // Ignore layout changes and tiny movements, but react to actual scrolling.
+    if (Math.abs(movement) <= 1) return;
+    const nextDirection = movement < 0 ? "up" : "down";
+    const canContinue = movement < 0
+      ? position > 3
+      : list.scrollHeight - list.clientHeight - position > 3;
+
+    setScrollDirection(canContinue ? nextDirection : null);
+    clearScrollHideTimer();
+    if (canContinue) {
+      scrollHideTimerRef.current = setTimeout(() => {
+        setScrollDirection(null);
+        scrollHideTimerRef.current = null;
+      }, 1100);
+    }
+  }, [clearScrollHideTimer, updateScrollBounds]);
+
+  const jumpTo = useCallback((edge: "top" | "bottom") => {
+    const list = messageListRef.current;
+    if (!list) return;
+    clearScrollHideTimer();
+    setScrollDirection(null);
+    list.scrollTo({ top: edge === "top" ? 0 : list.scrollHeight, behavior: "smooth" });
+  }, [clearScrollHideTimer]);
+
+  useEffect(() => () => clearScrollHideTimer(), [clearScrollHideTimer]);
+
+  useEffect(() => {
+    // A different reservation has its own conversation and scroll position.
+    didInitialScrollRef.current = false;
+    setExpanded(false);
+    followLatestRef.current = true;
+    lastScrollTopRef.current = 0;
+    clearScrollHideTimer();
+    setScrollDirection(null);
+  }, [reservationId, clearScrollHideTimer]);
+
+  useEffect(() => {
+    if (!expanded || !loaded || messages.length === 0) return;
+    const list = messageListRef.current;
+    if (!list) return;
+
+    // Scroll immediately after messages render, without animating the initial load.
+    // On refresh, preserve the manager's reading position unless near the bottom.
+    if (!didInitialScrollRef.current || followLatestRef.current) {
+      list.scrollTop = list.scrollHeight;
+    }
+    didInitialScrollRef.current = true;
+    lastScrollTopRef.current = list.scrollTop;
+    updateScrollBounds();
+  }, [expanded, loaded, messages, updateScrollBounds]);
+
 
   const loadConversation = useCallback(
     async (
@@ -174,6 +268,17 @@ export default function ReservationGuestConversation({
         }
 
         if (signal.aborted) return;
+
+        if (initial) {
+          didInitialScrollRef.current = false;
+          followLatestRef.current = true;
+        } else {
+          const list = messageListRef.current;
+          if (list) {
+            followLatestRef.current =
+              list.scrollHeight - list.clientHeight - list.scrollTop <= 48;
+          }
+        }
 
         setMessages(result.messages);
 
@@ -395,26 +500,54 @@ export default function ReservationGuestConversation({
       aria-labelledby="guest-conversation-heading"
       className="rounded-xl border border-white/10 bg-zinc-950/90 p-5 sm:p-6"
     >
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h2
-            id="guest-conversation-heading"
-            className="text-lg font-bold text-white"
-          >
+      <button
+        type="button"
+        onClick={() => {
+          if (!expanded) {
+            didInitialScrollRef.current = false;
+            followLatestRef.current = true;
+          } else {
+            clearScrollHideTimer();
+            setScrollDirection(null);
+          }
+          setExpanded((current) => !current);
+        }}
+        aria-expanded={expanded}
+        aria-controls="guest-conversation-content"
+        className="flex w-full min-h-11 items-start justify-between gap-3 rounded-lg text-left focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[#ea1b24]"
+      >
+        <div className="min-w-0 flex-1">
+          <h2 id="guest-conversation-heading" className="text-lg font-bold text-white">
             Guest Conversation
           </h2>
-
           <p className="mt-2 text-sm leading-6 text-zinc-400">
-            Review messages and stay connected
-            with your guest.
+            Review messages and stay connected with your guest.
           </p>
+          <div className="mt-3 flex flex-wrap items-center gap-3">
+            <span className="rounded-full border border-white/15 bg-white/5 px-3 py-1 text-xs font-medium text-zinc-300">
+              {canSend ? "Staff Messaging" : pending ? "Handoff Pending · View Only" : "View Only"}
+            </span>
+            <span className="inline-flex items-center gap-2 text-xs font-medium text-zinc-300" aria-live="polite">
+              <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4">
+                <path d="M21 11.5a8.5 8.5 0 0 1-8.5 8.5 9 9 0 0 1-4-.9L3 21l1.9-5.5a9 9 0 0 1-.9-4A8.5 8.5 0 0 1 12.5 3H13a8 8 0 0 1 8 8v.5Z" />
+              </svg>
+              {loading && !loaded
+                ? "Loading messages..."
+                : loaded
+                  ? `${messages.length} ${messages.length === 1 ? "message" : "messages"}`
+                  : "Messages unavailable"}
+            </span>
+          </div>
         </div>
-
-        <span className="rounded-full border border-white/15 bg-white/5 px-3 py-1 text-xs font-medium text-zinc-300">
-          {canSend ? "Staff Messaging" : pending ? "Handoff Pending · View Only" : "View Only"}
+        <span aria-hidden="true" className="mt-1 flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-white/15 bg-white/5 text-zinc-200">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={`h-5 w-5 transition-transform ${expanded ? "rotate-180" : ""}`}>
+            <path d="m6 9 6 6 6-6" />
+          </svg>
         </span>
-      </div>
+      </button>
 
+      {expanded && (
+        <div id="guest-conversation-content">
       {loading && (
         <div
           role="status"
@@ -446,14 +579,6 @@ export default function ReservationGuestConversation({
 
       {!loading && loaded && (
         <>
-          <div className="mt-5">
-            <p className="text-xs font-medium text-zinc-400">
-              {messages.length === 1
-                ? "1 message"
-                : `${messages.length} messages`}
-            </p>
-          </div>
-
           {historyMayBeTruncated && (
             <p className="mt-4 rounded-lg border border-amber-500/20 bg-amber-950/10 p-3 text-xs leading-5 text-amber-200">
               Older messages may exist outside
@@ -474,10 +599,13 @@ export default function ReservationGuestConversation({
               </p>
             </div>
           ) : (
-            <ol
-              aria-label="Guest SMS history"
-              className="mt-5 max-h-[650px] space-y-4 overflow-y-auto rounded-lg border border-white/10 bg-black/40 p-3 sm:p-5"
-            >
+            <div className="relative mt-5">
+              <ol
+                ref={messageListRef}
+                onScroll={handleMessageScroll}
+                aria-label="Guest SMS history"
+                className="max-h-[650px] space-y-4 overflow-y-auto overscroll-contain rounded-lg border border-white/10 bg-black/40 p-3 sm:p-5"
+              >
               {messages.map((message) => {
                 const incoming =
                   message.direction === "inbound";
@@ -545,7 +673,40 @@ export default function ReservationGuestConversation({
                   </li>
                 );
               })}
-            </ol>
+              </ol>
+
+              {scrollDirection === "up" && canScrollUp && (
+                <button
+                  type="button"
+                  onClick={() => jumpTo("top")}
+                  aria-label="Scroll to oldest message"
+                  title="Scroll to oldest message"
+                  className="absolute left-1/2 top-3 z-10 flex h-11 w-11 -translate-x-1/2 items-center justify-center rounded-full border border-white/25 bg-zinc-800/95 text-white shadow-lg transition hover:bg-zinc-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
+                >
+                  <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-5 w-5">
+                    <path d="m6 15 6-6 6 6" />
+                    <path d="M12 9v11" />
+                    <path d="M5 4h14" />
+                  </svg>
+                </button>
+              )}
+
+              {scrollDirection === "down" && canScrollDown && (
+                <button
+                  type="button"
+                  onClick={() => jumpTo("bottom")}
+                  aria-label="Scroll to newest message"
+                  title="Scroll to newest message"
+                  className="absolute bottom-3 left-1/2 z-10 flex h-11 w-11 -translate-x-1/2 items-center justify-center rounded-full border border-white/25 bg-zinc-800/95 text-white shadow-lg transition hover:bg-zinc-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
+                >
+                  <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-5 w-5">
+                    <path d="m6 9 6 6 6-6" />
+                    <path d="M12 4v11" />
+                    <path d="M5 20h14" />
+                  </svg>
+                </button>
+              )}
+            </div>
           )}
         </>
       )}
@@ -607,8 +768,7 @@ export default function ReservationGuestConversation({
             rows={4}
             maxLength={1600}
             value={draftMessage}
-            onChange={(event) => { setDraftMessage(event.target.value); setSendError(""); setSendSuccess(""); }}
-            disabled={!canSend || sending}
+            onChange={(event) => { setDraftMessage(event.target.value); setSendError(""); setSendSuccess(""); }}            disabled={!canSend || sending}
             placeholder={canSend ? "Type an SMS reply to your guest..." : "Direct messaging is available after verified staff takeover."}
             className="mt-3 w-full resize-y rounded-lg border border-white/20 bg-black/40 p-3 text-sm text-white placeholder:text-zinc-500 focus-visible:outline-2 focus-visible:outline-[#ea1b24] disabled:cursor-not-allowed disabled:opacity-50"
           />
@@ -632,6 +792,8 @@ export default function ReservationGuestConversation({
           )}
         </div>
       </div>
+        </div>
+      )}
     </section>
   );
 }
