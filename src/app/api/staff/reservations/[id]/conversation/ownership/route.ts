@@ -4,7 +4,7 @@ import twilio from "twilio";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 const UUID_PATTERN =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{12}$/i;
 
 const EXECUTION_SID_PATTERN = /^FN[0-9a-f]{32}$/i;
 const FLOW_SID_PATTERN = /^FW[0-9a-f]{32}$/i;
@@ -35,7 +35,7 @@ type HandoffRow = {
 function jsonResponse(
   data: Record<string, unknown>,
   status = 200,
-) {
+): NextResponse {
   return NextResponse.json(data, {
     status,
     headers: {
@@ -44,8 +44,17 @@ function jsonResponse(
   });
 }
 
-function jsonError(error: string, status: number) {
-  return jsonResponse({ success: false, error }, status);
+function jsonError(
+  error: string,
+  status: number,
+): NextResponse {
+  return jsonResponse(
+    {
+      success: false,
+      error,
+    },
+    status,
+  );
 }
 
 function isRecord(
@@ -63,7 +72,10 @@ function isOptionalUuid(
 ): value is string | null {
   return (
     value === null ||
-    (typeof value === "string" && UUID_PATTERN.test(value))
+    (
+      typeof value === "string" &&
+      UUID_PATTERN.test(value)
+    )
   );
 }
 
@@ -82,7 +94,9 @@ function isOptionalTimestamp(
 function isHandoffRow(
   value: unknown,
 ): value is HandoffRow {
-  if (!isRecord(value)) return false;
+  if (!isRecord(value)) {
+    return false;
+  }
 
   return (
     typeof value.ownership_id === "string" &&
@@ -125,20 +139,32 @@ export async function GET(
     const { id } = await context.params;
 
     if (!UUID_PATTERN.test(id)) {
-      return jsonError("Invalid reservation.", 400);
+      return jsonError(
+        "Invalid reservation.",
+        400,
+      );
     }
 
-    const supabase = await createSupabaseServerClient();
+    const supabase =
+      await createSupabaseServerClient();
 
     const {
       data: claimsData,
       error: claimsError,
     } = await supabase.auth.getClaims();
 
-    const userId = claimsData?.claims?.sub;
+    const userId =
+      claimsData?.claims?.sub;
 
-    if (claimsError || !userId) {
-      return jsonError("Please sign in to continue.", 401);
+    if (
+      claimsError ||
+      typeof userId !== "string" ||
+      !UUID_PATTERN.test(userId)
+    ) {
+      return jsonError(
+        "Please sign in to continue.",
+        401,
+      );
     }
 
     const {
@@ -157,7 +183,10 @@ export async function GET(
       staffRole.is_active !== true ||
       staffRole.role !== "manager"
     ) {
-      return jsonError("Staff access required.", 403);
+      return jsonError(
+        "Staff access required.",
+        403,
+      );
     }
 
     const {
@@ -165,20 +194,31 @@ export async function GET(
       error: reservationError,
     } = await supabase
       .from("reservation_requests")
-      .select("id, customer_phone, twilio_execution_sid")
+      .select(
+        "id, customer_phone, twilio_execution_sid",
+      )
       .eq("id", id)
       .maybeSingle();
 
     if (reservationError) {
-      return jsonError("Unable to load the reservation.", 500);
+      return jsonError(
+        "Unable to load the reservation.",
+        500,
+      );
     }
 
     if (!reservation) {
-      return jsonError("Reservation not found.", 404);
+      return jsonError(
+        "Reservation not found.",
+        404,
+      );
     }
 
-    const guestPhone = reservation.customer_phone;
-    const executionSid = reservation.twilio_execution_sid;
+    const guestPhone =
+      reservation.customer_phone;
+
+    const executionSid =
+      reservation.twilio_execution_sid;
 
     if (
       typeof guestPhone !== "string" ||
@@ -190,7 +230,8 @@ export async function GET(
       );
     }
 
-    const restaurantPhone = process.env.TWILIO_FROM_NUMBER;
+    const restaurantPhone =
+      process.env.TWILIO_FROM_NUMBER;
 
     if (
       !restaurantPhone ||
@@ -203,9 +244,9 @@ export async function GET(
       );
     }
 
-    // Retrieve ownership through the manager-authorized
-    // database function. Do not read the protected table
-    // directly from the client.
+    // Query through the manager-authorized
+    // SECURITY DEFINER function.
+    // Do not read the RLS-protected table directly.
     const {
       data: handoffData,
       error: handoffError,
@@ -219,22 +260,34 @@ export async function GET(
 
     if (handoffError) {
       if (handoffError.code === "42501") {
-        return jsonError("Manager access required.", 403);
+        return jsonError(
+          "Manager access required.",
+          403,
+        );
       }
 
       if (handoffError.code === "22023") {
-        return jsonError("Invalid conversation details.", 409);
+        return jsonError(
+          "Invalid conversation details.",
+          409,
+        );
       }
 
       if (handoffError.code === "P0002") {
-        return jsonError("Reservation not found.", 404);
+        return jsonError(
+          "Reservation not found.",
+          404,
+        );
       }
 
-      console.error("Stored conversation handoff lookup failed:", {
-        category: "HANDOFF_READ_ERROR",
-        code: handoffError.code,
-        reservationId: id,
-      });
+      console.error(
+        "Stored conversation handoff lookup failed:",
+        {
+          category: "HANDOFF_READ_ERROR",
+          code: handoffError.code,
+          reservationId: id,
+        },
+      );
 
       return jsonError(
         "We couldn't read the conversation handoff state.",
@@ -252,7 +305,8 @@ export async function GET(
       );
     }
 
-    const storedHandoff: unknown = handoffData[0] ?? null;
+    const storedHandoff: unknown =
+      handoffData[0] ?? null;
 
     if (
       storedHandoff !== null &&
@@ -264,38 +318,44 @@ export async function GET(
       );
     }
 
-    const handoffRow = storedHandoff as HandoffRow | null;
+    const handoffRow =
+      storedHandoff as HandoffRow | null;
 
-    // The unique ownership record belongs to a guest/
-    // restaurant phone pair. Require the exact linked
-    // reservation before authorizing either action.
+    // Ownership is associated with a guest/restaurant
+    // phone pair. Authorization must match this
+    // exact reservation and this exact manager.
     const ownsLinkedReservation =
       handoffRow !== null &&
       handoffRow.linked_reservation_id === id &&
       handoffRow.claimed_by === userId;
 
-    // These flags only describe action eligibility.
-    // Actual POST endpoints independently authenticate,
-    // verify ownership, and enforce their own safeguards.
-    const actionsConfigured = takeoverConfigured();
+    const actionsConfigured =
+      takeoverConfigured();
 
+    // Completing a new handoff must remain gated
+    // by all takeover requirements.
     const canComplete =
       actionsConfigured &&
       ownsLinkedReservation &&
-      handoffRow?.ownership_status === "handoff_pending";
+      handoffRow?.ownership_status ===
+        "handoff_pending";
 
+    // RELEASE IS A RECOVERY OPERATION.
+    //
+    // Do not require takeover or messaging flags.
+    // Existing staff ownership is sufficient to make
+    // the release option available to its manager.
+    //
+    // The release POST endpoint and database RPC
+    // independently enforce manager authorization
+    // and exact reservation ownership.
     const canRelease =
-      actionsConfigured &&
       ownsLinkedReservation &&
       handoffRow?.ownership_status === "staff";
 
-    // Preserve the existing fail-closed messaging behavior.
-    // Messaging is not enabled merely because a handoff
-    // was requested or because an action is eligible.
-    //
-    // A later stage must independently validate the
-    // complete inbound-routing and sending lifecycle
-    // before changing this to an enabled permission.
+    // Keep all direct staff SMS disabled until the
+    // inbound-routing and send/release concurrency
+    // safeguards are verified.
     const staffMessagingEnabled = false;
 
     const handoff = handoffRow
@@ -303,11 +363,13 @@ export async function GET(
           exists: true,
           ownershipId: handoffRow.ownership_id,
           status: handoffRow.ownership_status,
-          reservationId: handoffRow.linked_reservation_id,
+          reservationId:
+            handoffRow.linked_reservation_id,
           claimedByCurrentManager:
             handoffRow.claimed_by === userId,
           canCancel:
-            handoffRow.ownership_status === "handoff_pending" &&
+            handoffRow.ownership_status ===
+              "handoff_pending" &&
             handoffRow.claimed_by === userId &&
             handoffRow.linked_reservation_id === id,
           canComplete,
@@ -330,13 +392,14 @@ export async function GET(
           updatedAt: null,
         };
 
-    // This is diagnostic configuration information only.
-    // It is not permission to send SMS.
+    // Diagnostics only.
+    // This does not authorize staff messaging.
     const messagingPrerequisitesConfigured =
       messagingConfigured();
 
     // Preserve existing Studio execution diagnostics.
-    // A missing execution is not a completed takeover.
+    // A missing or ended execution is not proof
+    // of completed staff ownership.
     if (
       typeof executionSid !== "string" ||
       !EXECUTION_SID_PATTERN.test(executionSid)
@@ -355,9 +418,14 @@ export async function GET(
       });
     }
 
-    const accountSid = process.env.TWILIO_ACCOUNT_SID;
-    const authToken = process.env.TWILIO_AUTH_TOKEN;
-    const flowSid = process.env.TWILIO_STUDIO_FLOW_SID;
+    const accountSid =
+      process.env.TWILIO_ACCOUNT_SID;
+
+    const authToken =
+      process.env.TWILIO_AUTH_TOKEN;
+
+    const flowSid =
+      process.env.TWILIO_STUDIO_FLOW_SID;
 
     if (
       !accountSid ||
@@ -372,7 +440,10 @@ export async function GET(
       );
     }
 
-    const client = twilio(accountSid, authToken);
+    const client = twilio(
+      accountSid,
+      authToken,
+    );
 
     let execution;
 
@@ -386,7 +457,9 @@ export async function GET(
         typeof error === "object" &&
         error !== null &&
         "status" in error
-          ? (error as { status?: unknown }).status
+          ? (error as {
+              status?: unknown;
+            }).status
           : undefined;
 
       if (status === 404) {
@@ -394,7 +467,8 @@ export async function GET(
           success: true,
           reservationId: reservation.id,
           execution: null,
-          state: "execution_not_found_in_configured_flow",
+          state:
+            "execution_not_found_in_configured_flow",
           ownership: "unverified",
           handoff,
           takeoverConfigured: actionsConfigured,
@@ -443,13 +517,17 @@ export async function GET(
       readOnly: true,
     });
   } catch (error) {
-    console.error("Studio ownership lookup failed:", {
-      category: "STUDIO_OWNERSHIP_LOOKUP_ERROR",
-      name:
-        error instanceof Error
-          ? error.name
-          : "UnknownError",
-    });
+    console.error(
+      "Studio ownership lookup failed:",
+      {
+        category:
+          "STUDIO_OWNERSHIP_LOOKUP_ERROR",
+        name:
+          error instanceof Error
+            ? error.name
+            : "UnknownError",
+      },
+    );
 
     return jsonError(
       "We couldn't verify the conversation state.",
