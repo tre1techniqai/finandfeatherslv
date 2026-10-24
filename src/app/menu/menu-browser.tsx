@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
@@ -48,7 +49,9 @@ const MENU_TAG_LABELS: Record<string, string> = {
   vegan: "Vegan",
 };
 
-function getMenuTags(tags: string | null | undefined): MenuTag[] {
+function getMenuTags(
+  tags: string | null | undefined,
+): MenuTag[] {
   if (!tags) return [];
 
   const normalizedTags = tags
@@ -56,11 +59,13 @@ function getMenuTags(tags: string | null | undefined): MenuTag[] {
     .map((tag) => tag.trim().toLowerCase())
     .filter((tag) => tag in MENU_TAG_STYLES);
 
-  return Array.from(new Set(normalizedTags)).map((tag) => ({
-    key: tag,
-    label: MENU_TAG_LABELS[tag],
-    className: MENU_TAG_STYLES[tag],
-  }));
+  return Array.from(new Set(normalizedTags)).map(
+    (tag) => ({
+      key: tag,
+      label: MENU_TAG_LABELS[tag],
+      className: MENU_TAG_STYLES[tag],
+    }),
+  );
 }
 
 function getCategoryId(subcategory: string): string {
@@ -70,11 +75,17 @@ function getCategoryId(subcategory: string): string {
     .replace(/^-|-$/g, "")}`;
 }
 
-function isCocktailsCategory(subcategory: string): boolean {
-  return subcategory.trim().toLowerCase() === "cocktails";
+function isCocktailsCategory(
+  subcategory: string,
+): boolean {
+  return (
+    subcategory.trim().toLowerCase() === "cocktails"
+  );
 }
 
-function getDisplayCategoryName(subcategory: string): string {
+function getDisplayCategoryName(
+  subcategory: string,
+): string {
   return isCocktailsCategory(subcategory)
     ? "SIGNATURE COCKTAILS"
     : subcategory;
@@ -84,39 +95,54 @@ export default function MenuBrowser({
   items,
   loadError,
 }: MenuBrowserProps) {
-  const [menuType, setMenuType] = useState<"Food" | "Drink">("Food");
-  const [selectedCategory, setSelectedCategory] = useState("All");
+  const [menuType, setMenuType] =
+    useState<"Food" | "Drink">("Food");
+
+  const [selectedCategory, setSelectedCategory] =
+    useState("All");
+
   const [search, setSearch] = useState("");
-  const [specialsOnly, setSpecialsOnly] = useState(false);
-  const [selectedItem, setSelectedItem] = useState<MenuItem | null>(null);
+  const [specialsOnly, setSpecialsOnly] =
+    useState(false);
+
+  const [selectedItem, setSelectedItem] =
+    useState<MenuItem | null>(null);
 
   const categories = useMemo(() => {
     const matchingItems = items.filter(
       (item) =>
-        item.menu_type.toLowerCase() === menuType.toLowerCase(),
+        item.menu_type.toLowerCase() ===
+        menuType.toLowerCase(),
     );
 
     return [
       "All",
       ...Array.from(
-        new Set(matchingItems.map((item) => item.subcategory)),
+        new Set(
+          matchingItems.map(
+            (item) => item.subcategory,
+          ),
+        ),
       ),
     ];
   }, [items, menuType]);
 
   const filteredItems = useMemo(() => {
-    const normalizedSearch = search.trim().toLowerCase();
+    const normalizedSearch =
+      search.trim().toLowerCase();
 
     return items.filter((item) => {
       const matchesMenuType =
-        item.menu_type.toLowerCase() === menuType.toLowerCase();
+        item.menu_type.toLowerCase() ===
+        menuType.toLowerCase();
 
       const matchesCategory =
         selectedCategory === "All" ||
         item.subcategory === selectedCategory;
 
       const matchesSpecials =
-        !specialsOnly || item.is_five_dollar_special;
+        !specialsOnly ||
+        item.is_five_dollar_special;
 
       const searchableText = [
         item.item_name,
@@ -150,21 +176,30 @@ export default function MenuBrowser({
   ]);
 
   const groupedItems = useMemo(() => {
-    const groups = new Map<string, MenuItem[]>();
+    const groups = new Map<
+      string,
+      MenuItem[]
+    >();
 
     for (const item of filteredItems) {
       const existingItems =
         groups.get(item.subcategory) ?? [];
 
       existingItems.push(item);
-      groups.set(item.subcategory, existingItems);
+
+      groups.set(
+        item.subcategory,
+        existingItems,
+      );
     }
 
     return Array.from(groups.entries());
   }, [filteredItems]);
 
   useEffect(() => {
-    if (!categories.includes(selectedCategory)) {
+    if (
+      !categories.includes(selectedCategory)
+    ) {
       setSelectedCategory("All");
     }
   }, [categories, selectedCategory]);
@@ -172,13 +207,18 @@ export default function MenuBrowser({
   useEffect(() => {
     if (!selectedItem) return;
 
-    function handleKeyDown(event: KeyboardEvent) {
+    function handleKeyDown(
+      event: KeyboardEvent,
+    ) {
       if (event.key === "Escape") {
         setSelectedItem(null);
       }
     }
 
-    window.addEventListener("keydown", handleKeyDown);
+    window.addEventListener(
+      "keydown",
+      handleKeyDown,
+    );
 
     return () => {
       window.removeEventListener(
@@ -188,7 +228,9 @@ export default function MenuBrowser({
     };
   }, [selectedItem]);
 
-  function changeMenuType(type: "Food" | "Drink") {
+  function changeMenuType(
+    type: "Food" | "Drink",
+  ) {
     setMenuType(type);
     setSelectedCategory("All");
     setSearch("");
@@ -222,8 +264,9 @@ export default function MenuBrowser({
           </h1>
 
           <p className="mx-auto mt-4 max-w-2xl text-sm leading-6 text-white/60 sm:text-base">
-            Southern soul, elevated dining, and something
-            delicious for every occasion.
+            Southern soul, elevated dining,
+            and something delicious for
+            every occasion.
           </p>
 
           {/* Hours of Operation */}
@@ -241,21 +284,34 @@ export default function MenuBrowser({
                 className="h-5 w-5 shrink-0 text-yellow-400"
                 aria-hidden="true"
               >
-                <circle cx="12" cy="12" r="9" />
+                <circle
+                  cx="12"
+                  cy="12"
+                  r="9"
+                />
                 <path
                   strokeLinecap="round"
                   strokeLinejoin="round"
                   d="M12 7v5l3 2"
                 />
               </svg>
+
               HOURS OF OPERATION
             </h2>
 
             <div className="mt-2 grid w-full max-w-md grid-cols-2 gap-x-3 gap-y-1 text-sm leading-relaxed text-slate-400 sm:flex sm:max-w-none sm:flex-wrap sm:justify-center sm:gap-x-4">
-              <span>Mon - Thu: 11am - 12am</span>
-              <span>Fri: 11am - 2am</span>
-              <span>Sat: 10am - 2am</span>
-              <span>Sun: 10am - 12am</span>
+              <span>
+                Mon - Thu: 11am - 12am
+              </span>
+              <span>
+                Fri: 11am - 2am
+              </span>
+              <span>
+                Sat: 10am - 2am
+              </span>
+              <span>
+                Sun: 10am - 12am
+              </span>
             </div>
           </section>
 
@@ -288,8 +344,12 @@ export default function MenuBrowser({
           >
             <button
               type="button"
-              aria-pressed={menuType === "Food"}
-              onClick={() => changeMenuType("Food")}
+              aria-pressed={
+                menuType === "Food"
+              }
+              onClick={() =>
+                changeMenuType("Food")
+              }
               className={`min-w-28 rounded-full px-6 py-3 text-sm font-extrabold uppercase tracking-wider transition ${
                 menuType === "Food"
                   ? "bg-[#ea1b24] text-white"
@@ -301,8 +361,12 @@ export default function MenuBrowser({
 
             <button
               type="button"
-              aria-pressed={menuType === "Drink"}
-              onClick={() => changeMenuType("Drink")}
+              aria-pressed={
+                menuType === "Drink"
+              }
+              onClick={() =>
+                changeMenuType("Drink")
+              }
               className={`min-w-28 rounded-full px-6 py-3 text-sm font-extrabold uppercase tracking-wider transition ${
                 menuType === "Drink"
                   ? "bg-[#ea1b24] text-white"
@@ -314,25 +378,20 @@ export default function MenuBrowser({
           </div>
         </div>
 
-        {/* Back button, search, and specials filter */}
+        {/* Back to Home */}
         <div className="mt-7 grid grid-cols-1 gap-4 sm:grid-cols-[auto_minmax(0,1fr)_auto] sm:items-center">
           <a
             href="/"
             className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-white/20 bg-black/40 px-4 py-2.5 text-sm font-semibold text-white transition hover:border-white/40 hover:bg-white/10 focus:outline-none focus:ring-2 focus:ring-red-400"
           >
-            <span aria-hidden="true">←</span>
+            <span aria-hidden="true">
+              ←
+            </span>
             Back to Home
           </a>
-
-          {/*
-            Search and specials-only controls remain
-            available in component state for future use.
-
-            Existing visible layout remains unchanged.
-          */}
         </div>
 
-        {/* Subcategory filter buttons */}
+        {/* Subcategory filters */}
         <div
           className="mt-5 flex gap-2 overflow-x-auto pb-3"
           aria-label="Filter by category"
@@ -353,7 +412,9 @@ export default function MenuBrowser({
                   : "border-white/15 bg-white/5 text-white/65 hover:border-white/30 hover:text-white"
               }`}
             >
-              {getDisplayCategoryName(category)}
+              {getDisplayCategoryName(
+                category,
+              )}
             </button>
           ))}
         </div>
@@ -365,7 +426,10 @@ export default function MenuBrowser({
             {filteredItems.length === 1
               ? "item"
               : "items"}
-            {search.trim() ? " found" : ""}
+
+            {search.trim()
+              ? " found"
+              : ""}
           </p>
 
           {(search ||
@@ -396,8 +460,9 @@ export default function MenuBrowser({
             </h2>
 
             <p className="mt-3 text-sm leading-6 text-white/60">
-              We&apos;re having trouble loading our
-              menu right now. Please try again shortly.
+              We&apos;re having trouble
+              loading our menu right now.
+              Please try again shortly.
             </p>
           </div>
         ) : filteredItems.length === 0 ? (
@@ -407,8 +472,8 @@ export default function MenuBrowser({
             </h2>
 
             <p className="mt-3 text-sm text-white/60">
-              Try another search or choose a
-              different category.
+              Try another search or choose
+              a different category.
             </p>
 
             <button
@@ -428,46 +493,30 @@ export default function MenuBrowser({
             {groupedItems.map(
               ([subcategory, categoryItems]) => {
                 const isCocktails =
-                  isCocktailsCategory(subcategory);
-
-                const cocktailImageUrl = isCocktails
-                  ? categoryItems
-                      .find((item) =>
-                        item.image_url?.trim(),
-                      )
-                      ?.image_url?.trim() ?? null
-                  : null;
+                  isCocktailsCategory(
+                    subcategory,
+                  );
 
                 return (
                   <section
                     key={subcategory}
                     aria-labelledby={
-                      getCategoryId(subcategory)
+                      getCategoryId(
+                        subcategory,
+                      )
                     }
                     className="w-full"
                   >
                     {/*
-                      Category heading
+                      CATEGORY HEADING
 
-                      Signature Cocktails optionally displays
-                      a square image from its own Supabase
-                      menu item image_url data.
+                      No image is displayed beside
+                      SIGNATURE COCKTAILS.
+
+                      All category headings share
+                      the same consistent styling.
                     */}
-                    <div className="mb-5 flex min-h-12 items-center gap-3 border-b border-white/15 pb-3">
-                      {isCocktails &&
-                        cocktailImageUrl && (
-                          <div className="h-12 w-12 shrink-0 overflow-hidden rounded-lg border border-white/15 bg-[#111111] sm:h-14 sm:w-14">
-                            {/* eslint-disable-next-line @next/next/no-img-element */}
-                            <img
-                              src={cocktailImageUrl}
-                              alt="Signature Cocktails"
-                              loading="lazy"
-                              decoding="async"
-                              className="h-full w-full object-cover"
-                            />
-                          </div>
-                        )}
-
+                    <div className="mb-5 border-b border-white/15 pb-3">
                       <h2
                         id={getCategoryId(
                           subcategory,
@@ -481,15 +530,15 @@ export default function MenuBrowser({
                     </div>
 
                     {/*
+                      MENU GRID
+
+                      Mobile: 1 column.
+
+                      Tablet: 2 columns.
+
                       Desktop:
-                      Signature Cocktails = 2 columns
-                      Other categories = 3 columns
-
-                      Mobile:
-                      All categories = 1 column
-
-                      Tablet:
-                      All categories = 2 columns
+                        Cocktails = 2 columns.
+                        Other items = 3 columns.
                     */}
                     <div
                       className={`grid grid-cols-1 gap-5 sm:grid-cols-2 ${
@@ -498,128 +547,169 @@ export default function MenuBrowser({
                           : "lg:grid-cols-3"
                       }`}
                     >
-                      {categoryItems.map((item) => {
-                        const isFood =
-                          item.menu_type.toLowerCase() === "food";
+                      {categoryItems.map(
+                        (item) => {
+                          const isFood =
+                            item.menu_type.toLowerCase() ===
+                            "food";
 
-                        const isSignatureCocktail =
-                          isCocktailsCategory(item.subcategory);
+                          const isSignatureCocktail =
+                            isCocktailsCategory(
+                              item.subcategory,
+                            );
 
-                        const imageUrl =
-                          (isFood || isSignatureCocktail) &&
-                          item.image_url?.trim()
-                            ? item.image_url.trim()
-                            : null;
+                          const imageUrl =
+                            (isFood ||
+                              isSignatureCocktail) &&
+                            item.image_url?.trim()
+                              ? item.image_url.trim()
+                              : null;
 
-                        const itemTags =
-                          getMenuTags(item.tags);
+                          const itemTags =
+                            getMenuTags(
+                              item.tags,
+                            );
 
-                        return (
-                          <article
-                            key={item.id}
-                            className="flex min-w-0 flex-col overflow-hidden rounded-2xl border border-white/10 bg-[#111111] transition-colors duration-300 hover:border-white/25"
-                          >
-                            {/*
-                              Individual item images:
-                              food only.
+                          return (
+                            <article
+                              key={item.id}
+                              className={`flex min-w-0 overflow-hidden rounded-2xl border border-white/10 bg-[#111111] transition-colors duration-300 hover:border-white/25 ${
+                                isSignatureCocktail
+                                  ? "flex-row items-stretch"
+                                  : "flex-col"
+                              }`}
+                            >
+                              {/*
+                                ITEM IMAGE
 
-                              Cocktail images remain hidden
-                              within individual cards.
-                            */}
-                            {imageUrl ? (
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  setSelectedItem(
-                                    item,
-                                  )
-                                }
-                                aria-label={`View ${item.item_name} details`}
-                                className="group relative block aspect-[16/10] w-full overflow-hidden bg-white/5 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#ea1b24] focus-visible:ring-inset"
-                              >
-                                {/* eslint-disable-next-line @next/next/no-img-element */}
-                                <img
-                                  src={imageUrl}
-                                  alt={
-                                    item.item_name
+                                Cocktail:
+                                Small square on left.
+
+                                Food:
+                                Full-width image above.
+
+                                Other drinks:
+                                No image.
+                              */}
+                              {imageUrl ? (
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    setSelectedItem(
+                                      item,
+                                    )
                                   }
-                                  loading="lazy"
-                                  decoding="async"
-                                  className="h-full w-full object-cover transition-transform duration-500 ease-out group-hover:scale-110 group-focus-visible:scale-110 motion-reduce:transition-none"
-                                />
-
-                                <span
-                                  aria-hidden="true"
-                                  className="absolute inset-0 flex items-center justify-center bg-black/0 transition-colors duration-300 group-hover:bg-black/30 group-focus-visible:bg-black/30"
+                                  aria-label={`View ${item.item_name} details`}
+                                  className={`group relative shrink-0 overflow-hidden bg-white/5 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#ea1b24] focus-visible:ring-inset ${
+                                    isSignatureCocktail
+                                      ? "m-3 h-20 w-20 self-start rounded-lg sm:h-24 sm:w-24"
+                                      : "block aspect-[16/10] w-full"
+                                  }`}
                                 >
-                                  <span className="flex h-12 w-12 scale-90 items-center justify-center rounded-full border border-white/80 bg-black/65 text-4xl font-light leading-none text-white opacity-0 shadow-lg transition-all duration-300 group-hover:scale-100 group-hover:opacity-100 group-focus-visible:scale-100 group-focus-visible:opacity-100">
-                                    +
+                                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                                  <img
+                                    src={
+                                      imageUrl
+                                    }
+                                    alt={
+                                      item.item_name
+                                    }
+                                    loading="lazy"
+                                    decoding="async"
+                                    className="h-full w-full object-cover transition-transform duration-500 ease-out group-hover:scale-110 group-focus-visible:scale-110 motion-reduce:transition-none"
+                                  />
+
+                                  <span
+                                    aria-hidden="true"
+                                    className="absolute inset-0 flex items-center justify-center bg-black/0 transition-colors duration-300 group-hover:bg-black/30 group-focus-visible:bg-black/30"
+                                  >
+                                    <span className="flex h-10 w-10 scale-90 items-center justify-center rounded-full border border-white/80 bg-black/65 text-3xl font-light leading-none text-white opacity-0 shadow-lg transition-all duration-300 group-hover:scale-100 group-hover:opacity-100 group-focus-visible:scale-100 group-focus-visible:opacity-100">
+                                      +
+                                    </span>
                                   </span>
-                                </span>
-                              </button>
-                            ) : null}
+                                </button>
+                              ) : null}
 
-                            <div className="flex flex-1 flex-col p-5">
-                              <div className="flex items-start justify-between gap-3">
-                                <h3 className="min-w-0 text-lg font-extrabold uppercase leading-snug tracking-wide text-white">
-                                  {
-                                    item.item_name
-                                  }
-                                </h3>
+                              {/*
+                                ITEM CONTENT
 
-                                {item.price ? (
-                                  <p className="shrink-0 text-base font-bold tabular-nums text-white">
-                                    {item.price}
+                                Cocktail:
+                                Compact right-side text.
+
+                                Other items:
+                                Existing full padding.
+                              */}
+                              <div
+                                className={`flex min-w-0 flex-1 flex-col ${
+                                  isSignatureCocktail
+                                    ? "py-3 pl-1 pr-3"
+                                    : "p-5"
+                                }`}
+                              >
+                                <div className="flex items-start justify-between gap-3">
+                                  <h3 className="min-w-0 text-lg font-extrabold uppercase leading-snug tracking-wide text-white">
+                                    {
+                                      item.item_name
+                                    }
+                                  </h3>
+
+                                  {item.price ? (
+                                    <p className="shrink-0 text-base font-bold tabular-nums text-white">
+                                      {
+                                        item.price
+                                      }
+                                    </p>
+                                  ) : null}
+                                </div>
+
+                                {/* Menu tags */}
+                                {itemTags.length >
+                                  0 ||
+                                item.is_five_dollar_special ? (
+                                  <div className="mt-3 flex flex-wrap gap-2">
+                                    {itemTags.map(
+                                      (tag) => (
+                                        <span
+                                          key={
+                                            tag.key
+                                          }
+                                          className={`inline-flex items-center rounded-full border px-3 py-1 text-[10px] font-extrabold uppercase tracking-wider ${tag.className}`}
+                                        >
+                                          {
+                                            tag.label
+                                          }
+                                        </span>
+                                      ),
+                                    )}
+
+                                    {item.is_five_dollar_special ? (
+                                      <span className="inline-flex items-center rounded-full border border-[#ea1b24]/60 bg-[#ea1b24]/10 px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-white">
+                                        $5 Special
+                                      </span>
+                                    ) : null}
+                                  </div>
+                                ) : null}
+
+                                {item.description ? (
+                                  <p className="mt-3 text-sm leading-6 text-white/65">
+                                    {
+                                      item.description
+                                    }
+                                  </p>
+                                ) : null}
+
+                                {item.price_options_notes ? (
+                                  <p className="mt-3 text-sm leading-5 text-white/50">
+                                    {
+                                      item.price_options_notes
+                                    }
                                   </p>
                                 ) : null}
                               </div>
-
-                              {/* Color-coded tag pills */}
-                              {itemTags.length > 0 ||
-                              item.is_five_dollar_special ? (
-                                <div className="mt-3 flex flex-wrap gap-2">
-                                  {itemTags.map(
-                                    (tag) => (
-                                      <span
-                                        key={
-                                          tag.key
-                                        }
-                                        className={`inline-flex items-center rounded-full border px-3 py-1 text-[10px] font-extrabold uppercase tracking-wider ${tag.className}`}
-                                      >
-                                        {
-                                          tag.label
-                                        }
-                                      </span>
-                                    ),
-                                  )}
-
-                                  {item.is_five_dollar_special ? (
-                                    <span className="inline-flex items-center rounded-full border border-[#ea1b24]/60 bg-[#ea1b24]/10 px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-white">
-                                      $5 Special
-                                    </span>
-                                  ) : null}
-                                </div>
-                              ) : null}
-
-                              {item.description ? (
-                                <p className="mt-3 text-sm leading-6 text-white/65">
-                                  {
-                                    item.description
-                                  }
-                                </p>
-                              ) : null}
-
-                              {item.price_options_notes ? (
-                                <p className="mt-3 text-sm leading-5 text-white/50">
-                                  {
-                                    item.price_options_notes
-                                  }
-                                </p>
-                              ) : null}
-                            </div>
-                          </article>
-                        );
-                      })}
+                            </article>
+                          );
+                        },
+                      )}
                     </div>
                   </section>
                 );
@@ -628,19 +718,23 @@ export default function MenuBrowser({
           </div>
         )}
 
-        {/* Food allergy and undercooked food disclaimer */}
+        {/* Food allergy disclaimer */}
         <div className="mt-12 border-t border-white/15 pt-6">
           <p className="mx-auto max-w-4xl text-left text-xs leading-6 text-white/50 sm:text-sm">
-            Allergen information: Allergens are marked
-            with an *. Some food items may contain raw
-            or undercooked ingredients and/or dairy.
-            Consuming raw or undercooked meats,
-            poultry, seafood, shellfish, or eggs could
-            heighten the risk of foodborne illness,
-            particularly for individuals with specific
-            medical conditions. If you have food
-            allergies or dietary restrictions, kindly
-            notify one of our team members prior
+            Allergen information:
+            Allergens are marked with an *.
+            Some food items may contain raw
+            or undercooked ingredients
+            and/or dairy. Consuming raw
+            or undercooked meats, poultry,
+            seafood, shellfish, or eggs
+            could heighten the risk of
+            foodborne illness, particularly
+            for individuals with specific
+            medical conditions. If you
+            have food allergies or dietary
+            restrictions, kindly notify
+            one of our team members prior
             to ordering.
           </p>
         </div>
@@ -680,7 +774,9 @@ export default function MenuBrowser({
               <div className="flex max-h-[55vh] items-center justify-center overflow-hidden bg-black">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
-                  src={selectedItem.image_url.trim()}
+                  src={
+                    selectedItem.image_url.trim()
+                  }
                   alt={
                     selectedItem.item_name
                   }
@@ -717,15 +813,18 @@ export default function MenuBrowser({
                 ) : null}
               </div>
 
-              {getMenuTags(selectedItem.tags).length >
-                0 ||
+              {getMenuTags(
+                selectedItem.tags,
+              ).length > 0 ||
               selectedItem.is_five_dollar_special ? (
                 <div className="mt-4 flex flex-wrap gap-2">
                   {getMenuTags(
                     selectedItem.tags,
                   ).map((tag) => (
                     <span
-                      key={tag.key}
+                      key={
+                        tag.key
+                      }
                       className={`inline-flex items-center rounded-full border px-3 py-1 text-[10px] font-extrabold uppercase tracking-wider ${tag.className}`}
                     >
                       {
