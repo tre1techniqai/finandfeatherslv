@@ -92,8 +92,8 @@ function SummaryCard({ label, count, status, href, active }: {
   label: string; count: number; status: ReservationStatus; href: string; active: boolean;
 }) {
   return <Link href={href} aria-current={active ? "page" : undefined}
-    className={`rounded-xl border p-3 transition hover:border-white/40 focus-visible:outline-2 focus-visible:outline-[#ea1b24] ${active ? "border-[#ea1b24] bg-[#ea1b24]/10" : "border-white/10 bg-zinc-950/90"}`}>
-    <span className="block text-xs text-zinc-400">{label}</span>
+    className={`rounded-xl border p-2.5 sm:p-3 transition hover:border-white/40 focus-visible:outline-2 focus-visible:outline-[#ea1b24] ${active ? "border-[#ea1b24] bg-[#ea1b24]/10" : "border-white/10 bg-zinc-950/90"}`}>
+    <span className="block text-[10px] leading-tight text-zinc-400 sm:text-xs">{label}</span>
     <span className="mt-1 block text-2xl font-bold text-white">{count}</span>
   </Link>;
 }
@@ -102,31 +102,33 @@ function ReservationRow({ reservation }: { reservation: ReservationRequest }) {
   const vip = reservation.vip_preference?.trim().toUpperCase() === "YES";
   return (
     <article className="rounded-lg border border-white/10 bg-zinc-950/90 px-3 py-3 sm:px-4">
-      <div className="flex min-w-0 items-center justify-between gap-3">
+      <div className="flex min-w-0 items-start justify-between gap-3">
         <h3 className="min-w-0 truncate text-sm font-bold text-white sm:text-base">
           {reservation.customer_name || "Guest name unavailable"}
           {reservation.id === DEMO_RESERVATION_ID && <span className="ml-2 align-middle text-[10px] font-semibold text-sky-300">OWNER DEMO</span>}
         </h3>
         <StatusBadge status={status} />
       </div>
-      <div className="mt-2 flex items-center justify-between gap-2">
-        <p className="min-w-0 text-xs text-zinc-300 sm:text-sm">
-          Guests: <span className="font-medium text-white">{reservation.party_size ?? "—"}</span>
-          <span className="mx-1.5 text-zinc-600">·</span>{formatDate(reservation.reservation_date)}
-          <span className="mx-1.5 text-zinc-600">·</span>{formatTime(reservation.reservation_time)}
-        </p>
+      <p className="mt-2 text-xs text-zinc-300 sm:text-sm">
+        Guests: <span className="font-medium text-white">{reservation.party_size ?? "—"}</span>
+        <span className="mx-1.5 text-zinc-600">·</span>{formatDate(reservation.reservation_date)}
+        <span className="mx-1.5 text-zinc-600">·</span>{formatTime(reservation.reservation_time)}
+      </p>
+      <div className="mt-2 flex min-h-10 items-end justify-between gap-3">
+        <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 pb-1 text-xs text-zinc-400 sm:text-sm">
+          <span>{reservation.occasion || "Occasion not provided"}</span>
+          {vip && <span className="font-bold text-amber-300" aria-label="VIP preference affirmed">★ VIP</span>}
+          {(reservation.interruption_reason || reservation.interruption_stage) &&
+            <span className="font-semibold text-orange-300">Follow-up required</span>}
+        </div>
         <Link href={`/staff/reservations/${reservation.id}`}
           aria-label={`View reservation for ${reservation.customer_name || "guest"}`}
-          title="View reservation"
-          className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-white/20 bg-white/5 text-white transition hover:border-[#ea1b24] hover:bg-[#ea1b24] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white">
-          <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4"><path d="M5 12h14m-6-6 6 6-6 6" /></svg>
+          title="View reservation details"
+          className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-white/20 bg-white/5 text-white transition hover:border-[#ea1b24] hover:bg-[#ea1b24] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white">
+          <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="h-5 w-5">
+            <path d="m9 5 7 7-7 7" />
+          </svg>
         </Link>
-      </div>
-      <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-zinc-400 sm:text-sm">
-        <span>{reservation.occasion || "Occasion not provided"}</span>
-        {vip && <span className="font-bold text-amber-300" aria-label="VIP preference affirmed">★ VIP</span>}
-        {(reservation.interruption_reason || reservation.interruption_stage) &&
-          <span className="font-semibold text-orange-300">Follow-up required</span>}
       </div>
     </article>
   );
@@ -270,7 +272,7 @@ async function ProtectedReservationQueue({ searchParams }: PageProps) {
         <p className="mt-3 text-xs text-zinc-500">Authorized role: <span className="font-semibold capitalize text-zinc-300">{role.replace(/_/g, " ")}</span></p>
       </header>
 
-      <section aria-label="Reservation summary" className="grid grid-cols-2 gap-3 py-6 sm:grid-cols-3 lg:grid-cols-5">
+      <section aria-label="Reservation summary" className="grid grid-cols-3 gap-2 py-6 sm:gap-3 lg:grid-cols-5">
         {(["pending", "incomplete", "unvalidated", "confirmed", "closed"] as ReservationStatus[]).map(status =>
           <SummaryCard key={status} label={status.charAt(0).toUpperCase() + status.slice(1)} count={counts[status] ?? 0}
             status={status} active={selectedStatus === status} href={makeHref({ ...common, status, page: 1, anchor: true })} />)}
