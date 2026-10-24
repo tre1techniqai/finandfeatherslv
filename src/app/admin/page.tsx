@@ -23,10 +23,10 @@ const adminSections = [
   {
     title: "Reservations",
     description:
-      "Review reservation requests, simulate Twilio Flow scenarios, and track staff actions.",
-    href: "/admin/reservations",
+      "Manage guest reservations, review requests, communicate with guests, and track reservation activity.",
+    href: "/staff/reservations",
     label: "Open Reservations",
-    status: "MVP Development",
+    status: "Available",
   },
   {
     title: "Menu Management",
@@ -42,7 +42,7 @@ const adminSections = [
       "Manage gallery images, categories, visibility, and display order.",
     href: "/admin/gallery",
     label: "Manage Gallery",
-    status: "Testing",
+    status: "Available",
   },
   {
     title: "SPECIALS Management",
@@ -117,13 +117,13 @@ async function ProtectedAdminDashboard() {
 
         <section className="rounded-xl border border-white/10 bg-white/[0.03] p-5">
           <h2 className="text-base font-semibold">
-            Reservations MVP
+            Reservations Management
           </h2>
 
           <p className="mt-2 text-sm leading-6 text-zinc-400">
-            The reservations dashboard is being developed with simulated
-            Twilio Flow scenarios. Simulated requests are not confirmed
-            reservations and do not trigger live SMS messages.
+            Manage incoming reservation requests, review guest
+            conversations, coordinate staff follow-ups, and communicate
+            with guests through the live reservations messaging system.
           </p>
         </section>
 

@@ -266,7 +266,7 @@ async function ProtectedReservationQueue({ searchParams }: PageProps) {
   return <main className="min-h-screen bg-black px-3 py-6 text-white sm:px-8 sm:py-12">
     <div className="mx-auto max-w-5xl">
       <header className="mb-6">
-        <div className="relative grid grid-cols-[48px_1fr_48px] items-center border-b border-white/10 pb-4">
+        <div className="relative grid grid-cols-[48px_1fr_48px] items-center rounded-xl border border-white/10 bg-[#ea1b24]/40 px-3 py-3">
           <Link
             href="/"
             aria-label="Fin & Feathers Home"
@@ -307,7 +307,7 @@ async function ProtectedReservationQueue({ searchParams }: PageProps) {
 
             <nav
               aria-label="Staff navigation"
-              className="absolute right-0 top-14 w-56 overflow-hidden rounded-xl border border-white/15 bg-zinc-950 p-2 shadow-2xl"
+              className="absolute right-0 top-14 w-56 overflow-hidden rounded-xl border border-white/15 bg-[#ea1b24]/40 p-2 shadow-2xl backdrop-blur-xl"
             >
               {[
                 { label: "Home", href: "/", icon: "⌂" },
@@ -438,7 +438,7 @@ async function ProtectedReservationQueue({ searchParams }: PageProps) {
             className="inline-flex min-h-11 items-center justify-center gap-2 rounded-full border border-white/20 bg-zinc-950 px-6 py-3 text-sm font-semibold text-white transition hover:border-[#ea1b24] hover:bg-white/10 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#ea1b24]"
           >
             <span aria-hidden="true">←</span>
-            Reservations Queue
+            Admin Dashboard
           </Link>
         </div>
       </footer>
