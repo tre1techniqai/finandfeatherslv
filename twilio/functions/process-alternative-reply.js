@@ -1,21 +1,29 @@
 "use strict";
 
 // Twilio Studio Run Function, PROTECTED visibility.
-// Run BEFORE the existing parse-reservation widget on new executions.
-// Pass From, Body, MessageSid from trigger.message.*.
-// Requires SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY.
-// Do not use this Function as a public incoming-message webhook.
+// Processes alternative-time replies before reservation intake.
+// Also identifies genuine guest assistance requests.
+//
+// Does not send SMS, create alerts, or transfer conversation ownership.
 
 const E164 = /^\+[1-9]\d{7,14}$/;
 const MESSAGE_SID = /^SM[0-9a-f]{32}$/i;
 const MAX_BODY = 4000;
 
+const RESERVATION_FIELDS = [
+  "First Name",
+  "Last Name",
+  "Mobile Phone",
+  "Date",
+  "Time",
+  "Guests",
+  "Occasion"
+];
+
 function returnResult(callback, result) {
   return callback(null, result);
 }
 
-// Format database times for guest-facing messages.
-// Keep the original acceptedTime value unchanged for compatibility.
 function formatTimeForGuest(value) {
   if (typeof value !== "string") return "";
 
@@ -31,6 +39,90 @@ function formatTimeForGuest(value) {
   const displayHour = hours % 12 || 12;
 
   return `${displayHour}:${minutes} ${period}`;
+}
+
+function isStructuredReservation(body) {
+  return RESERVATION_FIELDS.every((label) =>
+    new RegExp(`(?:^|\\n)\\s*${label}:`, "i").test(body)
+  );
+}
+
+function hasReservationFields(body) {
+  return RESERVATION_FIELDS.some((label) =>
+    new RegExp(`(?:^|\\n)\\s*${label}:`, "i").test(body)
+  );
+}
+
+function isMessagingControlCommand(body) {
+  return /^(?:STOP|STOPALL|UNSUBSCRIBE|CANCEL|END|QUIT|START|UNSTOP|HELP|INFO)\s*[.!]?$/i.test(
+    body
+  );
+}
+
+function isOrphanedNumericReply(body) {
+  return /^[1-3]$/.test(body);
+}
+
+// Intentionally conservative:
+// An arbitrary SMS must not automatically become a staff alert.
+//
+// Questions and explicit assistance requests qualify.
+// Structured reservation submissions remain in reservation intake.
+//
+// This is deterministic routing, not AI classification.
+function isGuestAssistanceRequest(body) {
+  if (!body || body.length > MAX_BODY) return false;
+
+  if (isMessagingControlCommand(body)) return false;
+  if (isOrphanedNumericReply(body)) return false;
+  if (hasReservationFields(body)) return false;
+
+  const normalized = body.replace(/\s+/g, " ").trim();
+
+  if (normalized.includes("?")) return true;
+
+  return /^(?:(?:hi|hello|hey)[,!.]?\s+)?(?:can you|could you|would you|will you|do you|does your|is there|are there|what|when|where|why|how|who|which|please help|i need help|i have a question|i wanted to ask|i would like to ask|i want to know|i need to speak|i would like to speak|please contact me|please call me|call me|can someone|could someone)\b/i.test(
+    normalized
+  );
+}
+
+function classifyWithoutActiveOffer(body) {
+  if (isMessagingControlCommand(body)) {
+    return {
+      route: "handled",
+      outcome: "MESSAGING_CONTROL_COMMAND"
+    };
+  }
+
+  if (isOrphanedNumericReply(body)) {
+    return {
+      route: "handled",
+      outcome: "no_active_offer"
+    };
+  }
+
+  // Preserve the existing reservation intake, including
+  // incomplete structured submissions needing validation.
+  if (isStructuredReservation(body) || hasReservationFields(body)) {
+    return {
+      route: "reservation",
+      outcome: "no_active_offer"
+    };
+  }
+
+  if (isGuestAssistanceRequest(body)) {
+    return {
+      route: "assistance",
+      outcome: "GUEST_ASSISTANCE_REQUIRED"
+    };
+  }
+
+  // Preserve the existing intake behavior for messages that
+  // are not confidently classified as assistance requests.
+  return {
+    route: "reservation",
+    outcome: "no_active_offer"
+  };
 }
 
 exports.handler = async function (context, event, callback) {
@@ -66,7 +158,9 @@ exports.handler = async function (context, event, callback) {
       throw new Error("Invalid Supabase configuration");
     }
   } catch {
-    console.error("Alternative reply routing: Supabase configuration missing");
+    console.error(
+      "Alternative reply routing: Supabase configuration missing"
+    );
 
     return returnResult(callback, {
       route: "error",
@@ -74,8 +168,10 @@ exports.handler = async function (context, event, callback) {
     });
   }
 
-  // The database checks for active offers before interpreting the SMS.
-  // Limit the value to the RPC's maximum accepted input length.
+  // The database determines whether there is an active
+  // alternative-time offer before we interpret the SMS.
+  //
+  // Keep the RPC input within its accepted length.
   const replyForRpc = body.slice(0, 100);
 
   let response;
@@ -86,10 +182,10 @@ exports.handler = async function (context, event, callback) {
       {
         method: "POST",
         headers: {
-          "apikey": serviceKey,
-          "Authorization": `Bearer ${serviceKey}`,
+          apikey: serviceKey,
+          Authorization: `Bearer ${serviceKey}`,
           "Content-Type": "application/json",
-          "Accept": "application/json"
+          Accept: "application/json"
         },
         body: JSON.stringify({
           p_customer_phone: from,
@@ -100,7 +196,9 @@ exports.handler = async function (context, event, callback) {
       }
     );
   } catch {
-    console.error("Alternative reply routing: database request unavailable");
+    console.error(
+      "Alternative reply routing: database request unavailable"
+    );
 
     return returnResult(callback, {
       route: "error",
@@ -109,9 +207,10 @@ exports.handler = async function (context, event, callback) {
   }
 
   if (!response.ok) {
-    console.error("Alternative reply routing: database call failed", {
-      status: response.status
-    });
+    console.error(
+      "Alternative reply routing: database call failed",
+      { status: response.status }
+    );
 
     return returnResult(callback, {
       route: "error",
@@ -137,30 +236,37 @@ exports.handler = async function (context, event, callback) {
       ? record.outcome
       : "INVALID_DATABASE_RESPONSE";
 
-  // Do not send orphaned numeric replies to reservation intake.
   if (outcome === "no_active_offer") {
+    const classification = classifyWithoutActiveOffer(body);
+
     return returnResult(callback, {
-      route: /^[1-3]$/.test(body) ? "handled" : "reservation",
-      outcome
+      ...classification,
+      previousOutcome: outcome
     });
   }
 
   if (outcome === "recently_accepted") {
-    // Permit a new, complete reservation request from the same guest.
-    const isNewReservation = [
-      "First Name",
-      "Last Name",
-      "Mobile Phone",
-      "Date",
-      "Time",
-      "Guests",
-      "Occasion"
-    ].every((label) =>
-      new RegExp(`(?:^|\\n)\\s*${label}:`, "i").test(body)
-    );
+    // A complete new reservation must still enter intake.
+    if (isStructuredReservation(body) || hasReservationFields(body)) {
+      return returnResult(callback, {
+        route: "reservation",
+        outcome
+      });
+    }
 
+    // A follow-up question after an accepted alternative
+    // is an appropriate guest assistance request.
+    if (isGuestAssistanceRequest(body)) {
+      return returnResult(callback, {
+        route: "assistance",
+        outcome: "GUEST_ASSISTANCE_REQUIRED",
+        previousOutcome: outcome
+      });
+    }
+
+    // Preserve existing suppression of ordinary repeat replies.
     return returnResult(callback, {
-      route: isNewReservation ? "reservation" : "handled",
+      route: "handled",
       outcome
     });
   }
