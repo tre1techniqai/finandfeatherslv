@@ -120,6 +120,8 @@ function takeoverConfigured(): boolean {
     process.env.RESERVATION_STAFF_INBOUND_ROUTING_VERIFIED ===
       "true" &&
     process.env.RESERVATION_STUDIO_STAFF_ROUTING_ENABLED ===
+      "true" &&
+    process.env.RESERVATION_STUDIO_HANDOFF_FENCE_ENABLED ===
       "true"
   );
 }
@@ -356,7 +358,10 @@ export async function GET(
     // Keep all direct staff SMS disabled until the
     // inbound-routing and send/release concurrency
     // safeguards are verified.
-    const staffMessagingEnabled = false;
+    const staffMessagingEnabled =
+        messagingConfigured() &&
+        ownsLinkedReservation &&
+        handoffRow?.ownership_status === "staff";
 
     const handoff = handoffRow
       ? {
