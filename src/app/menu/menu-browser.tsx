@@ -500,11 +500,13 @@ export default function MenuBrowser({
                     >
                       {categoryItems.map((item) => {
                         const isFood =
-                          item.menu_type.toLowerCase() ===
-                          "food";
+                          item.menu_type.toLowerCase() === "food";
+
+                        const isSignatureCocktail =
+                          isCocktailsCategory(item.subcategory);
 
                         const imageUrl =
-                          isFood &&
+                          (isFood || isSignatureCocktail) &&
                           item.image_url?.trim()
                             ? item.image_url.trim()
                             : null;
