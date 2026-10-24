@@ -138,14 +138,42 @@ export async function GET(
   context: RouteContext,
 ): Promise<NextResponse> {
   try {
-    const { id } = await context.params;
+    const { id: routeId } = await context.params;
 
-    if (!UUID_PATTERN.test(id)) {
-      return jsonError(
+    const pathname = new URL(_request.url).pathname;
+
+    const match = /^\/api\/staff\/reservations\/([^/]+)\/conversation\/ownership\/?$/i.exec(
+    pathname,
+    );
+
+    const urlId = match?.[1] ?? null;
+
+    if (
+    !urlId ||
+    !UUID_PATTERN.test(urlId) ||
+    (
+        typeof routeId === "string" &&
+        UUID_PATTERN.test(routeId) &&
+        routeId.toLowerCase() !== urlId.toLowerCase()
+    )
+    ) {
+    console.error("Invalid reservation ownership route parameters.", {
+        routeIdType: typeof routeId,
+        routeIdValid:
+        typeof routeId === "string" &&
+        UUID_PATTERN.test(routeId),
+        urlIdValid:
+        typeof urlId === "string" &&
+        UUID_PATTERN.test(urlId),
+    });
+
+    return jsonError(
         "Invalid reservation.",
         400,
-      );
+    );
     }
+
+    const id = urlId;
 
     const supabase =
       await createSupabaseServerClient();
@@ -355,9 +383,13 @@ export async function GET(
       ownsLinkedReservation &&
       handoffRow?.ownership_status === "staff";
 
-    // Keep all direct staff SMS disabled until the
-    // inbound-routing and send/release concurrency
-    // safeguards are verified.
+    // UI eligibility only.
+    //
+    // The SMS send endpoint must independently verify
+    // manager authorization, exact staff ownership,
+    // and database-backed SMS operation coordination.
+    //
+    // This value does not authorize SMS by itself.
     const staffMessagingEnabled =
         messagingConfigured() &&
         ownsLinkedReservation &&
