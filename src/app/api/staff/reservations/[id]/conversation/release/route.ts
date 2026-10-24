@@ -6,7 +6,6 @@ const UUID =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 const E164 = /^\+[1-9]\d{7,14}$/;
-
 const MAX_BODY_BYTES = 256;
 
 type RouteContext = {
@@ -64,9 +63,11 @@ function validOrigin(request: Request): boolean {
 
     return (
       source.origin === destination.origin &&
-      (source.protocol === "https:" ||
+      (
+        source.protocol === "https:" ||
         source.hostname === "localhost" ||
-        source.hostname === "127.0.0.1")
+        source.hostname === "127.0.0.1"
+      )
     );
   } catch {
     return false;
@@ -80,9 +81,7 @@ async function validEmptyBody(
     request.headers.get("content-type") ?? "";
 
   if (
-    !/^application\/json(?:\s*;|$)/i.test(
-      contentType,
-    )
+    !/^application\/json(?:\s*;|$)/i.test(contentType)
   ) {
     return false;
   }
@@ -180,9 +179,7 @@ function isReleaseRow(
     UUID.test(row.ownership_id) &&
     row.ownership_status === "released" &&
     typeof row.released_at === "string" &&
-    !Number.isNaN(
-      Date.parse(row.released_at)
-    )
+    !Number.isNaN(Date.parse(row.released_at))
   );
 }
 
@@ -190,22 +187,17 @@ export async function POST(
   request: Request,
   context: RouteContext,
 ): Promise<NextResponse> {
-  // A manager cannot release a conversation until the
-  // staff-routing and takeover workflow is enabled.
+  // RELEASE IS A RECOVERY OPERATION.
   //
-  // SMS sending does not need to be enabled for release.
-  // This permits managers to relinquish ownership
-  // even when outgoing staff SMS is temporarily disabled.
-  if (
-    process.env.RESERVATION_STAFF_HANDOFF_COMPLETION_ENABLED !== "true" ||
-    process.env.RESERVATION_STAFF_INBOUND_ROUTING_VERIFIED !== "true" ||
-    process.env.RESERVATION_STUDIO_STAFF_ROUTING_ENABLED !== "true"
-  ) {
-    return fail(
-      "Staff conversation release is not enabled.",
-      503,
-    );
-  }
+  // Do not gate release on the feature flags used
+  // to initiate new staff takeovers or send SMS.
+  //
+  // An authenticated manager who owns an existing
+  // staff conversation must be able to relinquish
+  // ownership after those features are disabled.
+  //
+  // The database RPC independently authorizes the
+  // exact manager and reservation under a row lock.
 
   if (!validOrigin(request)) {
     return fail(
@@ -234,7 +226,6 @@ export async function POST(
     const supabase =
       await createSupabaseServerClient();
 
-    // Authenticate the current staff member.
     const {
       data: claimsData,
       error: claimsError,
@@ -254,7 +245,6 @@ export async function POST(
       );
     }
 
-    // Verify the active manager role.
     const {
       data: role,
       error: roleError,
@@ -290,8 +280,6 @@ export async function POST(
       );
     }
 
-    // Retrieve the reservation using the existing
-    // authenticated manager session.
     const {
       data: reservation,
       error: reservationError,
@@ -329,8 +317,9 @@ export async function POST(
       );
     }
 
-    // Retrieve the current ownership record.
-    // The database function enforces manager access.
+    // Use the manager-authorized SECURITY DEFINER
+    // function. Do not read the RLS-protected table
+    // directly from the authenticated session.
     const {
       data: ownershipData,
       error: ownershipError,
@@ -343,6 +332,21 @@ export async function POST(
     );
 
     if (ownershipError) {
+      if (ownershipError.code === "42501") {
+        return fail(
+          "Manager authorization failed.",
+          403,
+        );
+      }
+
+      console.error(
+        "Conversation release ownership lookup failed:",
+        {
+          reservationId: id,
+          code: ownershipError.code,
+        },
+      );
+
       return fail(
         "Conversation ownership could not be verified.",
         503,
@@ -360,11 +364,15 @@ export async function POST(
       );
     }
 
-    const ownership =
-      ownershipData[0];
+    const ownership = ownershipData[0];
 
-    // Only the manager currently owning this exact
-    // reservation conversation can release it.
+    // A recovery release is never permission to
+    // take over a different manager's conversation.
+    //
+    // Require:
+    // - staff-owned state
+    // - exact reservation association
+    // - ownership by this authenticated manager
     if (
       ownership.ownership_status !== "staff" ||
       ownership.linked_reservation_id !== id ||
@@ -376,11 +384,9 @@ export async function POST(
       );
     }
 
-    // Invoke the existing SECURITY DEFINER function
-    // through the manager's authenticated session.
-    //
-    // The database independently validates ownership
-    // under a row lock before changing the status.
+    // The existing database function rechecks the
+    // current manager and reservation while holding
+    // a row lock before committing the release.
     const {
       data: releaseData,
       error: releaseError,
@@ -446,8 +452,9 @@ export async function POST(
       );
     }
 
-    // Confirm the final state using the existing
-    // authenticated ownership lookup.
+    // Confirm the final committed ownership state.
+    // This verification is intentionally independent
+    // of the current takeover and SMS feature flags.
     const {
       data: verificationData,
       error: verificationError,
@@ -471,8 +478,7 @@ export async function POST(
       );
     }
 
-    const verified =
-      verificationData[0];
+    const verified = verificationData[0];
 
     if (
       verified.ownership_id !== released.ownership_id ||
