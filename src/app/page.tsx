@@ -186,27 +186,22 @@ export default function HomePage() {
             {/*
               RIGHT COLUMN — DESKTOP ROW 1
 
-              Shares a desktop grid row with the logo,
-              slogan and homepage buttons.
+              SPECIALS and RIBEYE VIDEO share one container.
 
-              All three components retain their natural sizes.
+              Mobile/tablet: black background for separation.
+              Desktop: transparent background, shared outline.
 
-              justify-between distributes only available space.
+              Reservations by Text has moved below Virtual Tour.
             */}
-            <div className="mx-auto flex w-full min-w-0 max-w-4xl flex-col gap-5 xl:col-start-2 xl:row-start-1 xl:mx-0 xl:h-full xl:max-w-none xl:justify-between xl:gap-2">
+            <div className="mx-auto flex w-full min-w-0 max-w-4xl flex-col gap-5 rounded-2xl border border-white/10 bg-black/85 p-3 sm:p-5 xl:col-start-2 xl:row-start-1 xl:mx-0 xl:h-full xl:max-w-none xl:justify-between xl:gap-4 xl:bg-transparent">
 
               {/* TOP — Today's Special */}
-              <ScrollReveal className="w-full px-[10px] xl:px-0">
+              <ScrollReveal className="w-full">
                 <TodaySpecialsData />
               </ScrollReveal>
 
-              {/* MIDDLE — Reservations by Text */}
-              <ScrollReveal className="w-full px-[10px] xl:px-0">
-                <ReservationsTextHero />
-              </ScrollReveal>
-
               {/* BOTTOM — Ribeye Video */}
-              <ScrollReveal className="w-full px-[10px] xl:px-0">
+              <ScrollReveal className="w-full">
                 <RibeyeVideo />
               </ScrollReveal>
             </div>
@@ -232,6 +227,20 @@ export default function HomePage() {
 
               <div className="flex w-full justify-center">
                 <VirtualTourModal />
+              </div>
+            </ScrollReveal>
+          </div>
+
+          {/*
+            Reservations by Text
+
+            Now appears immediately below Virtual Tour
+            on mobile, tablet and desktop.
+          */}
+          <div className="w-full min-w-0">
+            <ScrollReveal>
+              <div className="mx-auto w-full max-w-4xl">
+                <ReservationsTextHero />
               </div>
             </ScrollReveal>
           </div>
