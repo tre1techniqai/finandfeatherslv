@@ -5,15 +5,20 @@ import { createClient } from "@supabase/supabase-js";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 const UUID =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{12}$/i;
 
 const E164 = /^\+[1-9]\d{7,14}$/;
-
 const ACCOUNT_SID = /^AC[0-9a-f]{32}$/i;
 const FLOW_SID = /^FW[0-9a-f]{32}$/i;
 
 const MAX_BODY_BYTES = 256;
 const EXECUTION_SCAN_LIMIT = 1000;
+
+// Allow prior routing decisions and short-running
+// Studio executions an opportunity to finish.
+// This is not an atomic fence for external Twilio sends.
+const MIN_PENDING_AGE_MS = 90_000;
+const SCAN_INTERVAL_MS = 2000;
 
 type RouteContext = {
   params: Promise<{ id: string }>;
@@ -24,6 +29,7 @@ type OwnershipRow = {
   ownership_status: string;
   linked_reservation_id: string;
   claimed_by: string | null;
+  claimed_at: string | null;
 };
 
 type CompletionRow = {
@@ -45,21 +51,13 @@ function respond(
 }
 
 function fail(error: string, status: number) {
-  return respond(
-    {
-      success: false,
-      error,
-    },
-    status,
-  );
+  return respond({ success: false, error }, status);
 }
 
 function validOrigin(request: Request): boolean {
   const origin = request.headers.get("origin");
 
-  if (!origin) {
-    return false;
-  }
+  if (!origin) return false;
 
   try {
     const source = new URL(origin);
@@ -67,9 +65,11 @@ function validOrigin(request: Request): boolean {
 
     return (
       source.origin === destination.origin &&
-      (source.protocol === "https:" ||
+      (
+        source.protocol === "https:" ||
         source.hostname === "localhost" ||
-        source.hostname === "127.0.0.1")
+        source.hostname === "127.0.0.1"
+      )
     );
   } catch {
     return false;
@@ -102,6 +102,8 @@ async function validEmptyBody(
       return false;
     }
   }
+
+  if (!request.body) return false;
 
   let raw: string;
 
@@ -151,9 +153,20 @@ function isOwnershipRow(
     typeof row.ownership_status === "string" &&
     typeof row.linked_reservation_id === "string" &&
     UUID.test(row.linked_reservation_id) &&
-    (row.claimed_by === null ||
-      (typeof row.claimed_by === "string" &&
-        UUID.test(row.claimed_by)))
+    (
+      row.claimed_by === null ||
+      (
+        typeof row.claimed_by === "string" &&
+        UUID.test(row.claimed_by)
+      )
+    ) &&
+    (
+      row.claimed_at === null ||
+      (
+        typeof row.claimed_at === "string" &&
+        Number.isFinite(Date.parse(row.claimed_at))
+      )
+    )
   );
 }
 
@@ -174,9 +187,13 @@ function isCompletionRow(
     typeof row.ownership_id === "string" &&
     UUID.test(row.ownership_id) &&
     typeof row.ownership_status === "string" &&
-    (row.claimed_by === null ||
-      (typeof row.claimed_by === "string" &&
-        UUID.test(row.claimed_by)))
+    (
+      row.claimed_by === null ||
+      (
+        typeof row.claimed_by === "string" &&
+        UUID.test(row.claimed_by)
+      )
+    )
   );
 }
 
@@ -184,24 +201,19 @@ export async function POST(
   request: Request,
   context: RouteContext,
 ): Promise<Response> {
-  // This endpoint must remain disabled until staff-owned
-  // inbound routing and the takeover procedure are verified.
-  //
-  // A successful preflight alone does not grant SMS access.
+  // Every takeover prerequisite must be enabled.
+  // None of these flags should be enabled until
+  // the complete Studio routing procedure is verified.
   if (
-    process.env
-        .RESERVATION_STAFF_HANDOFF_COMPLETION_ENABLED !==
-        "true" ||
-    process.env
-        .RESERVATION_STAFF_INBOUND_ROUTING_VERIFIED !==
-        "true" ||
-    process.env
-        .RESERVATION_STUDIO_STAFF_ROUTING_ENABLED !==
-        "true" ||
-    process.env
-        .RESERVATION_STUDIO_HANDOFF_FENCE_ENABLED !==
-        "true"
-    ) {
+    process.env.RESERVATION_STAFF_HANDOFF_COMPLETION_ENABLED !==
+      "true" ||
+    process.env.RESERVATION_STAFF_INBOUND_ROUTING_VERIFIED !==
+      "true" ||
+    process.env.RESERVATION_STUDIO_STAFF_ROUTING_ENABLED !==
+      "true" ||
+    process.env.RESERVATION_STUDIO_HANDOFF_FENCE_ENABLED !==
+      "true"
+  ) {
     return fail(
       "Staff conversation takeover is not enabled.",
       503,
@@ -232,24 +244,19 @@ export async function POST(
     const supabase =
       await createSupabaseServerClient();
 
-    // Verify the signed-in manager.
     const {
       data: claimsData,
       error: claimsError,
     } = await supabase.auth.getClaims();
 
-    const managerId =
-      claimsData?.claims?.sub;
+    const managerId = claimsData?.claims?.sub;
 
     if (
       claimsError ||
       typeof managerId !== "string" ||
       !UUID.test(managerId)
     ) {
-      return fail(
-        "Authentication required.",
-        401,
-      );
+      return fail("Authentication required.", 401);
     }
 
     const {
@@ -268,13 +275,9 @@ export async function POST(
       role.role !== "manager" ||
       role.is_active !== true
     ) {
-      return fail(
-        "Manager access required.",
-        403,
-      );
+      return fail("Manager access required.", 403);
     }
 
-    // Resolve server-side configuration.
     const restaurantPhone =
       process.env.TWILIO_FROM_NUMBER;
 
@@ -285,7 +288,7 @@ export async function POST(
       process.env.TWILIO_AUTH_TOKEN;
 
     const flowSid =
-      process.env.TWILIO_STUDIO_FLOW_SID;
+        process.env.TWILIO_STUDIO_FLOW_SID ?? "";
 
     if (
       !restaurantPhone ||
@@ -302,8 +305,6 @@ export async function POST(
       );
     }
 
-    // Guest phone identity must come from the reservation,
-    // never from a browser-provided phone number.
     const {
       data: reservation,
       error: reservationError,
@@ -321,14 +322,10 @@ export async function POST(
     }
 
     if (!reservation) {
-      return fail(
-        "Reservation not found.",
-        404,
-      );
+      return fail("Reservation not found.", 404);
     }
 
-    const guestPhone =
-      reservation.customer_phone;
+    const guestPhone = reservation.customer_phone;
 
     if (
       typeof guestPhone !== "string" ||
@@ -341,8 +338,6 @@ export async function POST(
       );
     }
 
-    // Read the current canonical ownership record
-    // using the authenticated manager's session.
     const {
       data: ownershipData,
       error: ownershipError,
@@ -350,8 +345,7 @@ export async function POST(
       "get_reservation_conversation_handoff",
       {
         p_reservation_id: id,
-        p_restaurant_phone:
-          restaurantPhone,
+        p_restaurant_phone: restaurantPhone,
       },
     );
 
@@ -373,16 +367,12 @@ export async function POST(
       );
     }
 
-    const ownership =
-      ownershipData[0];
+    const ownership = ownershipData[0];
 
     if (
-      ownership.ownership_status !==
-        "handoff_pending" ||
-      ownership.linked_reservation_id !==
-        id ||
-      ownership.claimed_by !==
-        managerId
+      ownership.ownership_status !== "handoff_pending" ||
+      ownership.linked_reservation_id !== id ||
+      ownership.claimed_by !== managerId
     ) {
       return fail(
         "This conversation is not pending takeover by your account.",
@@ -390,13 +380,45 @@ export async function POST(
       );
     }
 
-    // Verify Twilio Studio before completing ownership.
-    // This is a fresh lookup, not a browser's earlier
-    // preflight result.
-    const client = twilio(
-      accountSid,
-      authToken,
-    );
+    // The request must have remained pending long
+    // enough for the Studio entry fence to settle.
+    //
+    // Reject missing, invalid or future timestamps.
+    const claimedAtMs = ownership.claimed_at
+      ? Date.parse(ownership.claimed_at)
+      : NaN;
+
+    const pendingAgeMs = Date.now() - claimedAtMs;
+
+    if (
+      !Number.isFinite(claimedAtMs) ||
+      pendingAgeMs < 0
+    ) {
+      return fail(
+        "The pending handoff timestamp could not be verified.",
+        409,
+      );
+    }
+
+    if (pendingAgeMs < MIN_PENDING_AGE_MS) {
+      const remainingSeconds = Math.ceil(
+        (MIN_PENDING_AGE_MS - pendingAgeMs) / 1000,
+      );
+
+      return respond(
+        {
+          success: false,
+          error:
+            "The conversation handoff is still settling. Retry the takeover check after the pending period.",
+          retryAfterSeconds: remainingSeconds,
+          ownershipChanged: false,
+          staffMessagingEnabled: false,
+        },
+        409,
+      );
+    }
+
+    const client = twilio(accountSid, authToken);
 
     const flow = await client.studio.v2
       .flows(flowSid)
@@ -412,44 +434,65 @@ export async function POST(
       );
     }
 
-    // Reject the takeover if the scan reaches its limit.
-    // In that case, we cannot confidently exclude
-    // additional active executions for this guest.
-    const executions =
-      await client.studio.v2
+    // Scan twice, with a brief separation. Any
+    // incomplete or inconsistent scan rejects takeover.
+    async function scanGuestExecutions(): Promise<
+      | { ok: true; count: number }
+      | { ok: false; reason: string }
+    > {
+      const executions = await client.studio.v2
         .flows(flowSid)
         .executions.list({
           status: "active",
           limit: EXECUTION_SCAN_LIMIT,
         });
 
-    if (
-      executions.length >=
-      EXECUTION_SCAN_LIMIT
-    ) {
-      return fail(
-        "Active Studio execution verification was incomplete.",
-        503,
+      if (executions.length >= EXECUTION_SCAN_LIMIT) {
+        return {
+          ok: false,
+          reason:
+            "The active Studio execution scan was incomplete.",
+        };
+      }
+
+      const guestExecutions = executions.filter(
+        (execution) =>
+          execution.contactChannelAddress === guestPhone,
       );
+
+      if (
+        guestExecutions.some(
+          (execution) =>
+            execution.flowSid !== flowSid ||
+            execution.status !== "active",
+        )
+      ) {
+        return {
+          ok: false,
+          reason:
+            "The Studio execution identities were inconsistent.",
+        };
+      }
+
+      return {
+        ok: true,
+        count: guestExecutions.length,
+      };
     }
 
-    const activeForGuest =
-      executions.filter(
-        (execution) =>
-          execution.contactChannelAddress ===
-          guestPhone,
-      );
+    const firstScan = await scanGuestExecutions();
 
-    if (
-      activeForGuest.length > 0
-    ) {
+    if (!firstScan.ok) {
+      return fail(firstScan.reason, 503);
+    }
+
+    if (firstScan.count > 0) {
       return respond(
         {
           success: false,
           error:
-            "The guest still has an active Studio execution. Takeover has not been completed.",
-          activeExecutionCount:
-            activeForGuest.length,
+            "This guest still has an active Studio execution. Takeover remains pending.",
+          activeExecutionCount: firstScan.count,
           ownershipChanged: false,
           staffMessagingEnabled: false,
         },
@@ -457,8 +500,30 @@ export async function POST(
       );
     }
 
-    // Only a trusted server uses the service-role
-    // credentials needed by the existing completion RPC.
+    await new Promise<void>((resolve) => {
+      setTimeout(resolve, SCAN_INTERVAL_MS);
+    });
+
+    const secondScan = await scanGuestExecutions();
+
+    if (!secondScan.ok) {
+      return fail(secondScan.reason, 503);
+    }
+
+    if (secondScan.count > 0) {
+      return respond(
+        {
+          success: false,
+          error:
+            "A Studio execution was detected during takeover verification. Takeover remains pending.",
+          activeExecutionCount: secondScan.count,
+          ownershipChanged: false,
+          staffMessagingEnabled: false,
+        },
+        409,
+      );
+    }
+
     const supabaseUrl =
       process.env.SUPABASE_URL ??
       process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -467,10 +532,7 @@ export async function POST(
       process.env.SUPABASE_SECRET_KEY ??
       process.env.SUPABASE_SERVICE_ROLE_KEY;
 
-    if (
-      !supabaseUrl ||
-      !serviceKey
-    ) {
+    if (!supabaseUrl || !serviceKey) {
       return fail(
         "Trusted handoff completion is not configured.",
         503,
@@ -488,9 +550,12 @@ export async function POST(
       },
     );
 
-    // This function uses a database row lock and
-    // verifies that the original pending claim still
-    // belongs to the same manager and reservation.
+    // The RPC locks the ownership row and rechecks
+    // the exact reservation and current manager.
+    //
+    // Twilio scanning and this database transaction
+    // are separate operations. The checks above reduce
+    // the timing window but do not make them atomic.
     const {
       data: completionData,
       error: completionError,
@@ -498,16 +563,13 @@ export async function POST(
       "complete_reservation_conversation_handoff",
       {
         p_reservation_id: id,
-        p_restaurant_phone:
-          restaurantPhone,
+        p_restaurant_phone: restaurantPhone,
         p_manager_id: managerId,
       },
     );
 
     if (completionError) {
-      if (
-        completionError.code === "42501"
-      ) {
+      if (completionError.code === "42501") {
         return fail(
           "Manager authorization failed.",
           403,
@@ -549,14 +611,12 @@ export async function POST(
       );
     }
 
-    const completed =
-      completionData[0];
+    const completed = completionData[0];
 
     if (
       completed.ownership_status !== "staff" ||
       completed.claimed_by !== managerId ||
-      completed.ownership_id !==
-        ownership.ownership_id
+      completed.ownership_id !== ownership.ownership_id
     ) {
       return fail(
         "The resulting ownership state could not be verified. Check ownership before retrying.",
@@ -568,8 +628,7 @@ export async function POST(
       success: true,
       reservationId: id,
       ownership: "staff",
-      ownershipId:
-        completed.ownership_id,
+      ownershipId: completed.ownership_id,
       claimedByCurrentManager: true,
       activeStudioExecutions: 0,
       studioExecutionsChanged: false,
