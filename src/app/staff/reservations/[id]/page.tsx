@@ -4,6 +4,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireReservationStaff } from "@/lib/auth/require-reservation-staff";
 import ReservationWorkflowActions from "@/components/staff/reservation-workflow-actions";
+import ReservationGuestConversation from "@/components/staff/reservation-guest-conversation";
 
 export const metadata = {
   title: "Reservation Details | Fin & Feathers Las Vegas",
@@ -149,6 +150,44 @@ function displayStatus(reservation: ReservationRequest) {
   }
 
   return reservation.request_status.replace(/_/g, " ");
+}
+
+// Show a personal follow-up alert only for recorded, unresolved interruptions.
+// These fields describe the automation interruption, not the guest's exact SMS.
+function getGuestFollowUpReason(reservation: ReservationRequest): string | null {
+  if (
+    reservation.request_status === "confirmed" ||
+    reservation.request_status === "closed"
+  ) {
+    return null;
+  }
+
+  const reason = reservation.interruption_reason?.trim().toUpperCase() ?? "";
+  const stage = reservation.interruption_stage?.trim().toUpperCase() ?? "";
+
+  if (!reason && !stage) return null;
+
+  if (stage.includes("EMAIL")) {
+    return reason.includes("TIMEOUT")
+      ? "Guest did not reply with an email address."
+      : "Guest did not provide a valid email address.";
+  }
+
+  if (stage.includes("VIP")) {
+    return reason.includes("TIMEOUT")
+      ? "Guest did not reply to the VIP seating question."
+      : "Guest needs help with the VIP seating question.";
+  }
+
+  if (stage.includes("RESERVATION CORRECTION")) {
+    return "Guest did not complete the requested reservation details.";
+  }
+
+  if (stage.includes("ALTERNATIVE") || stage.includes("TIME SELECTION")) {
+    return "Guest did not select one of the offered times.";
+  }
+
+  return "This reservation needs a personal follow-up.";
 }
 
 function Detail({
@@ -363,6 +402,56 @@ async function ProtectedReservationDetail({ params }: PageProps) {
                 />
               </Section>
 
+              {getGuestFollowUpReason(reservation) && (
+                <section
+                  role="alert"
+                  aria-labelledby="guest-follow-up-heading"
+                  className="rounded-xl border border-amber-500/40 bg-amber-950/20 p-5 sm:p-6"
+                >
+                  <div className="flex items-center gap-3">
+                    <svg
+                      aria-hidden="true"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="1.8"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      className="h-6 w-6 shrink-0 text-amber-300"
+                    >
+                      <path d="m10.3 3.9-8.1 14a2 2 0 0 0 1.7 3h16.2a2 2 0 0 0 1.7-3l-8.1-14a2 2 0 0 0-3.4 0Z" />
+                      <path d="M12 9v4" />
+                      <path d="M12 17h.01" />
+                    </svg>
+                    <h2
+                      id="guest-follow-up-heading"
+                      className="text-base font-bold text-amber-100"
+                    >
+                      CONTACT GUEST DIRECTLY
+                    </h2>
+                  </div>
+
+                  <p className="mt-3 text-sm leading-6 text-amber-100">
+                    <span className="font-semibold">Reason:</span>{" "}
+                    {getGuestFollowUpReason(reservation)}
+                  </p>
+
+                  <p className="mt-2 text-sm leading-6 text-zinc-300">
+                    Review the guest conversation to see what happened and
+                    prepare a personal reply.
+                  </p>
+
+                  <a
+                    href="#guest-conversation"
+                    className="mt-4 inline-flex min-h-11 items-center rounded-lg border border-amber-400/40 bg-amber-500/10 px-4 py-2 text-sm font-semibold text-amber-100 transition hover:bg-amber-500/20 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
+                  >
+                    VIEW GUEST CONVERSATION
+                  </a>
+                </section>
+              )}
+
+              <ReservationGuestConversation reservationId={reservation.id} />
+
               <Section title="Reservation Information">
                 <Detail
                   label="Requested Date"
@@ -410,21 +499,6 @@ async function ProtectedReservationDetail({ params }: PageProps) {
                   value={reservation.deposit_status.replace(/_/g, " ")}
                 />
               </Section>
-
-              {(reservation.interruption_reason ||
-                reservation.interruption_stage) && (
-                <Section title="Follow-Up Required">
-                  <Detail
-                    label="Interruption Reason"
-                    value={displayValue(reservation.interruption_reason)}
-                  />
-
-                  <Detail
-                    label="Interruption Stage"
-                    value={displayValue(reservation.interruption_stage)}
-                  />
-                </Section>
-              )}
 
               <section className="rounded-xl border border-white/10 bg-zinc-950/90 p-5 sm:p-6">
                 <h2 className="text-lg font-bold text-white">

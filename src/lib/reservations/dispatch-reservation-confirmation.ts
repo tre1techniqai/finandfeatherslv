@@ -147,17 +147,13 @@ function buildConfirmationMessage(
   const message = [
     "Fin & Feathers Las Vegas",
     "",
-    `Hello ${guestName}! Your reservation is CONFIRMED.`,
-    "",
-    `Date: ${date}`,
-    `Time: ${time}`,
-    `Party Size: ${reservation.party_size}`,
+    `You're all set, ${guestName}! Your table for ${reservation.party_size} is confirmed for ${date} at ${time}.`,
     `Confirmation #: ${workflow.yelp_confirmation_number.trim()}`,
     "",
-    "Feel free to browse our MENU ahead of time.",
-    "https://www.finandfeatherslv.live/menu",
+    "You're more than a guest. You're family. We look forward to seeing you at Fin & Feathers!",
     "",
-    "We look forward to welcoming you!",
+    "In the meantime, feel free to browse our menu:",
+    "https://finandfeatherslv.live/menu",
   ].join("\n");
 
   if (message.length > MAX_MESSAGE_LENGTH) {

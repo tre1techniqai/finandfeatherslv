@@ -271,6 +271,20 @@ export default function ReservationForm() {
     [now],
   );
 
+  // Exclude today once no reservation slots satisfy the two-hour notice rule.
+  // The native date input uses this minimum to disable earlier calendar dates.
+  const earliestSelectableDate = useMemo(() => {
+    if (!now || !minimumDate) return "";
+
+    const hasEligibleTimeToday = getTimeSlots(minimumDate).some((slot) =>
+      meetsAdvanceNotice(minimumDate, slot, now),
+    );
+
+    return hasEligibleTimeToday
+      ? minimumDate
+      : addCalendarDays(minimumDate, 1);
+  }, [minimumDate, now]);
+
   const maximumDate = useMemo(
     () => (minimumDate ? addCalendarDays(minimumDate, MAX_DAYS_AHEAD) : ""),
     [minimumDate],
@@ -283,6 +297,19 @@ export default function ReservationForm() {
       meetsAdvanceNotice(date, slot, now),
     );
   }, [date, now]);
+
+  // If the last eligible slot passes while the form remains open, clear
+  // the now-ineligible date and time rather than leaving a stale selection.
+  useEffect(() => {
+    if (date && earliestSelectableDate && date < earliestSelectableDate) {
+      setDate("");
+      setTime("");
+      setFormError("");
+      setPreparedMessage("");
+      setShowFallback(false);
+      setSmsHandoffAttempted(false);
+    }
+  }, [date, earliestSelectableDate]);
 
   useEffect(() => {
     if (time && !availableTimes.includes(time)) {
@@ -573,7 +600,7 @@ export default function ReservationForm() {
                     name="date"
                     type="date"
                     required
-                    min={minimumDate}
+                    min={earliestSelectableDate}
                     max={maximumDate}
                     disabled={!now}
                     value={date}
@@ -583,6 +610,11 @@ export default function ReservationForm() {
 
                 <p className="mt-2 text-xs leading-5 text-white/60">
                   Requests may be made up to 90 calendar days in advance.
+                  {minimumDate && earliestSelectableDate > minimumDate && (
+                    <span className="mt-1 block text-yellow-300/90">
+                      No eligible times remain today. Please select a future date.
+                    </span>
+                  )}
                 </p>
               </div>
 

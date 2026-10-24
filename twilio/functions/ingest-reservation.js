@@ -142,8 +142,13 @@ function buildPayload(event) {
     payload.reservationTime = normalizeTime(event.reservationTime);
     payload.partySize = partySize;
     payload.occasion = optionalText(event.occasion);
-    payload.email = optionalText(event.email);
-    payload.vipPreference = optionalText(event.vipPreference);
+    const email = optionalText(event.email);
+    payload.email = email?.toUpperCase() === "NOT PROVIDED" ? null : email;
+    const vipPreference = optionalText(event.vipPreference);
+    payload.vipPreference =
+      vipPreference?.toUpperCase() === "NOT PROVIDED"
+        ? null
+        : vipPreference;
   }
 
   return payload;

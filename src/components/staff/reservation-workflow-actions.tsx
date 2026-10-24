@@ -106,6 +106,19 @@ function formatStatus(value: string) {
   return value.replace(/_/g, " ");
 }
 
+function formatWorkflowStatus(value: WorkflowStatus) {
+  const labels: Record<WorkflowStatus, string> = {
+    awaiting_review: "Needs Review",
+    available: "Time Available",
+    unavailable: "Another Time Needed",
+    alternatives_proposed: "Time Options Ready",
+    alternatives_communicated: "Waiting on Guest",
+    alternative_accepted: "Guest Picked a Time",
+    confirmed: "Confirmed",
+  };
+  return labels[value];
+}
+
 function isObject(value: unknown): value is ApiResult {
   return (
     value !== null &&
@@ -236,10 +249,16 @@ export default function ReservationWorkflowActions({
 
         const accepted = notification?.accepted === true;
 
-        setSuccess("Reservation confirmed successfully.");
+        // The confirmed-state card below provides the single success message.
         setNotificationResult({ accepted });
       } else {
-        setSuccess("Reservation action saved successfully.");
+        const messages: Record<string, string> = {
+          approve_availability: "Requested time marked available.",
+          decline_availability: "Requested time marked unavailable.",
+          propose_alternatives: "Time options saved.",
+          send_alternatives: "Time options sent.",
+        };
+        setSuccess(messages[action] ?? "Changes saved.");
       }
 
       router.refresh();
@@ -272,7 +291,7 @@ export default function ReservationWorkflowActions({
         selectedTimes.length > 3 ||
         !distinctTimes)
     ) {
-      setError("Select one to three different alternative times.");
+      setError("Choose one to three different times.");
       return;
     }
 
@@ -299,31 +318,26 @@ export default function ReservationWorkflowActions({
 
       if (result.accepted !== true) {
         throw new Error(
-          "Twilio acceptance was not verified. Review the offer before attempting another send.",
+          "We couldn't confirm the text was sent. Please check its status before trying again.",
         );
       }
 
       setOfferAccepted(true);
-      setSuccess(
-        "Twilio accepted the alternative-times SMS. " +
-          "The guest can reply with a numbered choice. " +
-          "Handset delivery is not yet verified.",
-      );
+      // The refreshed workflow status shows that the options were sent.
 
       router.refresh();
     } catch (caught) {
       const message =
         caught instanceof Error
           ? caught.message
-          : "Unable to process the alternative-time offer.";
+          : "We couldn't send the time options.";
 
       setError(
         timesSaved
-          ? "Alternative times are saved, but SMS acceptance " +
-              "could not be verified. " +
+          ? "Your time options were saved, but we couldn't confirm the text went through. " +
               message +
-              " Do not resend until its status has been checked."
-          : "Alternative times were not saved. " + message,
+              " Please check its status before trying again."
+          : "We couldn't save the time options. " + message,
       );
 
       // Saving alone failed: no dispatch was attempted.
@@ -342,19 +356,19 @@ export default function ReservationWorkflowActions({
             Reservation Actions
           </h2>
           <p className="mt-2 text-sm text-zinc-400">
-            Manager reservation processing
+            Review and manage guest reservations
           </p>
         </div>
 
         <span className="rounded-full border border-white/20 bg-white/5 px-3 py-1 text-xs font-semibold capitalize text-zinc-200">
-          {formatStatus(status)}
+          {formatWorkflowStatus(status)}
         </span>
       </div>
 
       <div className="mt-5 grid gap-3 rounded-lg border border-white/10 bg-black/40 p-4 sm:grid-cols-2">
         <div>
           <p className="text-xs text-zinc-500">
-            Original requested date
+            Requested date
           </p>
           <p className="mt-1 text-sm font-semibold text-white">
             {formatDate(requestedDate)}
@@ -363,7 +377,7 @@ export default function ReservationWorkflowActions({
 
         <div>
           <p className="text-xs text-zinc-500">
-            Original requested time
+            Requested time
           </p>
           <p className="mt-1 text-sm font-semibold text-white">
             {formatTime(requestedTime)}
@@ -373,7 +387,7 @@ export default function ReservationWorkflowActions({
         {workflow?.accepted_time && (
           <div className="sm:col-span-2">
             <p className="text-xs text-zinc-500">
-              Guest-accepted alternative
+              Guest’s selected time
             </p>
             <p className="mt-1 text-sm font-semibold text-white">
               {formatTime(workflow.accepted_time)}
@@ -386,7 +400,7 @@ export default function ReservationWorkflowActions({
         {workflow?.yelp_confirmation_number && (
           <div className="sm:col-span-2">
             <p className="text-xs text-zinc-500">
-              Guest phone / Yelp lookup reference
+              Yelp booking reference
             </p>
             <p className="mt-1 break-words text-sm font-semibold text-white">
               {workflow.yelp_confirmation_number}
@@ -413,13 +427,13 @@ export default function ReservationWorkflowActions({
         </p>
       )}
 
-      {!eligible && (
+      {!eligible && !isConfirmed && (
         <p className="mt-5 text-sm leading-6 text-amber-200">
           {isConfirmed
-            ? "This reservation has been confirmed. No additional booking actions are available."
+            ? null
             : isClosed
               ? "This reservation is closed."
-              : "This reservation requires validated guest details before staff processing."}
+              : "Please verify the guest’s details before proceeding."}
         </p>
       )}
 
@@ -430,22 +444,17 @@ export default function ReservationWorkflowActions({
               changingAvailability)) && (
             <div className="border-b border-white/10 pb-6">
               <h3 className="text-base font-semibold text-white">
-                1. Requested Time Availability
+                Is the requested time available?
               </h3>
 
               <p className="mt-2 text-sm text-zinc-400">
-                Check availability for the original requested date
-                and time.
+                Check the guest’s requested date and time.
               </p>
 
               {changingAvailability && (
                 <p className="mt-3 text-sm leading-6 text-amber-200">
-                  Current saved decision:{" "}
-                  {status === "available"
-                    ? "Available"
-                    : "Unavailable"}
-                  . A revised selection must be accepted by the
-                  reservation system before the status changes.
+                  Current choice: {status === "available" ? "Available" : "Unavailable"}.
+                  Choose another option to update it.
                 </p>
               )}
 
@@ -460,7 +469,7 @@ export default function ReservationWorkflowActions({
                   }
                   className={`${buttonClass} border border-emerald-500/40 bg-emerald-950/30 text-emerald-200 hover:bg-emerald-900/40`}
                 >
-                  YES — Available
+                  Yes, We Have Room
                 </button>
 
                 <button
@@ -473,7 +482,7 @@ export default function ReservationWorkflowActions({
                   }
                   className={`${buttonClass} border border-red-500/40 bg-red-950/30 text-red-200 hover:bg-red-900/40`}
                 >
-                  NO — Unavailable
+                  No, Offer Another Time
                 </button>
               </div>
 
@@ -484,7 +493,7 @@ export default function ReservationWorkflowActions({
                   onClick={() => setChangingAvailability(false)}
                   className={`${buttonClass} mt-3 border border-white/20 bg-white/5 text-zinc-200 hover:bg-white/10`}
                 >
-                  Cancel — Keep Saved Decision
+                  Keep Current Choice
                 </button>
               )}
             </div>
@@ -495,10 +504,10 @@ export default function ReservationWorkflowActions({
             !changingAvailability && (
               <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/10 pb-6">
                 <p className="text-sm font-medium text-white">
-                  Availability:{" "}
+                  Requested time: {" "}
                   {status === "available"
-                    ? "YES — Available"
-                    : "NO — Unavailable"}
+                    ? "Available"
+                    : "Not Available"}
                 </p>
 
                 <button
@@ -506,7 +515,7 @@ export default function ReservationWorkflowActions({
                   disabled={actionPending}
                   onClick={() => setChangingAvailability(true)}
                   className={`${buttonClass} border border-white/20 bg-white/5 text-zinc-200 hover:bg-white/10`}                >
-                  Change Decision
+                  Change Choice
                 </button>
               </div>
             )}
@@ -515,15 +524,15 @@ export default function ReservationWorkflowActions({
             status === "unavailable" && (
               <div className="border-b border-white/10 pb-6">
                 <h3 className="text-base font-semibold text-white">
-                  2. Offer Alternative Times
+                  Offer Another Time
                 </h3>
 
                 <p className="mt-2 text-sm leading-6 text-zinc-400">
-                  Choose up to three times on{" "}
+                  Choose up to three other times on{" "}
                   <strong className="text-white">
                     {formatDate(requestedDate)}
                   </strong>
-                  . Alternative dates are not permitted.
+                  . Keep all options on the same date.
                 </p>
 
                 <div className="mt-4 grid gap-3 sm:grid-cols-3">
@@ -569,7 +578,7 @@ export default function ReservationWorkflowActions({
 
                 {!distinctTimes && (
                   <p className="mt-3 text-sm text-amber-200">
-                    Each alternative time must be different.
+                    Please choose different times.
                   </p>
                 )}
 
@@ -585,14 +594,12 @@ export default function ReservationWorkflowActions({
                   className={`${buttonClass} mt-4 w-full bg-[#ea1b24] text-white hover:bg-red-700`}
                 >
                   {busy === "send_alternatives"
-                    ? "Saving and Sending..."
-                    : "Send Alternative Times"}
+                    ? "Saving and sending..."
+                    : "Send Time Options"}
                 </button>
 
                 <p className="mt-3 text-xs leading-5 text-zinc-500">
-                  This action first saves your selections, then
-                  requests one SMS containing numbered choices.
-                  Sending is not proof of delivery.
+                  The guest will receive a text with these times and can reply with their choice.
                 </p>
               </div>
             )}
@@ -600,11 +607,11 @@ export default function ReservationWorkflowActions({
           {status === "alternatives_proposed" && (
             <div className="border-b border-white/10 pb-6">
               <h3 className="text-base font-semibold text-white">
-                2. Alternative Times Ready
+                TIME OPTIONS READY
               </h3>
 
               <p className="mt-2 text-sm text-zinc-400">
-                These alternatives are saved for{" "}
+                These times are ready for{" "}
                 {formatDate(requestedDate)}.
               </p>
 
@@ -628,14 +635,12 @@ export default function ReservationWorkflowActions({
                 className={`${buttonClass} mt-4 w-full bg-[#ea1b24] text-white hover:bg-red-700`}
               >
                 {busy === "send_alternatives"
-                  ? "Sending Alternative Times..."
-                  : "Send Alternative Times"}
+                  ? "Sending time options..."
+                  : "Send Time Options"}
               </button>
 
               <p className="mt-3 text-xs leading-5 text-zinc-500">
-                Send once only. If SMS status is uncertain,
-                verify the Twilio and reservation logs before
-                taking further action.
+                Send only once. If the text status is unclear, check it before trying again.
               </p>
             </div>
           )}
@@ -643,13 +648,11 @@ export default function ReservationWorkflowActions({
           {status === "alternatives_communicated" && (
             <div className="border-b border-white/10 pb-6">
               <h3 className="text-base font-semibold text-white">
-                3. Awaiting Guest Selection
+                TIME OPTIONS SENT
               </h3>
 
               <p className="mt-2 text-sm leading-6 text-zinc-300">
-                Twilio accepted the alternative-time offer.
-                The guest can reply with the number corresponding
-                to their preferred time.
+                The guest can reply with the number of their preferred time.
               </p>
 
               <div className="mt-4 space-y-2">
@@ -664,9 +667,7 @@ export default function ReservationWorkflowActions({
               </div>
 
               <p className="mt-4 text-sm text-amber-200">
-                No reservation has been confirmed yet.
-                Refresh the reservation details to check
-                whether the guest has selected a time.
+                We're waiting for the guest to choose a time. Refresh to check for their reply.
               </p>
 
               <button
@@ -674,7 +675,7 @@ export default function ReservationWorkflowActions({
                 disabled={actionPending}
                 onClick={() => router.refresh()}
                 className={`${buttonClass} mt-4 border border-white/20 bg-white/5 text-white hover:bg-white/10`}              >
-                Refresh Guest Status
+                Check for Guest Reply
               </button>
             </div>
           )}
@@ -682,11 +683,11 @@ export default function ReservationWorkflowActions({
           {status === "alternative_accepted" && (
             <div className="border-b border-white/10 pb-6">
               <h3 className="text-base font-semibold text-white">
-                3. Guest Selection Recorded
+                GUEST PICKED A TIME
               </h3>
 
               <p className="mt-2 text-sm leading-6 text-emerald-200">
-                The guest accepted{" "}
+                The guest chose{" "}
                 <strong>
                   {formatTime(workflow?.accepted_time ?? null)}
                 </strong>{" "}
@@ -694,7 +695,7 @@ export default function ReservationWorkflowActions({
               </p>
 
               <p className="mt-3 text-sm text-zinc-400">
-                Complete the booking in Yelp, then confirm the reservation below.
+                Complete the booking in Yelp, then confirm it here.
               </p>
             </div>
           )}
@@ -702,12 +703,11 @@ export default function ReservationWorkflowActions({
           {canConfirm && !changingAvailability && (
             <div>
               <h3 className="text-base font-semibold text-white">
-                Final Reservation Confirmation
+                Confirm Reservation
               </h3>
 
               <p className="mt-2 text-sm leading-6 text-zinc-400">
-                Complete the booking in Yelp before confirming it here.
-                The guest phone number will be saved as the Yelp lookup reference.
+                Book the table in Yelp before confirming it here.
               </p>
 
               <p className="mt-3 text-sm text-white">
@@ -727,9 +727,8 @@ export default function ReservationWorkflowActions({
                     Required deposit: ${depositAmount?.toFixed(2)}
                   </p>
                   <p className="mt-2 text-xs leading-5 text-zinc-400">
-                    Staff emails the payment link through the POS.
-                    A sent link does not mean payment has been received.
-                    Deposit record: {formatStatus(depositStatus)}.
+                    Email the payment link through the POS. Sending the link does not mean
+                    the deposit has been paid. Current deposit status: {formatStatus(depositStatus)}.
                   </p>
                   <label className="mt-4 flex items-start gap-3 text-sm text-white">
                     <input
@@ -774,9 +773,7 @@ export default function ReservationWorkflowActions({
               </button>
 
               <p className="mt-3 text-xs leading-5 text-zinc-500">
-                Confirming the reservation automatically
-                requests a guest confirmation SMS.
-                Its status appears below.
+                We'll text the guest their confirmation details.
               </p>
             </div>
           )}
@@ -784,22 +781,14 @@ export default function ReservationWorkflowActions({
       )}
 
       {(isConfirmed || notificationResult) && (
-        <div className="mt-6 space-y-4 border-t border-white/10 pt-6">
-          <h3 className="text-base font-semibold text-white">
-            Guest Confirmation
-          </h3>
-
-          <p className="text-sm leading-6 text-zinc-400">
-            A confirmation text is requested automatically when
-            the reservation is confirmed. No additional staff
-            action is required.
-          </p>
-
+        <div className="mt-6 border-t border-white/10 pt-6">
           {(() => {
             const savedStatus =
               confirmationNotification?.notification_status;
 
-            const state = notificationResult
+            const state = savedStatus === "delivered"
+              ? "delivered"
+              : notificationResult
               ? notificationResult.accepted
                 ? "sent"
                 : "attention"
@@ -811,29 +800,18 @@ export default function ReservationWorkflowActions({
                     ? "pending"
                     : "attention";
 
-            const heading =
+            const message =
               state === "delivered"
-                ? "Confirmation Delivered"
+                ? "The guest received their confirmation text."
                 : state === "sent"
-                  ? "Confirmation Sent"
+                  ? "We've sent the guest a text with the details."
                   : state === "pending"
-                    ? "Confirmation Pending"
-                    : "Notification Needs Attention";
-
-            const description =
-              state === "delivered"
-                ? "The guest's reservation confirmation was delivered."
-                : state === "sent"
-                  ? "Twilio accepted the guest confirmation SMS. Handset delivery is not yet verified."
-                  : state === "pending"
-                    ? "The reservation is confirmed. Guest notification is being processed."
-                    : "The reservation is confirmed, but SMS delivery could not be verified. Check Twilio logs and contact the guest if necessary. Do not resend without reviewing the notification status.";
+                    ? "We're getting the guest's confirmation text ready."
+                    : "We couldn't confirm the text went through. Please check its status and follow up with the guest.";
 
             return (
               <div
-                role={
-                  state === "attention" ? "alert" : "status"
-                }
+                role={state === "attention" ? "alert" : "status"}
                 className={`rounded-lg border p-4 text-sm leading-6 ${
                   state === "attention"
                     ? "border-amber-500/30 bg-amber-950/20 text-amber-200"
@@ -842,8 +820,13 @@ export default function ReservationWorkflowActions({
                       : "border-emerald-500/30 bg-emerald-950/20 text-emerald-200"
                 }`}
               >
-                <p className="font-semibold">{heading}</p>
-                <p className="mt-1">{description}</p>
+                <p className="font-semibold">✓ RESERVATION CONFIRMED</p>
+                <p className="mt-1">
+                  Reservation for {formatTime(workflow?.accepted_time ?? requestedTime)}
+                  {" on "}
+                  {formatDate(requestedDate)}.
+                </p>
+                <p className="mt-2">{message}</p>
               </div>
             );
           })()}

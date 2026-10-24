@@ -1,0 +1,2651 @@
+{
+  "description": "A New Flow",
+  "flags": {
+    "allow_concurrent_calls": true
+  },
+  "initial_state": "Trigger",
+  "states": [
+    {
+      "name": "Trigger",
+      "properties": {
+        "offset": {
+          "x": -323,
+          "y": -158
+        }
+      },
+      "transitions": [
+        {
+          "event": "incomingMessage",
+          "next": "test_parse_reservation"
+        },
+        {
+          "event": "incomingCall"
+        },
+        {
+          "event": "incomingConversationMessage"
+        },
+        {
+          "event": "incomingRequest",
+          "next": "test_parse_reservation"
+        },
+        {
+          "event": "incomingParent"
+        }
+      ],
+      "type": "trigger"
+    },
+    {
+      "name": "vip_option_ask",
+      "properties": {
+        "body": "Would you like to request seating in our VIP area?\n\nVIP seating is subject to availability. Guests must be 21 or older to access designated 21+ areas.\n\nReply YES or NO.",
+        "channel": "{{trigger.message.ChannelSid}}",
+        "from": "{{flow.channel.address}}",
+        "message_type": "custom",
+        "offset": {
+          "x": -1237,
+          "y": 2478
+        },
+        "service": "{{trigger.message.InstanceSid}}",
+        "timeout": "3600"
+      },
+      "transitions": [
+        {
+          "event": "incomingMessage",
+          "next": "validate_vip_response"
+        },
+        {
+          "event": "timeout",
+          "next": "set_vip_first_timeout"
+        },
+        {
+          "event": "deliveryFailure",
+          "next": "set_vip_first_delivery_failure"
+        }
+      ],
+      "type": "send-and-wait-for-reply"
+    },
+    {
+      "name": "deposit_request_9_10_form",
+      "properties": {
+        "body": "Thank you for your request! For parties of 9-10 guests, a $55 deposit is required. This deposit is non-refundable and will be fully credited to your final bill. Please reply to this text with your email address so we can send over your secure payment link.",
+        "channel": "{{trigger.message.ChannelSid}}",
+        "from": "{{flow.channel.address}}",
+        "message_type": "custom",
+        "offset": {
+          "x": -532,
+          "y": 1657
+        },
+        "service": "{{trigger.message.InstanceSid}}",
+        "timeout": "3600"
+      },
+      "transitions": [
+        {
+          "event": "incomingMessage",
+          "next": "validate_email_9_10"
+        },
+        {
+          "event": "timeout",
+          "next": "set_email_first_timeout_9_10"
+        },
+        {
+          "event": "deliveryFailure",
+          "next": "set_email_first_delivery_failure_9_10"
+        }
+      ],
+      "type": "send-and-wait-for-reply"
+    },
+    {
+      "name": "deposit_request_11_14_form",
+      "properties": {
+        "body": "Thank you for your request! For parties of 11-14 guests, an $80 deposit is required. This deposit is non-refundable and will be fully credited to your final bill. Please reply to this text with your email address so we can send over your secure payment link.",
+        "channel": "{{trigger.message.ChannelSid}}",
+        "from": "{{flow.channel.address}}",
+        "message_type": "custom",
+        "offset": {
+          "x": -194,
+          "y": 1658
+        },
+        "service": "{{trigger.message.InstanceSid}}",
+        "timeout": "3600"
+      },
+      "transitions": [
+        {
+          "event": "incomingMessage",
+          "next": "validate_email_11_14"
+        },
+        {
+          "event": "timeout",
+          "next": "set_email_first_timeout_11_14"
+        },
+        {
+          "event": "deliveryFailure",
+          "next": "set_email_first_delivery_failure_11_14"
+        }
+      ],
+      "type": "send-and-wait-for-reply"
+    },
+    {
+      "name": "deposit_request_15_20_form",
+      "properties": {
+        "body": "Thank you for your request! For parties of 15-20 guests, a $110 deposit is required. This deposit is non-refundable and will be fully credited to your final bill. Please reply to this text with your email address so we can send over your secure payment link.",
+        "channel": "{{trigger.message.ChannelSid}}",
+        "from": "{{flow.channel.address}}",
+        "message_type": "custom",
+        "offset": {
+          "x": 142,
+          "y": 1656
+        },
+        "service": "{{trigger.message.InstanceSid}}",
+        "timeout": "3600"
+      },
+      "transitions": [
+        {
+          "event": "incomingMessage",
+          "next": "validate_email_15_20"
+        },
+        {
+          "event": "timeout",
+          "next": "set_email_first_timeout_15_20"
+        },
+        {
+          "event": "deliveryFailure",
+          "next": "set_email_first_delivery_failure_15_20"
+        }
+      ],
+      "type": "send-and-wait-for-reply"
+    },
+    {
+      "name": "send_message_to_staff",
+      "properties": {
+        "body": "F&F LV - NEW RESERVATION REQUEST\n\nA new reservation request has been received and is ready for staff review.\n\nName: {{widgets.test_parse_reservation.parsed.name}}\n\nCustomer Phone: {{contact.channel.address}}\n\nVIP Preference: {{flow.variables.vip_preference}}\n\nSTAFF RESERVATION PORTAL:\nhttps://finandfeatherslv.live/staff/reservations/{{widgets.ingest_new_reservation.parsed.reservationId}}\n\nSTAFF: Open the link to review the reservation details, check availability, and complete the booking process.\n\nSTATUS: NOT CONFIRMED",
+        "channel": "{{trigger.message.ChannelSid}}",
+        "from": "{{flow.channel.address}}",
+        "message_type": "custom",
+        "offset": {
+          "x": -190,
+          "y": 3616
+        },
+        "service": "{{trigger.message.InstanceSid}}",
+        "to": "+17025466394"
+      },
+      "transitions": [
+        {
+          "event": "sent"
+        },
+        {
+          "event": "failed"
+        }
+      ],
+      "type": "send-message"
+    },
+    {
+      "name": "details_confirmed_form",
+      "properties": {
+        "body": "Thank you for contacting Fin & Feathers Las Vegas!\nWe've received your reservation request. Our team will review availability and respond by text with the next steps.\nPlease note: Your reservation is not confirmed until our staff sends you a confirmation",
+        "channel": "{{trigger.message.ChannelSid}}",
+        "from": "{{flow.channel.address}}",
+        "message_type": "custom",
+        "offset": {
+          "x": -744,
+          "y": 2724
+        },
+        "service": "{{trigger.message.InstanceSid}}",
+        "to": "{{contact.channel.address}}"
+      },
+      "transitions": [
+        {
+          "event": "sent",
+          "next": "ingest_new_reservation"
+        },
+        {
+          "event": "failed",
+          "next": "ingest_new_reservation"
+        }
+      ],
+      "type": "send-message"
+    },
+    {
+      "name": "test_parse_reservation",
+      "properties": {
+        "environment_sid": "ZE474d6160841e9dc59cc4a865f5d49059",
+        "function_sid": "ZH1a6f6a6555bbe414beff10cb08849342",
+        "offset": {
+          "x": -934,
+          "y": 48
+        },
+        "parameters": [
+          {
+            "key": "Body",
+            "value": "{{trigger.message.Body | default: flow.data.Body}}"
+          }
+        ],
+        "service_sid": "ZS7989535d468e4b4d2bccdf543c5cad56",
+        "url": "https://fin-feathers-logic-2651.twil.io/parse-reservation"
+      },
+      "transitions": [
+        {
+          "event": "success",
+          "next": "check_reservation_validity"
+        },
+        {
+          "event": "fail",
+          "next": "reservation_parser_error"
+        }
+      ],
+      "type": "run-function"
+    },
+    {
+      "name": "check_reservation_validity",
+      "properties": {
+        "input": "{{widgets.test_parse_reservation.parsed.isValid}}",
+        "offset": {
+          "x": -934,
+          "y": 340
+        }
+      },
+      "transitions": [
+        {
+          "event": "noMatch",
+          "next": "reservation_correction"
+        },
+        {
+          "conditions": [
+            {
+              "arguments": [
+                "{{widgets.test_parse_reservation.parsed.isValid}}"
+              ],
+              "friendly_name": "reservation_valid",
+              "type": "equal_to",
+              "value": "true"
+            }
+          ],
+          "event": "match",
+          "next": "set_original_details_validated"
+        }
+      ],
+      "type": "split-based-on"
+    },
+    {
+      "name": "route_by_party_size",
+      "properties": {
+        "input": "{{widgets.test_parse_reservation.parsed.partySize}}",
+        "offset": {
+          "x": -934,
+          "y": 610
+        }
+      },
+      "transitions": [
+        {
+          "event": "noMatch",
+          "next": "reservation_parser_error"
+        },
+        {
+          "conditions": [
+            {
+              "arguments": [
+                "{{widgets.test_parse_reservation.parsed.partySize}}"
+              ],
+              "friendly_name": "standard_1_8",
+              "type": "regex",
+              "value": "^(?:[1-8])$"
+            }
+          ],
+          "event": "match",
+          "next": "set_email_not_required"
+        },
+        {
+          "conditions": [
+            {
+              "arguments": [
+                "{{widgets.test_parse_reservation.parsed.partySize}}"
+              ],
+              "friendly_name": "deposit_9_10",
+              "type": "regex",
+              "value": "^(?:9|10)$"
+            }
+          ],
+          "event": "match",
+          "next": "deposit_request_9_10_form"
+        },
+        {
+          "conditions": [
+            {
+              "arguments": [
+                "{{widgets.test_parse_reservation.parsed.partySize}}"
+              ],
+              "friendly_name": "deposit_11_14",
+              "type": "regex",
+              "value": "^(?:11|12|13|14)$"
+            }
+          ],
+          "event": "match",
+          "next": "deposit_request_11_14_form"
+        },
+        {
+          "conditions": [
+            {
+              "arguments": [
+                "{{widgets.test_parse_reservation.parsed.partySize}}"
+              ],
+              "friendly_name": "deposit_15_20",
+              "type": "regex",
+              "value": "^(?:15|16|17|18|19|20)$"
+            }
+          ],
+          "event": "match",
+          "next": "deposit_request_15_20_form"
+        }
+      ],
+      "type": "split-based-on"
+    },
+    {
+      "name": "validate_vip_response",
+      "properties": {
+        "input": "{{widgets.vip_option_ask.inbound.Body}}",
+        "offset": {
+          "x": -450,
+          "y": 1500
+        }
+      },
+      "transitions": [
+        {
+          "event": "noMatch",
+          "next": "vip_retry"
+        },
+        {
+          "conditions": [
+            {
+              "arguments": [
+                "{{widgets.vip_option_ask.inbound.Body}}"
+              ],
+              "friendly_name": "vip_yes",
+              "type": "regex",
+              "value": "^\\s*[Yy][Ee][Ss]\\s*$"
+            }
+          ],
+          "event": "match",
+          "next": "set_vip_yes_first"
+        },
+        {
+          "conditions": [
+            {
+              "arguments": [
+                "{{widgets.vip_option_ask.inbound.Body}}"
+              ],
+              "friendly_name": "vip_no",
+              "type": "regex",
+              "value": "^\\s*[Nn][Oo]\\s*$"
+            }
+          ],
+          "event": "match",
+          "next": "set_vip_no_first"
+        }
+      ],
+      "type": "split-based-on"
+    },
+    {
+      "name": "vip_retry",
+      "properties": {
+        "body": "Please reply YES or NO to indicate whether you would like to request VIP seating.",
+        "channel": "{{trigger.message.ChannelSid}}",
+        "from": "{{flow.channel.address}}",
+        "message_type": "custom",
+        "offset": {
+          "x": 100,
+          "y": 1750
+        },
+        "service": "{{trigger.message.InstanceSid}}",
+        "timeout": "3600"
+      },
+      "transitions": [
+        {
+          "event": "incomingMessage",
+          "next": "validate_vip_retry"
+        },
+        {
+          "event": "timeout",
+          "next": "set_vip_retry_timeout"
+        },
+        {
+          "event": "deliveryFailure",
+          "next": "set_vip_retry_delivery_failure"
+        }
+      ],
+      "type": "send-and-wait-for-reply"
+    },
+    {
+      "name": "validate_vip_retry",
+      "properties": {
+        "input": "{{widgets.vip_retry.inbound.Body}}",
+        "offset": {
+          "x": 100,
+          "y": 2000
+        }
+      },
+      "transitions": [
+        {
+          "event": "noMatch",
+          "next": "set_vip_followup"
+        },
+        {
+          "conditions": [
+            {
+              "arguments": [
+                "{{widgets.vip_retry.inbound.Body}}"
+              ],
+              "friendly_name": "vip_yes",
+              "type": "regex",
+              "value": "^\\s*[Yy][Ee][Ss]\\s*$"
+            }
+          ],
+          "event": "match",
+          "next": "set_vip_yes_retry"
+        },
+        {
+          "conditions": [
+            {
+              "arguments": [
+                "{{widgets.vip_retry.inbound.Body}}"
+              ],
+              "friendly_name": "vip_no",
+              "type": "regex",
+              "value": "^\\s*[Nn][Oo]\\s*$"
+            }
+          ],
+          "event": "match",
+          "next": "set_vip_no_retry"
+        }
+      ],
+      "type": "split-based-on"
+    },
+    {
+      "name": "vip_preference_unavailable",
+      "properties": {
+        "body": "We could not record your VIP seating preference. Your reservation request will still be reviewed by our team.",
+        "channel": "{{trigger.message.ChannelSid}}",
+        "from": "{{flow.channel.address}}",
+        "message_type": "custom",
+        "offset": {
+          "x": 500,
+          "y": 2250
+        },
+        "service": "{{trigger.message.InstanceSid}}",
+        "to": "{{contact.channel.address}}"
+      },
+      "transitions": [
+        {
+          "event": "sent",
+          "next": "details_confirmed_form"
+        },
+        {
+          "event": "failed",
+          "next": "set_vip_fallback_delivery_failure"
+        }
+      ],
+      "type": "send-message"
+    },
+    {
+      "name": "validate_email_9_10",
+      "properties": {
+        "input": "{{widgets.deposit_request_9_10_form.inbound.Body}}",
+        "offset": {
+          "x": -532,
+          "y": 1907
+        }
+      },
+      "transitions": [
+        {
+          "event": "noMatch",
+          "next": "email_retry_9_10"
+        },
+        {
+          "conditions": [
+            {
+              "arguments": [
+                "{{widgets.deposit_request_9_10_form.inbound.Body}}"
+              ],
+              "friendly_name": "email_is_valid",
+              "type": "regex",
+              "value": "^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}$"
+            }
+          ],
+          "event": "match",
+          "next": "set_valid_email_9_10"
+        }
+      ],
+      "type": "split-based-on"
+    },
+    {
+      "name": "validate_email_11_14",
+      "properties": {
+        "input": "{{widgets.deposit_request_11_14_form.inbound.Body}}",
+        "offset": {
+          "x": -194,
+          "y": 1908
+        }
+      },
+      "transitions": [
+        {
+          "event": "noMatch",
+          "next": "email_retry_11_14"
+        },
+        {
+          "conditions": [
+            {
+              "arguments": [
+                "{{widgets.deposit_request_11_14_form.inbound.Body}}"
+              ],
+              "friendly_name": "email_is_valid",
+              "type": "regex",
+              "value": "^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}$"
+            }
+          ],
+          "event": "match",
+          "next": "set_valid_email_11_14"
+        }
+      ],
+      "type": "split-based-on"
+    },
+    {
+      "name": "validate_email_15_20",
+      "properties": {
+        "input": "{{widgets.deposit_request_15_20_form.inbound.Body}}",
+        "offset": {
+          "x": 142,
+          "y": 1906
+        }
+      },
+      "transitions": [
+        {
+          "event": "noMatch",
+          "next": "email_retry_15_20"
+        },
+        {
+          "conditions": [
+            {
+              "arguments": [
+                "{{widgets.deposit_request_15_20_form.inbound.Body}}"
+              ],
+              "friendly_name": "email_is_valid",
+              "type": "regex",
+              "value": "^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}$"
+            }
+          ],
+          "event": "match",
+          "next": "set_valid_email_15_20"
+        }
+      ],
+      "type": "split-based-on"
+    },
+    {
+      "name": "email_retry_9_10",
+      "properties": {
+        "body": "Oops! That didn't look like a valid email address. Please reply with just your email address so we can email your deposit link (e.g., name@example.com).",
+        "channel": "{{trigger.message.ChannelSid}}",
+        "from": "{{flow.channel.address}}",
+        "message_type": "custom",
+        "offset": {
+          "x": -232,
+          "y": 2157
+        },
+        "service": "{{trigger.message.InstanceSid}}",
+        "timeout": "3600"
+      },
+      "transitions": [
+        {
+          "event": "incomingMessage",
+          "next": "validate_email_retry_9_10"
+        },
+        {
+          "event": "timeout",
+          "next": "set_email_retry_timeout_9_10"
+        },
+        {
+          "event": "deliveryFailure",
+          "next": "set_email_retry_delivery_failure_9_10"
+        }
+      ],
+      "type": "send-and-wait-for-reply"
+    },
+    {
+      "name": "validate_email_retry_9_10",
+      "properties": {
+        "input": "{{widgets.email_retry_9_10.inbound.Body}}",
+        "offset": {
+          "x": -232,
+          "y": 2407
+        }
+      },
+      "transitions": [
+        {
+          "event": "noMatch",
+          "next": "set_email_followup_9_10"
+        },
+        {
+          "conditions": [
+            {
+              "arguments": [
+                "{{widgets.email_retry_9_10.inbound.Body}}"
+              ],
+              "friendly_name": "email_is_valid",
+              "type": "regex",
+              "value": "^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}$"
+            }
+          ],
+          "event": "match",
+          "next": "set_valid_email_retry_9_10"
+        }
+      ],
+      "type": "split-based-on"
+    },
+    {
+      "name": "email_retry_11_14",
+      "properties": {
+        "body": "Oops! That didn't look like a valid email address. Please reply with just your email address so we can email your deposit link (e.g., name@example.com).",
+        "channel": "{{trigger.message.ChannelSid}}",
+        "from": "{{flow.channel.address}}",
+        "message_type": "custom",
+        "offset": {
+          "x": 106,
+          "y": 2158
+        },
+        "service": "{{trigger.message.InstanceSid}}",
+        "timeout": "3600"
+      },
+      "transitions": [
+        {
+          "event": "incomingMessage",
+          "next": "validate_email_retry_11_14"
+        },
+        {
+          "event": "timeout",
+          "next": "set_email_retry_timeout_11_14"
+        },
+        {
+          "event": "deliveryFailure",
+          "next": "set_email_retry_delivery_failure_11_14"
+        }
+      ],
+      "type": "send-and-wait-for-reply"
+    },
+    {
+      "name": "validate_email_retry_11_14",
+      "properties": {
+        "input": "{{widgets.email_retry_11_14.inbound.Body}}",
+        "offset": {
+          "x": 106,
+          "y": 2408
+        }
+      },
+      "transitions": [
+        {
+          "event": "noMatch",
+          "next": "set_email_followup_11_14"
+        },
+        {
+          "conditions": [
+            {
+              "arguments": [
+                "{{widgets.email_retry_11_14.inbound.Body}}"
+              ],
+              "friendly_name": "email_is_valid",
+              "type": "regex",
+              "value": "^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}$"
+            }
+          ],
+          "event": "match",
+          "next": "set_valid_email_retry_11_14"
+        }
+      ],
+      "type": "split-based-on"
+    },
+    {
+      "name": "email_retry_15_20",
+      "properties": {
+        "body": "Oops! That didn't look like a valid email address. Please reply with just your email address so we can email your deposit link (e.g., name@example.com).",
+        "channel": "{{trigger.message.ChannelSid}}",
+        "from": "{{flow.channel.address}}",
+        "message_type": "custom",
+        "offset": {
+          "x": 442,
+          "y": 2156
+        },
+        "service": "{{trigger.message.InstanceSid}}",
+        "timeout": "3600"
+      },
+      "transitions": [
+        {
+          "event": "incomingMessage",
+          "next": "validate_email_retry_15_20"
+        },
+        {
+          "event": "timeout",
+          "next": "set_email_retry_timeout_15_20"
+        },
+        {
+          "event": "deliveryFailure",
+          "next": "set_email_retry_delivery_failure_15_20"
+        }
+      ],
+      "type": "send-and-wait-for-reply"
+    },
+    {
+      "name": "validate_email_retry_15_20",
+      "properties": {
+        "input": "{{widgets.email_retry_15_20.inbound.Body}}",
+        "offset": {
+          "x": 442,
+          "y": 2406
+        }
+      },
+      "transitions": [
+        {
+          "event": "noMatch",
+          "next": "set_email_followup_15_20"
+        },
+        {
+          "conditions": [
+            {
+              "arguments": [
+                "{{widgets.email_retry_15_20.inbound.Body}}"
+              ],
+              "friendly_name": "email_is_valid",
+              "type": "regex",
+              "value": "^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}$"
+            }
+          ],
+          "event": "match",
+          "next": "set_valid_email_retry_15_20"
+        }
+      ],
+      "type": "split-based-on"
+    },
+    {
+      "name": "email_unavailable_9_10",
+      "properties": {
+        "body": "We couldn't verify your email address. Our team will need a valid email address before sending your deposit payment link. Your reservation request will still be reviewed.",
+        "channel": "{{trigger.message.ChannelSid}}",
+        "from": "{{flow.channel.address}}",
+        "message_type": "custom",
+        "offset": {
+          "x": 68,
+          "y": 2657
+        },
+        "service": "{{trigger.message.InstanceSid}}",
+        "to": "{{contact.channel.address}}"
+      },
+      "transitions": [
+        {
+          "event": "sent",
+          "next": "vip_option_ask"
+        },
+        {
+          "event": "failed",
+          "next": "set_email_fallback_delivery_failure_9_10"
+        }
+      ],
+      "type": "send-message"
+    },
+    {
+      "name": "email_unavailable_11_14",
+      "properties": {
+        "body": "We couldn't verify your email address. Our team will need a valid email address before sending your deposit payment link. Your reservation request will still be reviewed.",
+        "channel": "{{trigger.message.ChannelSid}}",
+        "from": "{{flow.channel.address}}",
+        "message_type": "custom",
+        "offset": {
+          "x": 406,
+          "y": 2658
+        },
+        "service": "{{trigger.message.InstanceSid}}",
+        "to": "{{contact.channel.address}}"
+      },
+      "transitions": [
+        {
+          "event": "sent",
+          "next": "vip_option_ask"
+        },
+        {
+          "event": "failed",
+          "next": "set_email_fallback_delivery_failure_11_14"
+        }
+      ],
+      "type": "send-message"
+    },
+    {
+      "name": "email_unavailable_15_20",
+      "properties": {
+        "body": "We couldn't verify your email address. Our team will need a valid email address before sending your deposit payment link. Your reservation request will still be reviewed.",
+        "channel": "{{trigger.message.ChannelSid}}",
+        "from": "{{flow.channel.address}}",
+        "message_type": "custom",
+        "offset": {
+          "x": 742,
+          "y": 2656
+        },
+        "service": "{{trigger.message.InstanceSid}}",
+        "to": "{{contact.channel.address}}"
+      },
+      "transitions": [
+        {
+          "event": "sent",
+          "next": "vip_option_ask"
+        },
+        {
+          "event": "failed",
+          "next": "set_email_fallback_delivery_failure_15_20"
+        }
+      ],
+      "type": "send-message"
+    },
+    {
+      "name": "reservation_correction",
+      "properties": {
+        "body": "Fin & Feathers Las Vegas: We couldn't process your reservation request.\n\nReason: {{widgets.test_parse_reservation.parsed.errorMessage}}\n\nPlease reply with all your details in this format:\n\nFirst Name: John\nLast Name: Smith\nMobile Phone: +17255550123\nDate: MM/DD/YYYY\nTime: 7:00 PM\nGuests: 4\nOccasion: BIRTHDAY\n\nChoose a reservation date within the next 90 calendar days, at least 2 hours from now. Available reservation hours vary by day.\n\nNeed help? Call (725) 204-9655.",
+        "channel": "{{trigger.message.ChannelSid}}",
+        "from": "{{flow.channel.address}}",
+        "message_type": "custom",
+        "offset": {
+          "x": -450,
+          "y": 600
+        },
+        "service": "{{trigger.message.InstanceSid}}",
+        "timeout": "3600"
+      },
+      "transitions": [
+        {
+          "event": "incomingMessage",
+          "next": "parse_corrected_reservation"
+        },
+        {
+          "event": "timeout",
+          "next": "set_correction_timeout"
+        },
+        {
+          "event": "deliveryFailure",
+          "next": "set_correction_delivery_failure"
+        }
+      ],
+      "type": "send-and-wait-for-reply"
+    },
+    {
+      "name": "parse_corrected_reservation",
+      "properties": {
+        "environment_sid": "ZE474d6160841e9dc59cc4a865f5d49059",
+        "function_sid": "ZH1a6f6a6555bbe414beff10cb08849342",
+        "offset": {
+          "x": -450,
+          "y": 900
+        },
+        "parameters": [
+          {
+            "key": "Body",
+            "value": "{{widgets.reservation_correction.inbound.Body}}"
+          }
+        ],
+        "service_sid": "ZS7989535d468e4b4d2bccdf543c5cad56",
+        "url": "https://fin-feathers-logic-2651.twil.io/parse-reservation"
+      },
+      "transitions": [
+        {
+          "event": "success",
+          "next": "check_corrected_reservation_validity"
+        },
+        {
+          "event": "fail",
+          "next": "reservation_parser_error"
+        }
+      ],
+      "type": "run-function"
+    },
+    {
+      "name": "check_corrected_reservation_validity",
+      "properties": {
+        "input": "{{widgets.parse_corrected_reservation.parsed.isValid}}",
+        "offset": {
+          "x": -450,
+          "y": 1200
+        }
+      },
+      "transitions": [
+        {
+          "event": "noMatch",
+          "next": "reservation_correction_unavailable"
+        },
+        {
+          "conditions": [
+            {
+              "arguments": [
+                "{{widgets.parse_corrected_reservation.parsed.isValid}}"
+              ],
+              "friendly_name": "corrected_reservation_valid",
+              "type": "equal_to",
+              "value": "true"
+            }
+          ],
+          "event": "match",
+          "next": "set_corrected_details_validated"
+        }
+      ],
+      "type": "split-based-on"
+    },
+    {
+      "name": "route_corrected_party_size",
+      "properties": {
+        "input": "{{widgets.parse_corrected_reservation.parsed.partySize}}",
+        "offset": {
+          "x": -450,
+          "y": 1500
+        }
+      },
+      "transitions": [
+        {
+          "event": "noMatch",
+          "next": "reservation_correction_unavailable"
+        },
+        {
+          "conditions": [
+            {
+              "arguments": [
+                "{{widgets.parse_corrected_reservation.parsed.partySize}}"
+              ],
+              "friendly_name": "standard_1_8",
+              "type": "regex",
+              "value": "^(?:[1-8])$"
+            }
+          ],
+          "event": "match",
+          "next": "set_email_not_required"
+        },
+        {
+          "conditions": [
+            {
+              "arguments": [
+                "{{widgets.parse_corrected_reservation.parsed.partySize}}"
+              ],
+              "friendly_name": "deposit_9_10",
+              "type": "regex",
+              "value": "^(?:9|10)$"
+            }
+          ],
+          "event": "match",
+          "next": "deposit_request_9_10_form"
+        },
+        {
+          "conditions": [
+            {
+              "arguments": [
+                "{{widgets.parse_corrected_reservation.parsed.partySize}}"
+              ],
+              "friendly_name": "deposit_11_14",
+              "type": "regex",
+              "value": "^(?:11|12|13|14)$"
+            }
+          ],
+          "event": "match",
+          "next": "deposit_request_11_14_form"
+        },
+        {
+          "conditions": [
+            {
+              "arguments": [
+                "{{widgets.parse_corrected_reservation.parsed.partySize}}"
+              ],
+              "friendly_name": "deposit_15_20",
+              "type": "regex",
+              "value": "^(?:15|16|17|18|19|20)$"
+            }
+          ],
+          "event": "match",
+          "next": "deposit_request_15_20_form"
+        }
+      ],
+      "type": "split-based-on"
+    },
+    {
+      "name": "reservation_correction_unavailable",
+      "properties": {
+        "body": "We're sorry, but we still couldn't validate your reservation request.\n\nFor assistance, please call Fin & Feathers Las Vegas directly at (725) 204-9655.\n\nYour reservation is NOT confirmed until our staff sends you a confirmation.",
+        "channel": "{{trigger.message.ChannelSid}}",
+        "from": "{{flow.channel.address}}",
+        "message_type": "custom",
+        "offset": {
+          "x": -100,
+          "y": 1500
+        },
+        "service": "{{trigger.message.InstanceSid}}",
+        "to": "{{contact.channel.address}}"
+      },
+      "transitions": [
+        {
+          "event": "sent"
+        },
+        {
+          "event": "failed",
+          "next": "set_correction_unavailable_delivery_failure"
+        }
+      ],
+      "type": "send-message"
+    },
+    {
+      "name": "reservation_parser_error",
+      "properties": {
+        "body": "We're sorry, but we're temporarily unable to process your reservation request by text.\n\nPlease call Fin & Feathers Las Vegas at (725) 204-9655 for assistance.\n\nYour reservation has NOT been confirmed.",
+        "channel": "{{trigger.message.ChannelSid}}",
+        "from": "{{flow.channel.address}}",
+        "message_type": "custom",
+        "offset": {
+          "x": -100,
+          "y": 1800
+        },
+        "service": "{{trigger.message.InstanceSid}}",
+        "to": "{{contact.channel.address}}"
+      },
+      "transitions": [
+        {
+          "event": "sent"
+        },
+        {
+          "event": "failed",
+          "next": "set_parser_error_delivery_failure"
+        }
+      ],
+      "type": "send-message"
+    },
+    {
+      "name": "set_valid_email_9_10",
+      "properties": {
+        "offset": {
+          "x": 180,
+          "y": 2400
+        },
+        "variables": [
+          {
+            "key": "reservation_email",
+            "type": "string",
+            "value": "{{widgets.deposit_request_9_10_form.inbound.Body}}"
+          }
+        ]
+      },
+      "transitions": [
+        {
+          "event": "next",
+          "next": "vip_option_ask"
+        }
+      ],
+      "type": "set-variables"
+    },
+    {
+      "name": "set_valid_email_retry_9_10",
+      "properties": {
+        "offset": {
+          "x": 240,
+          "y": 2520
+        },
+        "variables": [
+          {
+            "key": "reservation_email",
+            "type": "string",
+            "value": "{{widgets.email_retry_9_10.inbound.Body}}"
+          }
+        ]
+      },
+      "transitions": [
+        {
+          "event": "next",
+          "next": "vip_option_ask"
+        }
+      ],
+      "type": "set-variables"
+    },
+    {
+      "name": "set_email_followup_9_10",
+      "properties": {
+        "offset": {
+          "x": 360,
+          "y": 2550
+        },
+        "variables": [
+          {
+            "key": "reservation_email",
+            "type": "string",
+            "value": "NEEDS STAFF FOLLOW-UP"
+          }
+        ]
+      },
+      "transitions": [
+        {
+          "event": "next",
+          "next": "email_unavailable_9_10"
+        }
+      ],
+      "type": "set-variables"
+    },
+    {
+      "name": "set_valid_email_11_14",
+      "properties": {
+        "offset": {
+          "x": 450,
+          "y": 2650
+        },
+        "variables": [
+          {
+            "key": "reservation_email",
+            "type": "string",
+            "value": "{{widgets.deposit_request_11_14_form.inbound.Body}}"
+          }
+        ]
+      },
+      "transitions": [
+        {
+          "event": "next",
+          "next": "vip_option_ask"
+        }
+      ],
+      "type": "set-variables"
+    },
+    {
+      "name": "set_valid_email_retry_11_14",
+      "properties": {
+        "offset": {
+          "x": 520,
+          "y": 2750
+        },
+        "variables": [
+          {
+            "key": "reservation_email",
+            "type": "string",
+            "value": "{{widgets.email_retry_11_14.inbound.Body}}"
+          }
+        ]
+      },
+      "transitions": [
+        {
+          "event": "next",
+          "next": "vip_option_ask"
+        }
+      ],
+      "type": "set-variables"
+    },
+    {
+      "name": "set_email_followup_11_14",
+      "properties": {
+        "offset": {
+          "x": 620,
+          "y": 2850
+        },
+        "variables": [
+          {
+            "key": "reservation_email",
+            "type": "string",
+            "value": "NEEDS STAFF FOLLOW-UP"
+          }
+        ]
+      },
+      "transitions": [
+        {
+          "event": "next",
+          "next": "email_unavailable_11_14"
+        }
+      ],
+      "type": "set-variables"
+    },
+    {
+      "name": "set_valid_email_15_20",
+      "properties": {
+        "offset": {
+          "x": 750,
+          "y": 2950
+        },
+        "variables": [
+          {
+            "key": "reservation_email",
+            "type": "string",
+            "value": "{{widgets.deposit_request_15_20_form.inbound.Body}}"
+          }
+        ]
+      },
+      "transitions": [
+        {
+          "event": "next",
+          "next": "vip_option_ask"
+        }
+      ],
+      "type": "set-variables"
+    },
+    {
+      "name": "set_valid_email_retry_15_20",
+      "properties": {
+        "offset": {
+          "x": 820,
+          "y": 3050
+        },
+        "variables": [
+          {
+            "key": "reservation_email",
+            "type": "string",
+            "value": "{{widgets.email_retry_15_20.inbound.Body}}"
+          }
+        ]
+      },
+      "transitions": [
+        {
+          "event": "next",
+          "next": "vip_option_ask"
+        }
+      ],
+      "type": "set-variables"
+    },
+    {
+      "name": "set_email_followup_15_20",
+      "properties": {
+        "offset": {
+          "x": 920,
+          "y": 3150
+        },
+        "variables": [
+          {
+            "key": "reservation_email",
+            "type": "string",
+            "value": "NEEDS STAFF FOLLOW-UP"
+          }
+        ]
+      },
+      "transitions": [
+        {
+          "event": "next",
+          "next": "email_unavailable_15_20"
+        }
+      ],
+      "type": "set-variables"
+    },
+    {
+      "name": "set_email_not_required",
+      "properties": {
+        "offset": {
+          "x": 1100,
+          "y": 3250
+        },
+        "variables": [
+          {
+            "key": "reservation_email",
+            "type": "string",
+            "value": "NOT REQUIRED"
+          }
+        ]
+      },
+      "transitions": [
+        {
+          "event": "next",
+          "next": "vip_option_ask"
+        }
+      ],
+      "type": "set-variables"
+    },
+    {
+      "name": "set_vip_yes_first",
+      "properties": {
+        "offset": {
+          "x": 1150,
+          "y": 3350
+        },
+        "variables": [
+          {
+            "key": "vip_preference",
+            "type": "string",
+            "value": "YES"
+          }
+        ]
+      },
+      "transitions": [
+        {
+          "event": "next",
+          "next": "details_confirmed_form"
+        }
+      ],
+      "type": "set-variables"
+    },
+    {
+      "name": "set_vip_no_first",
+      "properties": {
+        "offset": {
+          "x": 1250,
+          "y": 3450
+        },
+        "variables": [
+          {
+            "key": "vip_preference",
+            "type": "string",
+            "value": "NO"
+          }
+        ]
+      },
+      "transitions": [
+        {
+          "event": "next",
+          "next": "details_confirmed_form"
+        }
+      ],
+      "type": "set-variables"
+    },
+    {
+      "name": "set_vip_yes_retry",
+      "properties": {
+        "offset": {
+          "x": 1350,
+          "y": 3550
+        },
+        "variables": [
+          {
+            "key": "vip_preference",
+            "type": "string",
+            "value": "YES"
+          }
+        ]
+      },
+      "transitions": [
+        {
+          "event": "next",
+          "next": "details_confirmed_form"
+        }
+      ],
+      "type": "set-variables"
+    },
+    {
+      "name": "set_vip_no_retry",
+      "properties": {
+        "offset": {
+          "x": 1450,
+          "y": 3650
+        },
+        "variables": [
+          {
+            "key": "vip_preference",
+            "type": "string",
+            "value": "NO"
+          }
+        ]
+      },
+      "transitions": [
+        {
+          "event": "next",
+          "next": "details_confirmed_form"
+        }
+      ],
+      "type": "set-variables"
+    },
+    {
+      "name": "set_vip_followup",
+      "properties": {
+        "offset": {
+          "x": 1550,
+          "y": 3750
+        },
+        "variables": [
+          {
+            "key": "vip_preference",
+            "type": "string",
+            "value": "NEEDS STAFF FOLLOW-UP"
+          }
+        ]
+      },
+      "transitions": [
+        {
+          "event": "next",
+          "next": "vip_preference_unavailable"
+        }
+      ],
+      "type": "set-variables"
+    },
+    {
+      "name": "send_incomplete_reservation_to_staff",
+      "properties": {
+        "body": "F&F LV - INCOMPLETE RESERVATION REQUEST\n\nStatus: INCOMPLETE - STAFF FOLLOW-UP REQUIRED\n\nName: {% if flow.variables.reservation_parser_source == 'corrected' %}{{widgets.parse_corrected_reservation.parsed.name | default: 'NOT AVAILABLE'}}{% elsif flow.variables.reservation_parser_source == 'original' %}{{widgets.test_parse_reservation.parsed.name | default: 'NOT AVAILABLE'}}{% else %}NOT AVAILABLE{% endif %}\nPhone: {{contact.channel.address}}\nDate: {% if flow.variables.reservation_parser_source == 'corrected' %}{{widgets.parse_corrected_reservation.parsed.date | default: 'NOT AVAILABLE'}}{% elsif flow.variables.reservation_parser_source == 'original' %}{{widgets.test_parse_reservation.parsed.date | default: 'NOT AVAILABLE'}}{% else %}NOT AVAILABLE{% endif %}\nTime: {% if flow.variables.reservation_parser_source == 'corrected' %}{{widgets.parse_corrected_reservation.parsed.time | default: 'NOT AVAILABLE'}}{% elsif flow.variables.reservation_parser_source == 'original' %}{{widgets.test_parse_reservation.parsed.time | default: 'NOT AVAILABLE'}}{% else %}NOT AVAILABLE{% endif %}\nGuests: {% if flow.variables.reservation_parser_source == 'corrected' %}{{widgets.parse_corrected_reservation.parsed.guests | default: 'NOT AVAILABLE'}}{% elsif flow.variables.reservation_parser_source == 'original' %}{{widgets.test_parse_reservation.parsed.guests | default: 'NOT AVAILABLE'}}{% else %}NOT AVAILABLE{% endif %}\nOccasion: {% if flow.variables.reservation_parser_source == 'corrected' %}{{widgets.parse_corrected_reservation.parsed.occasion | default: 'NOT AVAILABLE'}}{% elsif flow.variables.reservation_parser_source == 'original' %}{{widgets.test_parse_reservation.parsed.occasion | default: 'NOT AVAILABLE'}}{% else %}NOT AVAILABLE{% endif %}\n\nInterruption: {{flow.variables.interruption_reason | default: 'NOT AVAILABLE'}}\nStopped at: {{flow.variables.interruption_stage | default: 'NOT AVAILABLE'}}\n\nEmail: {{flow.variables.reservation_email | default: 'NOT PROVIDED'}}\nVIP: {{flow.variables.vip_preference | default: 'NOT PROVIDED'}}\n\nSTAFF: Review this incomplete request and contact the customer to finish the reservation process.\nNOT CONFIRMED.",
+        "channel": "{{trigger.message.ChannelSid}}",
+        "from": "{{flow.channel.address}}",
+        "offset": {
+          "x": 1900,
+          "y": 3900
+        },
+        "service": "{{trigger.message.InstanceSid}}",
+        "to": "+17025466394"
+      },
+      "transitions": [
+        {
+          "event": "sent"
+        },
+        {
+          "event": "failed"
+        }
+      ],
+      "type": "send-message"
+    },
+    {
+      "name": "set_vip_first_timeout",
+      "properties": {
+        "offset": {
+          "x": 1950,
+          "y": 3750
+        },
+        "variables": [
+          {
+            "key": "interruption_reason",
+            "type": "string",
+            "value": "CUSTOMER TIMEOUT"
+          },
+          {
+            "key": "interruption_stage",
+            "type": "string",
+            "value": "VIP SELECTION - FIRST ATTEMPT"
+          }
+        ]
+      },
+      "transitions": [
+        {
+          "event": "next",
+          "next": "ingest_incomplete_reservation"
+        }
+      ],
+      "type": "set-variables"
+    },
+    {
+      "name": "set_vip_first_delivery_failure",
+      "properties": {
+        "offset": {
+          "x": 2050,
+          "y": 3850
+        },
+        "variables": [
+          {
+            "key": "interruption_reason",
+            "type": "string",
+            "value": "MESSAGE DELIVERY FAILURE"
+          },
+          {
+            "key": "interruption_stage",
+            "type": "string",
+            "value": "VIP SELECTION - FIRST ATTEMPT"
+          }
+        ]
+      },
+      "transitions": [
+        {
+          "event": "next",
+          "next": "ingest_incomplete_reservation"
+        }
+      ],
+      "type": "set-variables"
+    },
+    {
+      "name": "set_email_first_timeout_9_10",
+      "properties": {
+        "offset": {
+          "x": 2150,
+          "y": 3900
+        },
+        "variables": [
+          {
+            "key": "interruption_reason",
+            "type": "string",
+            "value": "CUSTOMER TIMEOUT"
+          },
+          {
+            "key": "interruption_stage",
+            "type": "string",
+            "value": "EMAIL COLLECTION - 9-10 GUESTS - FIRST ATTEMPT"
+          }
+        ]
+      },
+      "transitions": [
+        {
+          "event": "next",
+          "next": "ingest_incomplete_reservation"
+        }
+      ],
+      "type": "set-variables"
+    },
+    {
+      "name": "set_email_first_timeout_11_14",
+      "properties": {
+        "offset": {
+          "x": 2250,
+          "y": 4000
+        },
+        "variables": [
+          {
+            "key": "interruption_reason",
+            "type": "string",
+            "value": "CUSTOMER TIMEOUT"
+          },
+          {
+            "key": "interruption_stage",
+            "type": "string",
+            "value": "EMAIL COLLECTION - 11-14 GUESTS - FIRST ATTEMPT"
+          }
+        ]
+      },
+      "transitions": [
+        {
+          "event": "next",
+          "next": "ingest_incomplete_reservation"
+        }
+      ],
+      "type": "set-variables"
+    },
+    {
+      "name": "set_email_first_timeout_15_20",
+      "properties": {
+        "offset": {
+          "x": 2350,
+          "y": 4100
+        },
+        "variables": [
+          {
+            "key": "interruption_reason",
+            "type": "string",
+            "value": "CUSTOMER TIMEOUT"
+          },
+          {
+            "key": "interruption_stage",
+            "type": "string",
+            "value": "EMAIL COLLECTION - 15-20 GUESTS - FIRST ATTEMPT"
+          }
+        ]
+      },
+      "transitions": [
+        {
+          "event": "next",
+          "next": "ingest_incomplete_reservation"
+        }
+      ],
+      "type": "set-variables"
+    },
+    {
+      "name": "set_email_first_delivery_failure_9_10",
+      "properties": {
+        "offset": {
+          "x": 2450,
+          "y": 3900
+        },
+        "variables": [
+          {
+            "key": "interruption_reason",
+            "type": "string",
+            "value": "MESSAGE DELIVERY FAILURE"
+          },
+          {
+            "key": "interruption_stage",
+            "type": "string",
+            "value": "EMAIL COLLECTION - 9-10 GUESTS - FIRST ATTEMPT"
+          }
+        ]
+      },
+      "transitions": [
+        {
+          "event": "next",
+          "next": "ingest_incomplete_reservation"
+        }
+      ],
+      "type": "set-variables"
+    },
+    {
+      "name": "set_email_first_delivery_failure_11_14",
+      "properties": {
+        "offset": {
+          "x": 2550,
+          "y": 4000
+        },
+        "variables": [
+          {
+            "key": "interruption_reason",
+            "type": "string",
+            "value": "MESSAGE DELIVERY FAILURE"
+          },
+          {
+            "key": "interruption_stage",
+            "type": "string",
+            "value": "EMAIL COLLECTION - 11-14 GUESTS - FIRST ATTEMPT"
+          }
+        ]
+      },
+      "transitions": [
+        {
+          "event": "next",
+          "next": "ingest_incomplete_reservation"
+        }
+      ],
+      "type": "set-variables"
+    },
+    {
+      "name": "set_email_first_delivery_failure_15_20",
+      "properties": {
+        "offset": {
+          "x": 2650,
+          "y": 4100
+        },
+        "variables": [
+          {
+            "key": "interruption_reason",
+            "type": "string",
+            "value": "MESSAGE DELIVERY FAILURE"
+          },
+          {
+            "key": "interruption_stage",
+            "type": "string",
+            "value": "EMAIL COLLECTION - 15-20 GUESTS - FIRST ATTEMPT"
+          }
+        ]
+      },
+      "transitions": [
+        {
+          "event": "next",
+          "next": "ingest_incomplete_reservation"
+        }
+      ],
+      "type": "set-variables"
+    },
+    {
+      "name": "set_email_retry_timeout_9_10",
+      "properties": {
+        "offset": {
+          "x": 2750,
+          "y": 3900
+        },
+        "variables": [
+          {
+            "key": "interruption_reason",
+            "type": "string",
+            "value": "CUSTOMER TIMEOUT"
+          },
+          {
+            "key": "interruption_stage",
+            "type": "string",
+            "value": "EMAIL COLLECTION - 9-10 GUESTS - RETRY"
+          }
+        ]
+      },
+      "transitions": [
+        {
+          "event": "next",
+          "next": "ingest_incomplete_reservation"
+        }
+      ],
+      "type": "set-variables"
+    },
+    {
+      "name": "set_email_retry_timeout_11_14",
+      "properties": {
+        "offset": {
+          "x": 2850,
+          "y": 4000
+        },
+        "variables": [
+          {
+            "key": "interruption_reason",
+            "type": "string",
+            "value": "CUSTOMER TIMEOUT"
+          },
+          {
+            "key": "interruption_stage",
+            "type": "string",
+            "value": "EMAIL COLLECTION - 11-14 GUESTS - RETRY"
+          }
+        ]
+      },
+      "transitions": [
+        {
+          "event": "next",
+          "next": "ingest_incomplete_reservation"
+        }
+      ],
+      "type": "set-variables"
+    },
+    {
+      "name": "set_email_retry_timeout_15_20",
+      "properties": {
+        "offset": {
+          "x": 2950,
+          "y": 4100
+        },
+        "variables": [
+          {
+            "key": "interruption_reason",
+            "type": "string",
+            "value": "CUSTOMER TIMEOUT"
+          },
+          {
+            "key": "interruption_stage",
+            "type": "string",
+            "value": "EMAIL COLLECTION - 15-20 GUESTS - RETRY"
+          }
+        ]
+      },
+      "transitions": [
+        {
+          "event": "next",
+          "next": "ingest_incomplete_reservation"
+        }
+      ],
+      "type": "set-variables"
+    },
+    {
+      "name": "set_email_retry_delivery_failure_9_10",
+      "properties": {
+        "offset": {
+          "x": 3050,
+          "y": 3900
+        },
+        "variables": [
+          {
+            "key": "interruption_reason",
+            "type": "string",
+            "value": "MESSAGE DELIVERY FAILURE"
+          },
+          {
+            "key": "interruption_stage",
+            "type": "string",
+            "value": "EMAIL COLLECTION - 9-10 GUESTS - RETRY"
+          }
+        ]
+      },
+      "transitions": [
+        {
+          "event": "next",
+          "next": "ingest_incomplete_reservation"
+        }
+      ],
+      "type": "set-variables"
+    },
+    {
+      "name": "set_email_retry_delivery_failure_11_14",
+      "properties": {
+        "offset": {
+          "x": 3150,
+          "y": 4000
+        },
+        "variables": [
+          {
+            "key": "interruption_reason",
+            "type": "string",
+            "value": "MESSAGE DELIVERY FAILURE"
+          },
+          {
+            "key": "interruption_stage",
+            "type": "string",
+            "value": "EMAIL COLLECTION - 11-14 GUESTS - RETRY"
+          }
+        ]
+      },
+      "transitions": [
+        {
+          "event": "next",
+          "next": "ingest_incomplete_reservation"
+        }
+      ],
+      "type": "set-variables"
+    },
+    {
+      "name": "set_email_retry_delivery_failure_15_20",
+      "properties": {
+        "offset": {
+          "x": 3250,
+          "y": 4100
+        },
+        "variables": [
+          {
+            "key": "interruption_reason",
+            "type": "string",
+            "value": "MESSAGE DELIVERY FAILURE"
+          },
+          {
+            "key": "interruption_stage",
+            "type": "string",
+            "value": "EMAIL COLLECTION - 15-20 GUESTS - RETRY"
+          }
+        ]
+      },
+      "transitions": [
+        {
+          "event": "next",
+          "next": "ingest_incomplete_reservation"
+        }
+      ],
+      "type": "set-variables"
+    },
+    {
+      "name": "set_vip_retry_timeout",
+      "properties": {
+        "offset": {
+          "x": 3350,
+          "y": 3900
+        },
+        "variables": [
+          {
+            "key": "interruption_reason",
+            "type": "string",
+            "value": "CUSTOMER TIMEOUT"
+          },
+          {
+            "key": "interruption_stage",
+            "type": "string",
+            "value": "VIP SELECTION - RETRY"
+          }
+        ]
+      },
+      "transitions": [
+        {
+          "event": "next",
+          "next": "ingest_incomplete_reservation"
+        }
+      ],
+      "type": "set-variables"
+    },
+    {
+      "name": "set_vip_retry_delivery_failure",
+      "properties": {
+        "offset": {
+          "x": 3450,
+          "y": 4000
+        },
+        "variables": [
+          {
+            "key": "interruption_reason",
+            "type": "string",
+            "value": "MESSAGE DELIVERY FAILURE"
+          },
+          {
+            "key": "interruption_stage",
+            "type": "string",
+            "value": "VIP SELECTION - RETRY"
+          }
+        ]
+      },
+      "transitions": [
+        {
+          "event": "next",
+          "next": "ingest_incomplete_reservation"
+        }
+      ],
+      "type": "set-variables"
+    },
+    {
+      "name": "send_unvalidated_reservation_to_staff",
+      "properties": {
+        "body": "F&F LV - UNVALIDATED RESERVATION REQUEST\n\nStatus: UNVALIDATED REQUEST - STAFF FOLLOW-UP REQUIRED\n\nCustomer phone: {{contact.channel.address}}\n\nInterruption: {{flow.variables.interruption_reason | default: 'NOT AVAILABLE'}}\nStopped at: {{flow.variables.interruption_stage | default: 'NOT AVAILABLE'}}\n\nReservation details: NOT VALIDATED\n\nSTAFF: Contact the customer to collect and validate their reservation details.\nDo not treat this request as an accepted reservation.\nNOT CONFIRMED.",
+        "channel": "{{trigger.message.ChannelSid}}",
+        "from": "{{flow.channel.address}}",
+        "message_type": "custom",
+        "offset": {
+          "x": 3550,
+          "y": 4200
+        },
+        "service": "{{trigger.message.InstanceSid}}",
+        "to": "+17025466394"
+      },
+      "transitions": [
+        {
+          "event": "sent"
+        },
+        {
+          "event": "failed"
+        }
+      ],
+      "type": "send-message"
+    },
+    {
+      "name": "set_correction_timeout",
+      "properties": {
+        "offset": {
+          "x": 3650,
+          "y": 3900
+        },
+        "variables": [
+          {
+            "key": "interruption_reason",
+            "type": "string",
+            "value": "CUSTOMER TIMEOUT"
+          },
+          {
+            "key": "interruption_stage",
+            "type": "string",
+            "value": "RESERVATION CORRECTION - UNVALIDATED"
+          }
+        ]
+      },
+      "transitions": [
+        {
+          "event": "next",
+          "next": "ingest_unvalidated_reservation"
+        }
+      ],
+      "type": "set-variables"
+    },
+    {
+      "name": "set_correction_delivery_failure",
+      "properties": {
+        "offset": {
+          "x": 3750,
+          "y": 4000
+        },
+        "variables": [
+          {
+            "key": "interruption_reason",
+            "type": "string",
+            "value": "MESSAGE DELIVERY FAILURE"
+          },
+          {
+            "key": "interruption_stage",
+            "type": "string",
+            "value": "RESERVATION CORRECTION - UNVALIDATED"
+          }
+        ]
+      },
+      "transitions": [
+        {
+          "event": "next",
+          "next": "ingest_unvalidated_reservation"
+        }
+      ],
+      "type": "set-variables"
+    },
+    {
+      "name": "set_vip_fallback_delivery_failure",
+      "properties": {
+        "offset": {
+          "x": 3850,
+          "y": 4000
+        },
+        "variables": [
+          {
+            "key": "interruption_reason",
+            "type": "string",
+            "value": "MESSAGE DELIVERY FAILURE"
+          },
+          {
+            "key": "interruption_stage",
+            "type": "string",
+            "value": "VIP PREFERENCE FALLBACK MESSAGE"
+          }
+        ]
+      },
+      "transitions": [
+        {
+          "event": "next",
+          "next": "ingest_incomplete_reservation"
+        }
+      ],
+      "type": "set-variables"
+    },
+    {
+      "name": "set_email_fallback_delivery_failure_9_10",
+      "properties": {
+        "offset": {
+          "x": 3950,
+          "y": 4200
+        },
+        "variables": [
+          {
+            "key": "interruption_reason",
+            "type": "string",
+            "value": "MESSAGE DELIVERY FAILURE"
+          },
+          {
+            "key": "interruption_stage",
+            "type": "string",
+            "value": "EMAIL FALLBACK MESSAGE - 9-10 GUESTS"
+          }
+        ]
+      },
+      "transitions": [
+        {
+          "event": "next",
+          "next": "ingest_incomplete_reservation"
+        }
+      ],
+      "type": "set-variables"
+    },
+    {
+      "name": "set_email_fallback_delivery_failure_11_14",
+      "properties": {
+        "offset": {
+          "x": 4050,
+          "y": 4200
+        },
+        "variables": [
+          {
+            "key": "interruption_reason",
+            "type": "string",
+            "value": "MESSAGE DELIVERY FAILURE"
+          },
+          {
+            "key": "interruption_stage",
+            "type": "string",
+            "value": "EMAIL FALLBACK MESSAGE - 11-14 GUESTS"
+          }
+        ]
+      },
+      "transitions": [
+        {
+          "event": "next",
+          "next": "ingest_incomplete_reservation"
+        }
+      ],
+      "type": "set-variables"
+    },
+    {
+      "name": "set_email_fallback_delivery_failure_15_20",
+      "properties": {
+        "offset": {
+          "x": 4150,
+          "y": 4200
+        },
+        "variables": [
+          {
+            "key": "interruption_reason",
+            "type": "string",
+            "value": "MESSAGE DELIVERY FAILURE"
+          },
+          {
+            "key": "interruption_stage",
+            "type": "string",
+            "value": "EMAIL FALLBACK MESSAGE - 15-20 GUESTS"
+          }
+        ]
+      },
+      "transitions": [
+        {
+          "event": "next",
+          "next": "ingest_incomplete_reservation"
+        }
+      ],
+      "type": "set-variables"
+    },
+    {
+      "name": "set_correction_unavailable_delivery_failure",
+      "properties": {
+        "offset": {
+          "x": 4350,
+          "y": 4400
+        },
+        "variables": [
+          {
+            "key": "interruption_reason",
+            "type": "string",
+            "value": "MESSAGE DELIVERY FAILURE"
+          },
+          {
+            "key": "interruption_stage",
+            "type": "string",
+            "value": "RESERVATION CORRECTION UNAVAILABLE MESSAGE"
+          }
+        ]
+      },
+      "transitions": [
+        {
+          "event": "next",
+          "next": "ingest_unvalidated_reservation"
+        }
+      ],
+      "type": "set-variables"
+    },
+    {
+      "name": "set_parser_error_delivery_failure",
+      "properties": {
+        "offset": {
+          "x": 4450,
+          "y": 4400
+        },
+        "variables": [
+          {
+            "key": "interruption_reason",
+            "type": "string",
+            "value": "MESSAGE DELIVERY FAILURE"
+          },
+          {
+            "key": "interruption_stage",
+            "type": "string",
+            "value": "RESERVATION PARSER ERROR MESSAGE"
+          }
+        ]
+      },
+      "transitions": [
+        {
+          "event": "next",
+          "next": "ingest_unvalidated_reservation"
+        }
+      ],
+      "type": "set-variables"
+    },
+    {
+      "name": "set_original_details_validated",
+      "properties": {
+        "offset": {
+          "x": -700,
+          "y": 475
+        },
+        "variables": [
+          {
+            "key": "reservation_details_validated",
+            "type": "string",
+            "value": "true"
+          },
+          {
+            "key": "reservation_parser_source",
+            "type": "string",
+            "value": "original"
+          }
+        ]
+      },
+      "transitions": [
+        {
+          "event": "next",
+          "next": "route_by_party_size"
+        }
+      ],
+      "type": "set-variables"
+    },
+    {
+      "name": "set_corrected_details_validated",
+      "properties": {
+        "offset": {
+          "x": -200,
+          "y": 1250
+        },
+        "variables": [
+          {
+            "key": "reservation_details_validated",
+            "type": "string",
+            "value": "true"
+          },
+          {
+            "key": "reservation_parser_source",
+            "type": "string",
+            "value": "corrected"
+          }
+        ]
+      },
+      "transitions": [
+        {
+          "event": "next",
+          "next": "route_corrected_party_size"
+        }
+      ],
+      "type": "set-variables"
+    },
+    {
+      "name": "ingest_new_reservation",
+      "properties": {
+        "environment_sid": "ZE474d6160841e9dc59cc4a865f5d49059",
+        "function_sid": "ZH40149acdd67b95b94ae2d915897fec09",
+        "offset": {
+          "x": -512,
+          "y": 3190
+        },
+        "parameters": [
+          {
+            "key": "twilioExecutionSid",
+            "value": "{{flow.sid}}"
+          },
+          {
+            "key": "customerPhone",
+            "value": "{{contact.channel.address}}"
+          },
+          {
+            "key": "requestStatus",
+            "value": "pending"
+          },
+          {
+            "key": "detailsValidated",
+            "value": "{{flow.variables.reservation_details_validated}}"
+          },
+          {
+            "key": "customerName",
+            "value": "{% if flow.variables.reservation_parser_source == 'corrected' %}{{widgets.parse_corrected_reservation.parsed.name}}{% else %}{{widgets.test_parse_reservation.parsed.name}}{% endif %}"
+          },
+          {
+            "key": "reservationDate",
+            "value": "{% if flow.variables.reservation_parser_source == 'corrected' %}{{widgets.parse_corrected_reservation.parsed.date}}{% else %}{{widgets.test_parse_reservation.parsed.date}}{% endif %}"
+          },
+          {
+            "key": "reservationTime",
+            "value": "{% if flow.variables.reservation_parser_source == 'corrected' %}{{widgets.parse_corrected_reservation.parsed.time}}{% else %}{{widgets.test_parse_reservation.parsed.time}}{% endif %}"
+          },
+          {
+            "key": "partySize",
+            "value": "{% if flow.variables.reservation_parser_source == 'corrected' %}{{widgets.parse_corrected_reservation.parsed.guests}}{% else %}{{widgets.test_parse_reservation.parsed.guests}}{% endif %}"
+          },
+          {
+            "key": "occasion",
+            "value": "{% if flow.variables.reservation_parser_source == 'corrected' %}{{widgets.parse_corrected_reservation.parsed.occasion}}{% else %}{{widgets.test_parse_reservation.parsed.occasion}}{% endif %}"
+          },
+          {
+            "key": "email",
+            "value": "{{flow.variables.reservation_email}}"
+          },
+          {
+            "key": "vipPreference",
+            "value": "{{flow.variables.vip_preference}}"
+          }
+        ],
+        "service_sid": "ZS7989535d468e4b4d2bccdf543c5cad56",
+        "url": "https://fin-feathers-logic-2651.twil.io/ingest-reservation"
+      },
+      "transitions": [
+        {
+          "event": "success",
+          "next": "check_new_reservation_persisted"
+        },
+        {
+          "event": "fail",
+          "next": "set_new_reservation_ingest_failure"
+        }
+      ],
+      "type": "run-function"
+    },
+    {
+      "name": "check_new_reservation_persisted",
+      "properties": {
+        "input": "{{widgets.ingest_new_reservation.parsed.persisted}}",
+        "offset": {
+          "x": -273,
+          "y": 3361
+        }
+      },
+      "transitions": [
+        {
+          "event": "noMatch",
+          "next": "set_new_reservation_ingest_failure"
+        },
+        {
+          "conditions": [
+            {
+              "arguments": [
+                "{{widgets.ingest_new_reservation.parsed.persisted}}"
+              ],
+              "friendly_name": "reservation_persisted",
+              "type": "equal_to",
+              "value": "true"
+            }
+          ],
+          "event": "match",
+          "next": "send_message_to_staff"
+        }
+      ],
+      "type": "split-based-on"
+    },
+    {
+      "name": "set_new_reservation_ingest_failure",
+      "properties": {
+        "offset": {
+          "x": 250,
+          "y": 3550
+        },
+        "variables": [
+          {
+            "key": "reservation_ingest_status",
+            "type": "string",
+            "value": "FAILED"
+          },
+          {
+            "key": "reservation_ingest_failure_type",
+            "type": "string",
+            "value": "DATABASE PERSISTENCE NOT VERIFIED"
+          }
+        ]
+      },
+      "transitions": [
+        {
+          "event": "next",
+          "next": "send_ingestion_failure_to_staff"
+        }
+      ],
+      "type": "set-variables"
+    },
+    {
+      "name": "send_ingestion_failure_to_staff",
+      "properties": {
+        "body": "F&F LV - RESERVATION ALERT\n\nRESERVATION COULD NOT BE SAVED\n\nStaff follow-up required.\n\nCustomer phone: {{contact.channel.address}}\nReference: {{flow.sid}}\n\nStatus: NOT CONFIRMED\n\nSTAFF: Please contact the customer to verify their reservation details. The reservation may not be in our system.",
+        "channel": "{{trigger.message.ChannelSid}}",
+        "from": "{{flow.channel.address}}",
+        "message_type": "custom",
+        "offset": {
+          "x": 500,
+          "y": 3750
+        },
+        "service": "{{trigger.message.InstanceSid}}",
+        "to": "+17025466394"
+      },
+      "transitions": [
+        {
+          "event": "sent"
+        },
+        {
+          "event": "failed"
+        }
+      ],
+      "type": "send-message"
+    },
+    {
+      "name": "ingest_incomplete_reservation",
+      "properties": {
+        "environment_sid": "ZE474d6160841e9dc59cc4a865f5d49059",
+        "function_sid": "ZH40149acdd67b95b94ae2d915897fec09",
+        "offset": {
+          "x": -650,
+          "y": 3950
+        },
+        "parameters": [
+          {
+            "key": "twilioExecutionSid",
+            "value": "{{flow.sid}}"
+          },
+          {
+            "key": "customerPhone",
+            "value": "{{contact.channel.address}}"
+          },
+          {
+            "key": "requestStatus",
+            "value": "incomplete"
+          },
+          {
+            "key": "detailsValidated",
+            "value": "{{flow.variables.reservation_details_validated}}"
+          },
+          {
+            "key": "customerName",
+            "value": "{% if flow.variables.reservation_parser_source == 'corrected' %}{{widgets.parse_corrected_reservation.parsed.name}}{% else %}{{widgets.test_parse_reservation.parsed.name}}{% endif %}"
+          },
+          {
+            "key": "reservationDate",
+            "value": "{% if flow.variables.reservation_parser_source == 'corrected' %}{{widgets.parse_corrected_reservation.parsed.date}}{% else %}{{widgets.test_parse_reservation.parsed.date}}{% endif %}"
+          },
+          {
+            "key": "reservationTime",
+            "value": "{% if flow.variables.reservation_parser_source == 'corrected' %}{{widgets.parse_corrected_reservation.parsed.time}}{% else %}{{widgets.test_parse_reservation.parsed.time}}{% endif %}"
+          },
+          {
+            "key": "partySize",
+            "value": "{% if flow.variables.reservation_parser_source == 'corrected' %}{{widgets.parse_corrected_reservation.parsed.guests}}{% else %}{{widgets.test_parse_reservation.parsed.guests}}{% endif %}"
+          },
+          {
+            "key": "occasion",
+            "value": "{% if flow.variables.reservation_parser_source == 'corrected' %}{{widgets.parse_corrected_reservation.parsed.occasion}}{% else %}{{widgets.test_parse_reservation.parsed.occasion}}{% endif %}"
+          },
+          {
+            "key": "email",
+            "value": "{{flow.variables.reservation_email}}"
+          },
+          {
+            "key": "vipPreference",
+            "value": "{{flow.variables.vip_preference}}"
+          },
+          {
+            "key": "interruptionReason",
+            "value": "{{flow.variables.interruption_reason}}"
+          },
+          {
+            "key": "interruptionStage",
+            "value": "{{flow.variables.interruption_stage}}"
+          }
+        ],
+        "service_sid": "ZS7989535d468e4b4d2bccdf543c5cad56",
+        "url": "https://fin-feathers-logic-2651.twil.io/ingest-reservation"
+      },
+      "transitions": [
+        {
+          "event": "success",
+          "next": "check_incomplete_reservation_persisted"
+        },
+        {
+          "event": "fail",
+          "next": "set_incomplete_reservation_ingest_failure"
+        }
+      ],
+      "type": "run-function"
+    },
+    {
+      "name": "check_incomplete_reservation_persisted",
+      "properties": {
+        "input": "{{widgets.ingest_incomplete_reservation.parsed.persisted}}",
+        "offset": {
+          "x": -650,
+          "y": 4150
+        }
+      },
+      "transitions": [
+        {
+          "event": "noMatch",
+          "next": "set_incomplete_reservation_ingest_failure"
+        },
+        {
+          "conditions": [
+            {
+              "arguments": [
+                "{{widgets.ingest_incomplete_reservation.parsed.persisted}}"
+              ],
+              "friendly_name": "reservation_persisted",
+              "type": "equal_to",
+              "value": "true"
+            }
+          ],
+          "event": "match",
+          "next": "send_incomplete_reservation_to_staff"
+        }
+      ],
+      "type": "split-based-on"
+    },
+    {
+      "name": "set_incomplete_reservation_ingest_failure",
+      "properties": {
+        "offset": {
+          "x": -150,
+          "y": 4350
+        },
+        "variables": [
+          {
+            "key": "reservation_ingest_status",
+            "type": "string",
+            "value": "FAILED"
+          },
+          {
+            "key": "reservation_ingest_failure_type",
+            "type": "string",
+            "value": "INCOMPLETE RESERVATION - DATABASE PERSISTENCE NOT VERIFIED"
+          }
+        ]
+      },
+      "transitions": [
+        {
+          "event": "next",
+          "next": "send_incomplete_ingestion_failure_to_staff"
+        }
+      ],
+      "type": "set-variables"
+    },
+    {
+      "name": "send_incomplete_ingestion_failure_to_staff",
+      "properties": {
+        "body": "F&F LV - RESERVATION ALERT\n\nINCOMPLETE RESERVATION - COULD NOT BE SAVED\n\nStaff follow-up required.\n\nCustomer phone: {{contact.channel.address}}\nReason: {{flow.variables.interruption_reason | default: 'NOT AVAILABLE'}}\nLast step: {{flow.variables.interruption_stage | default: 'NOT AVAILABLE'}}\nReference: {{flow.sid}}\n\nStatus: NOT CONFIRMED\n\nSTAFF: Please contact the customer to complete their reservation request. The reservation may not be in our system.",
+        "channel": "{{trigger.message.ChannelSid}}",
+        "from": "{{flow.channel.address}}",
+        "message_type": "custom",
+        "offset": {
+          "x": 350,
+          "y": 4550
+        },
+        "service": "{{trigger.message.InstanceSid}}",
+        "to": "+17025466394"
+      },
+      "transitions": [
+        {
+          "event": "sent"
+        },
+        {
+          "event": "failed"
+        }
+      ],
+      "type": "send-message"
+    },
+    {
+      "name": "ingest_unvalidated_reservation",
+      "properties": {
+        "environment_sid": "ZE474d6160841e9dc59cc4a865f5d49059",
+        "function_sid": "ZH40149acdd67b95b94ae2d915897fec09",
+        "offset": {
+          "x": -1050,
+          "y": 4750
+        },
+        "parameters": [
+          {
+            "key": "twilioExecutionSid",
+            "value": "{{flow.sid}}"
+          },
+          {
+            "key": "customerPhone",
+            "value": "{{contact.channel.address}}"
+          },
+          {
+            "key": "requestStatus",
+            "value": "unvalidated"
+          },
+          {
+            "key": "detailsValidated",
+            "value": "false"
+          },
+          {
+            "key": "customerName",
+            "value": "NOT PROVIDED"
+          },
+          {
+            "key": "reservationDate",
+            "value": "NOT PROVIDED"
+          },
+          {
+            "key": "reservationTime",
+            "value": "NOT PROVIDED"
+          },
+          {
+            "key": "partySize",
+            "value": "NOT PROVIDED"
+          },
+          {
+            "key": "occasion",
+            "value": "NOT PROVIDED"
+          },
+          {
+            "key": "email",
+            "value": "NOT PROVIDED"
+          },
+          {
+            "key": "vipPreference",
+            "value": "NOT PROVIDED"
+          },
+          {
+            "key": "interruptionReason",
+            "value": "{{flow.variables.interruption_reason}}"
+          },
+          {
+            "key": "interruptionStage",
+            "value": "{{flow.variables.interruption_stage}}"
+          }
+        ],
+        "service_sid": "ZS7989535d468e4b4d2bccdf543c5cad56",
+        "url": "https://fin-feathers-logic-2651.twil.io/ingest-reservation"
+      },
+      "transitions": [
+        {
+          "event": "success",
+          "next": "check_unvalidated_reservation_persisted"
+        },
+        {
+          "event": "fail",
+          "next": "set_unvalidated_reservation_ingest_failure"
+        }
+      ],
+      "type": "run-function"
+    },
+    {
+      "name": "check_unvalidated_reservation_persisted",
+      "properties": {
+        "input": "{{widgets.ingest_unvalidated_reservation.parsed.persisted}}",
+        "offset": {
+          "x": -1050,
+          "y": 4950
+        }
+      },
+      "transitions": [
+        {
+          "event": "noMatch",
+          "next": "set_unvalidated_reservation_ingest_failure"
+        },
+        {
+          "conditions": [
+            {
+              "arguments": [
+                "{{widgets.ingest_unvalidated_reservation.parsed.persisted}}"
+              ],
+              "friendly_name": "reservation_persisted",
+              "type": "equal_to",
+              "value": "true"
+            }
+          ],
+          "event": "match",
+          "next": "send_unvalidated_reservation_to_staff"
+        }
+      ],
+      "type": "split-based-on"
+    },
+    {
+      "name": "set_unvalidated_reservation_ingest_failure",
+      "properties": {
+        "offset": {
+          "x": -550,
+          "y": 5150
+        },
+        "variables": [
+          {
+            "key": "reservation_ingest_status",
+            "type": "string",
+            "value": "FAILED"
+          },
+          {
+            "key": "reservation_ingest_failure_type",
+            "type": "string",
+            "value": "UNVALIDATED RESERVATION - DATABASE PERSISTENCE NOT VERIFIED"
+          }
+        ]
+      },
+      "transitions": [
+        {
+          "event": "next",
+          "next": "send_unvalidated_ingestion_failure_to_staff"
+        }
+      ],
+      "type": "set-variables"
+    },
+    {
+      "name": "send_unvalidated_ingestion_failure_to_staff",
+      "properties": {
+        "body": "F&F LV - RESERVATION ALERT\n\nRESERVATION DETAILS NEED REVIEW\n\nReservation request could not be saved.\nStaff follow-up required.\n\nCustomer phone: {{contact.channel.address}}\nReason: {{flow.variables.interruption_reason | default: 'NOT AVAILABLE'}}\nLast step: {{flow.variables.interruption_stage | default: 'NOT AVAILABLE'}}\nReference: {{flow.sid}}\n\nStatus: NOT CONFIRMED\n\nSTAFF: Please contact the customer to collect and verify their reservation details before confirming.",
+        "channel": "{{trigger.message.ChannelSid}}",
+        "from": "{{flow.channel.address}}",
+        "message_type": "custom",
+        "offset": {
+          "x": -50,
+          "y": 5350
+        },
+        "service": "{{trigger.message.InstanceSid}}",
+        "to": "+17025466394"
+      },
+      "transitions": [
+        {
+          "event": "sent"
+        },
+        {
+          "event": "failed"
+        }
+      ],
+      "type": "send-message"
+    }
+  ]
+}
