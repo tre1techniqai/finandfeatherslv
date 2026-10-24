@@ -189,15 +189,15 @@ export async function POST(
 ): Promise<NextResponse> {
   // RELEASE IS A RECOVERY OPERATION.
   //
-  // Do not gate release on the feature flags used
-  // to initiate new staff takeovers or send SMS.
+  // Never gate this endpoint on staff takeover or
+  // SMS enablement flags.
   //
-  // An authenticated manager who owns an existing
-  // staff conversation must be able to relinquish
-  // ownership after those features are disabled.
+  // The authenticated manager must still own the
+  // exact reservation conversation.
   //
-  // The database RPC independently authorizes the
-  // exact manager and reservation under a row lock.
+  // The database now also protects release while
+  // registered, submitting, or uncertain staff SMS
+  // operations remain in the current ownership session.
 
   if (!validOrigin(request)) {
     return fail(
@@ -317,9 +317,8 @@ export async function POST(
       );
     }
 
-    // Use the manager-authorized SECURITY DEFINER
-    // function. Do not read the RLS-protected table
-    // directly from the authenticated session.
+    // The ownership table has RLS enabled.
+    // Use the existing manager-authorized RPC.
     const {
       data: ownershipData,
       error: ownershipError,
@@ -366,13 +365,6 @@ export async function POST(
 
     const ownership = ownershipData[0];
 
-    // A recovery release is never permission to
-    // take over a different manager's conversation.
-    //
-    // Require:
-    // - staff-owned state
-    // - exact reservation association
-    // - ownership by this authenticated manager
     if (
       ownership.ownership_status !== "staff" ||
       ownership.linked_reservation_id !== id ||
@@ -384,9 +376,9 @@ export async function POST(
       );
     }
 
-    // The existing database function rechecks the
-    // current manager and reservation while holding
-    // a row lock before committing the release.
+    // The existing release RPC locks the ownership row.
+    // The installed database trigger independently rejects
+    // release when unresolved staff SMS operations exist.
     const {
       data: releaseData,
       error: releaseError,
@@ -403,6 +395,34 @@ export async function POST(
         return fail(
           "Manager authorization failed.",
           403,
+        );
+      }
+
+      // PostgreSQL object_not_in_prerequisite_state.
+      // The new staff SMS guard uses this code when
+      // the current ownership session has unresolved
+      // SMS operations. A session lifecycle error can
+      // also use 55000, so do not treat all 55000
+      // errors as verified SMS-specific failures.
+      if (releaseError.code === "55000") {
+        console.warn(
+          "Conversation release blocked by database state:",
+          {
+            reservationId: id,
+            code: releaseError.code,
+          },
+        );
+
+        return respond(
+          {
+            success: false,
+            error:
+              "The conversation cannot be released yet. An SMS operation may need review, or the conversation ownership state may require administrator attention. Refresh the conversation and contact an administrator before retrying.",
+            reason: "release_blocked_by_database_state",
+            ownershipChanged: false,
+            smsSent: false,
+          },
+          409,
         );
       }
 
@@ -452,9 +472,9 @@ export async function POST(
       );
     }
 
-    // Confirm the final committed ownership state.
-    // This verification is intentionally independent
-    // of the current takeover and SMS feature flags.
+    // Read the committed database state once more.
+    // This check remains independent of takeover
+    // and messaging feature flags.
     const {
       data: verificationData,
       error: verificationError,
