@@ -1,4 +1,3 @@
-
 import { Suspense } from "react";
 import { connection } from "next/server";
 import Link from "next/link";
@@ -10,15 +9,10 @@ export const metadata = {
   description: "Restricted reservation management for authorized staff.",
 };
 
-type ReservationStatus =
-  | "pending"
-  | "incomplete"
-  | "unvalidated"
-  | "confirmed"
-  | "closed";
-
+type ReservationStatus = "pending" | "incomplete" | "unvalidated" | "confirmed" | "closed";
 type QueueFilter = ReservationStatus | "all";
-
+type SortOrder = "newest" | "oldest";
+type PageSize = 10 | 20 | 50 | 100;
 type ReservationRequest = {
   id: string;
   customer_phone: string;
@@ -36,7 +30,6 @@ type ReservationRequest = {
   deposit_status: string;
   created_at: string;
 };
-
 type GuestAssistanceAlert = {
   id: string;
   reservation_request_id: string;
@@ -44,885 +37,309 @@ type GuestAssistanceAlert = {
   alert_status: "open" | "acknowledged";
   created_at: string;
 };
-
 type PageProps = {
-  searchParams: Promise<{
-    q?: string | string[];
-    status?: string | string[];
-  }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
 };
 
-const DEMO_RESERVATION_ID =
-  "2646ba34-8c4e-42c2-96ff-81d3fe1f5459";
-
-const QUEUE_LIMIT = 100;
-
+const DEMO_RESERVATION_ID = "2646ba34-8c4e-42c2-96ff-81d3fe1f5459";
+const ALERT_LIMIT = 100;
+const statuses: QueueFilter[] = ["all", "pending", "incomplete", "unvalidated", "confirmed", "closed"];
 const statusStyles: Record<ReservationStatus, string> = {
-  pending: "border-amber-500/30 bg-amber-500/10 text-amber-300",
-  incomplete: "border-orange-500/30 bg-orange-500/10 text-orange-300",
-  unvalidated: "border-purple-500/30 bg-purple-500/10 text-purple-300",
-  confirmed: "border-green-500/30 bg-green-500/10 text-green-300",
-  closed: "border-white/15 bg-white/5 text-zinc-400",
+  pending: "border-amber-400/60 bg-amber-400/15 text-amber-200",
+  incomplete: "border-orange-400/60 bg-orange-400/15 text-orange-200",
+  unvalidated: "border-fuchsia-400/60 bg-fuchsia-400/15 text-fuchsia-200",
+  confirmed: "border-emerald-400/60 bg-emerald-400/15 text-emerald-200",
+  closed: "border-zinc-500 bg-zinc-700/40 text-zinc-200",
 };
 
-const filterOptions: {
-  value: QueueFilter;
-  label: string;
-}[] = [
-  { value: "all", label: "All statuses" },
-  { value: "pending", label: "Pending" },
-  { value: "incomplete", label: "Incomplete" },
-  { value: "unvalidated", label: "Unvalidated" },
-  { value: "confirmed", label: "Confirmed" },
-  { value: "closed", label: "Closed" },
-];
-
-function getSingleValue(value?: string | string[]) {
+function single(value: string | string[] | undefined) {
   return typeof value === "string" ? value : "";
 }
-
-function getQueueFilter(value: string): QueueFilter {
-  const found = filterOptions.find(
-    (option) => option.value === value,
-  );
-
-  return found?.value ?? "all";
+function statusOf(r: ReservationRequest): ReservationStatus {
+  return (r.request_status === "incomplete" || r.request_status === "unvalidated") && !r.details_validated
+    ? "unvalidated"
+    : r.request_status;
 }
-
-function formatUsPhone(value: string) {
-  const digits = value.replace(/\D/g, "");
-
-  const national =
-    digits.length === 11 && digits.startsWith("1")
-      ? digits.slice(1)
-      : digits;
-
-  if (national.length !== 10) return value;
-
-  return `(${national.slice(0, 3)}) ${national.slice(3, 6)}-${national.slice(6)}`;
-}
-
 function formatDate(value: string | null) {
-  if (!value) return "Not provided";
-
+  if (!value) return "Date unavailable";
   const date = new Date(`${value}T12:00:00Z`);
-
-  if (Number.isNaN(date.getTime())) return value;
-
-  return new Intl.DateTimeFormat("en-US", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-    timeZone: "UTC",
+  return Number.isNaN(date.getTime()) ? value : new Intl.DateTimeFormat("en-US", {
+    month: "short", day: "numeric", timeZone: "UTC",
   }).format(date);
 }
-
 function formatTime(value: string | null) {
-  if (!value) return "Not provided";
-
-  const match = /^(\d{2}):(\d{2})/.exec(value);
-
-  if (!match) return value;
-
-  const hours = Number(match[1]);
-
-  if (hours > 23) return value;
-
-  return `${hours % 12 || 12}:${match[2]} ${
-    hours >= 12 ? "PM" : "AM"
-  }`;
+  const m = value?.match(/^(\d{2}):(\d{2})/);
+  if (!m) return "Time unavailable";
+  const hours = Number(m[1]);
+  return hours > 23 ? value! : `${hours % 12 || 12}:${m[2]} ${hours >= 12 ? "PM" : "AM"}`;
 }
-
+function formatPhone(value: string) {
+  const digits = value.replace(/\D/g, "");
+  const n = digits.length === 11 && digits.startsWith("1") ? digits.slice(1) : digits;
+  return n.length === 10 ? `(${n.slice(0, 3)}) ${n.slice(3, 6)}-${n.slice(6)}` : value;
+}
 function formatTimestamp(value: string) {
   const date = new Date(value);
-
-  if (Number.isNaN(date.getTime())) return value;
-
-  return new Intl.DateTimeFormat("en-US", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-    timeZone: "America/Los_Angeles",
-    timeZoneName: "short",
+  return Number.isNaN(date.getTime()) ? value : new Intl.DateTimeFormat("en-US", {
+    month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit",
+    timeZone: "America/Los_Angeles", timeZoneName: "short",
   }).format(date);
 }
-
-function formatDeposit(value: number | null) {
-  if (value === null) return "Not required";
-
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: "USD",
-  }).format(value);
+function StatusBadge({ status }: { status: ReservationStatus }) {
+  return <span className={`shrink-0 rounded-full border px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide ${statusStyles[status]}`}>{status}</span>;
 }
-
-function displayStatus(
-  reservation: ReservationRequest,
-): ReservationStatus {
-  if (
-    (reservation.request_status === "incomplete" ||
-      reservation.request_status === "unvalidated") &&
-    !reservation.details_validated
-  ) {
-    return "unvalidated";
-  }
-
-  return reservation.request_status;
-}
-
-function matchesSearch(
-  reservation: ReservationRequest,
-  search: string,
-) {
-  if (!search) return true;
-
-  const normalized = search.toLowerCase();
-  const digits = search.replace(/\D/g, "");
-
-  const nameMatches = (
-    reservation.customer_name ?? ""
-  ).toLowerCase().includes(normalized);
-
-  const phoneMatches =
-    digits.length >= 3 &&
-    reservation.customer_phone
-      .replace(/\D/g, "")
-      .includes(digits);
-
-  return nameMatches || phoneMatches;
-}
-
-function StatusBadge({
-  status,
-}: {
-  status: ReservationStatus;
+function SummaryCard({ label, count, status, href, active }: {
+  label: string; count: number; status: ReservationStatus; href: string; active: boolean;
 }) {
-  return (
-    <span
-      className={`inline-flex rounded-full border px-3 py-1 text-xs font-semibold capitalize ${statusStyles[status]}`}
-    >
-      {status}
-    </span>
-  );
+  return <Link href={href} aria-current={active ? "page" : undefined}
+    className={`rounded-xl border p-3 transition hover:border-white/40 focus-visible:outline-2 focus-visible:outline-[#ea1b24] ${active ? "border-[#ea1b24] bg-[#ea1b24]/10" : "border-white/10 bg-zinc-950/90"}`}>
+    <span className="block text-xs text-zinc-400">{label}</span>
+    <span className="mt-1 block text-2xl font-bold text-white">{count}</span>
+  </Link>;
 }
-
-function SummaryCard({
-  label,
-  count,
-  status,
-  active,
-  search,
-}: {
-  label: string;
-  count: number;
-  status: QueueFilter;
-  active: boolean;
-  search: string;
-}) {
-  const params = new URLSearchParams();
-
-  if (status !== "all") {
-    params.set("status", status);
-  }
-
-  if (search) {
-    params.set("q", search);
-  }
-
-  const href = params.size
-    ? `/staff/reservations?${params.toString()}#staff-queue-heading`
-    : "/staff/reservations#staff-queue-heading";
-
+function ReservationRow({ reservation }: { reservation: ReservationRequest }) {
+  const status = statusOf(reservation);
+  const vip = reservation.vip_preference?.trim().toUpperCase() === "YES";
   return (
-    <Link
-      href={href}
-      aria-current={active ? "page" : undefined}
-      className={`block rounded-xl border p-4 transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#ea1b24] ${
-        active
-          ? "border-[#ea1b24]/60 bg-[#ea1b24]/10"
-          : "border-white/10 bg-zinc-950/90 hover:border-white/30"
-      }`}
-    >
-      <p className="text-xs font-medium text-zinc-400">
-        {label}
-      </p>
-
-      <p className="mt-2 text-3xl font-bold text-white">
-        {count}
-      </p>
-
-      <p className="mt-2 text-[11px] text-zinc-500">
-        View requests →
-      </p>
-    </Link>
-  );
-}
-
-function ReservationCard({
-  reservation,
-}: {
-  reservation: ReservationRequest;
-}) {
-  const status = displayStatus(reservation);
-  const isDemo = reservation.id === DEMO_RESERVATION_ID;
-
-  return (
-    <article className="rounded-xl border border-white/10 bg-zinc-950/90 p-4 sm:p-6">
-      <div className="flex flex-col gap-3 border-b border-white/10 pb-4 sm:flex-row sm:items-start sm:justify-between">
-        <div className="min-w-0">
-          <div className="flex flex-wrap items-center gap-2">
-            <h3 className="text-lg font-bold text-white">
-              {reservation.customer_name ||
-                "Guest name unavailable"}
-            </h3>
-
-            {isDemo && (
-              <span className="rounded-full border border-blue-400/30 bg-blue-400/10 px-2.5 py-1 text-[11px] font-semibold text-blue-200">
-                Owner Demo
-              </span>
-            )}
-          </div>
-
-          <p className="mt-1 text-sm text-zinc-400">
-            {formatUsPhone(reservation.customer_phone)}
-          </p>
-
-          <p className="mt-2 text-xs text-zinc-500">
-            Received {formatTimestamp(reservation.created_at)}
-          </p>
-        </div>
-
-        <div className="shrink-0">
-          <StatusBadge status={status} />
-        </div>
+    <article className="rounded-lg border border-white/10 bg-zinc-950/90 px-3 py-3 sm:px-4">
+      <div className="flex min-w-0 items-center justify-between gap-3">
+        <h3 className="min-w-0 truncate text-sm font-bold text-white sm:text-base">
+          {reservation.customer_name || "Guest name unavailable"}
+          {reservation.id === DEMO_RESERVATION_ID && <span className="ml-2 align-middle text-[10px] font-semibold text-sky-300">OWNER DEMO</span>}
+        </h3>
+        <StatusBadge status={status} />
       </div>
-
-      <dl className="mt-5 grid grid-cols-2 gap-4">
-        <div>
-          <dt className="text-xs text-zinc-500">
-            Reservation Date
-          </dt>
-          <dd className="mt-1 text-sm font-medium text-white">
-            {formatDate(reservation.reservation_date)}
-          </dd>
-        </div>
-
-        <div>
-          <dt className="text-xs text-zinc-500">
-            Reservation Time
-          </dt>
-          <dd className="mt-1 text-sm font-medium text-white">
-            {formatTime(reservation.reservation_time)}
-          </dd>
-        </div>
-
-        <div>
-          <dt className="text-xs text-zinc-500">
-            Party Size
-          </dt>
-          <dd className="mt-1 text-sm font-medium text-white">
-            {reservation.party_size ?? "Not provided"}
-          </dd>
-        </div>
-
-        <div>
-          <dt className="text-xs text-zinc-500">
-            Occasion
-          </dt>
-          <dd className="mt-1 text-sm font-medium text-white">
-            {reservation.occasion || "Not provided"}
-          </dd>
-        </div>
-
-        <div>
-          <dt className="text-xs text-zinc-500">
-            Deposit
-          </dt>
-          <dd className="mt-1 text-sm font-medium text-white">
-            {formatDeposit(reservation.deposit_amount)}
-          </dd>
-        </div>
-
-        <div>
-          <dt className="text-xs text-zinc-500">
-            Deposit Status
-          </dt>
-          <dd className="mt-1 text-sm font-medium capitalize text-white">
-            {reservation.deposit_status.replace(/_/g, " ")}
-          </dd>
-        </div>
-
-        <div>
-          <dt className="text-xs text-zinc-500">
-            VIP Preference
-          </dt>
-          <dd className="mt-1 text-sm font-medium text-white">
-            {reservation.vip_preference || "Not provided"}
-          </dd>
-        </div>
-
-        <div>
-          <dt className="text-xs text-zinc-500">
-            Validation
-          </dt>
-          <dd className="mt-1 text-sm font-medium text-white">
-            {reservation.details_validated
-              ? "Validated"
-              : "Needs validation"}
-          </dd>
-        </div>
-      </dl>
-
-      {(reservation.interruption_reason ||
-        reservation.interruption_stage) && (
-        <div className="mt-5 rounded-lg border border-orange-500/20 bg-orange-500/5 p-4">
-          <p className="text-xs font-bold uppercase tracking-wider text-orange-300">
-            Follow-Up Required
-          </p>
-
-          {reservation.interruption_reason && (
-            <p className="mt-2 text-sm text-zinc-300">
-              Reason: {reservation.interruption_reason}
-            </p>
-          )}
-
-          {reservation.interruption_stage && (
-            <p className="mt-1 text-sm text-zinc-400">
-              Stage: {reservation.interruption_stage}
-            </p>
-          )}
-        </div>
-      )}
-
-      <Link
-        href={`/staff/reservations/${reservation.id}`}
-        className="mt-5 inline-flex min-h-11 w-full items-center justify-center rounded-lg bg-[#ea1b24] px-4 py-3 text-sm font-semibold text-white transition hover:bg-red-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#ea1b24]"
-      >
-        Open Reservation →
-      </Link>
+      <div className="mt-2 flex items-center justify-between gap-2">
+        <p className="min-w-0 text-xs text-zinc-300 sm:text-sm">
+          Guests: <span className="font-medium text-white">{reservation.party_size ?? "—"}</span>
+          <span className="mx-1.5 text-zinc-600">·</span>{formatDate(reservation.reservation_date)}
+          <span className="mx-1.5 text-zinc-600">·</span>{formatTime(reservation.reservation_time)}
+        </p>
+        <Link href={`/staff/reservations/${reservation.id}`}
+          aria-label={`View reservation for ${reservation.customer_name || "guest"}`}
+          title="View reservation"
+          className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-white/20 bg-white/5 text-white transition hover:border-[#ea1b24] hover:bg-[#ea1b24] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white">
+          <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4"><path d="M5 12h14m-6-6 6 6-6 6" /></svg>
+        </Link>
+      </div>
+      <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-zinc-400 sm:text-sm">
+        <span>{reservation.occasion || "Occasion not provided"}</span>
+        {vip && <span className="font-bold text-amber-300" aria-label="VIP preference affirmed">★ VIP</span>}
+        {(reservation.interruption_reason || reservation.interruption_stage) &&
+          <span className="font-semibold text-orange-300">Follow-up required</span>}
+      </div>
     </article>
   );
 }
-
-function GuestAssistanceSection({
-  alerts,
-  error,
-  reservations,
-}: {
-  alerts: GuestAssistanceAlert[];
-  error: string | null;
-  reservations: ReservationRequest[];
+function GuestAssistanceSection({ alerts, error, reservations }: {
+  alerts: GuestAssistanceAlert[]; error: string | null; reservations: ReservationRequest[];
 }) {
-  const reservationById = new Map(
-    reservations.map((reservation) => [
-      reservation.id,
-      reservation,
-    ]),
-  );
-
-  const openCount = alerts.filter(
-    (alert) => alert.alert_status === "open",
-  ).length;
-
-  return (
-    <section
-      aria-labelledby="guest-assistance-heading"
-      className="mb-8"
-    >
-      <div className="mb-4 flex flex-wrap items-center justify-between gap-3 border-b border-white/10 pb-4">
-        <div>
-          <h2
-            id="guest-assistance-heading"
-            className="text-xl font-bold text-white"
-          >
-            Guest Assistance
-          </h2>
-
-          <p className="mt-1 text-sm text-zinc-400">
-            Guest messages that require staff review or follow-up.
-          </p>
-        </div>
-
-        {!error && (
-          <span className="rounded-full border border-amber-500/40 bg-amber-500/10 px-3 py-1 text-xs font-semibold text-amber-200">
-            {openCount} open · {alerts.length} outstanding
-          </span>
-        )}
+  const byId = new Map(reservations.map(r => [r.id, r]));
+  const openCount = alerts.filter(a => a.alert_status === "open").length;
+  return <section aria-labelledby="guest-assistance-heading" className="mb-8">
+    <div className="mb-4 flex flex-wrap items-center justify-between gap-3 border-b border-white/10 pb-4">
+      <div>
+        <h2 id="guest-assistance-heading" className="text-xl font-bold text-white">Guest Assistance</h2>
+        <p className="mt-1 text-sm text-zinc-400">Guest messages that require staff review or follow-up.</p>
       </div>
-
-      {error ? (
-        <div
-          role="alert"
-          className="rounded-xl border border-amber-500/30 bg-amber-950/20 p-5"
-        >
-          <p className="font-semibold text-amber-200">
-            Assistance alerts unavailable
-          </p>
-
-          <p className="mt-2 text-sm text-amber-100">
-            We couldn&apos;t retrieve the guest assistance
-            queue. Refresh the page or contact an administrator.
-          </p>
-
-          <p className="mt-2 text-xs text-amber-200/80">
-            Database error code: {error}
-          </p>
-        </div>
-      ) : alerts.length === 0 ? (
-        <div className="rounded-xl border border-white/10 bg-zinc-950/90 p-5">
-          <p className="text-sm font-medium text-white">
-            No outstanding assistance alerts
-          </p>
-
-          <p className="mt-2 text-sm text-zinc-400">
-            No guest assistance alerts require attention at
-            this time.
-          </p>
-        </div>
-      ) : (
-        <div className="space-y-3">
-          {alerts.map((alert) => {
-            const reservation = reservationById.get(
-              alert.reservation_request_id,
-            );
-
-            return (
-              <article
-                key={alert.id}
-                className="rounded-xl border border-amber-500/25 bg-zinc-950/90 p-4 sm:p-5"
-              >
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <p className="text-sm font-bold text-white">
-                      {reservation?.customer_name ||
-                        "Guest assistance requested"}
-                    </p>
-
-                    {reservation && (
-                      <p className="mt-1 text-xs text-zinc-400">
-                        {formatUsPhone(
-                          reservation.customer_phone,
-                        )}{" "}
-                        · Reservation{" "}
-                        {formatDate(
-                          reservation.reservation_date,
-                        )}
-                      </p>
-                    )}
-
-                    <p className="mt-2 text-xs text-zinc-500">
-                      Alert created{" "}
-                      {formatTimestamp(alert.created_at)}
-                    </p>
-                  </div>
-
-                  <span
-                    className={`rounded-full border px-3 py-1 text-xs font-semibold ${
-                      alert.alert_status === "open"
-                        ? "border-amber-500/40 bg-amber-500/10 text-amber-200"
-                        : "border-blue-400/30 bg-blue-400/10 text-blue-200"
-                    }`}
-                  >
-                    {alert.alert_status === "open"
-                      ? "Needs Attention"
-                      : "Acknowledged"}
-                  </span>
-                </div>
-
-                <p className="mt-3 text-sm leading-6 text-zinc-300">
-                  An incoming guest message requires review.
-                  Open the reservation to read the SMS in
-                  Guest Conversation.
-                </p>
-
-                <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-start">
-                  <Link
-                    href={`/staff/reservations/${alert.reservation_request_id}#guest-conversation`}
-                    className="inline-flex min-h-11 w-full items-center justify-center rounded-lg bg-[#ea1b24] px-4 py-3 text-sm font-semibold text-white transition hover:bg-red-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white sm:w-auto"
-                  >
-                    Open Reservation →
-                  </Link>
-
-                  <GuestAssistanceActions
-                    alertId={alert.id}
-                    status={alert.alert_status}
-                  />
-                </div>
-              </article>
-            );
-          })}
-
-          {alerts.length === QUEUE_LIMIT && (
-            <p className="text-xs text-amber-200">
-              Showing the newest 100 outstanding alerts.
-              Additional alerts may exist.
-            </p>
-          )}
-        </div>
-      )}
-    </section>
-  );
-}
-
-function Loading() {
-  return (
-    <main className="flex min-h-screen items-center justify-center bg-black px-5 text-white">
-      <p
-        role="status"
-        className="text-sm text-zinc-300"
-      >
-        Verifying reservation staff access...
-      </p>
-    </main>
-  );
-}
-
-async function ProtectedReservationQueue({
-  searchParams,
-}: PageProps) {
-  await connection();
-
-  const { supabase, role } =
-    await requireReservationStaff();
-
-  const resolvedParams = await searchParams;
-
-  const search = getSingleValue(
-    resolvedParams.q,
-  ).trim().slice(0, 100);
-
-  const selectedStatus = getQueueFilter(
-    getSingleValue(resolvedParams.status),
-  );
-
-  const { data, error } = await supabase
-    .from("reservation_requests")
-    .select(
-      "id, customer_phone, customer_name, reservation_date, reservation_time, party_size, occasion, vip_preference, request_status, details_validated, interruption_reason, interruption_stage, deposit_amount, deposit_status, created_at",
-    )
-    .order("created_at", { ascending: false })
-    .limit(QUEUE_LIMIT);
-
-  const reservations =
-    (data ?? []) as ReservationRequest[];
-
-  const { data: assistanceData, error: assistanceError } =
-    await supabase
-      .from("reservation_guest_assistance_alerts")
-      .select(
-        "id, reservation_request_id, twilio_message_sid, alert_status, created_at",
-      )
-      .in("alert_status", ["open", "acknowledged"])
-      .order("created_at", { ascending: false })
-      .limit(QUEUE_LIMIT);
-
-  const assistanceAlerts =
-    (assistanceData ?? []) as GuestAssistanceAlert[];
-
-  const counts = {
-    pending: reservations.filter(
-      (reservation) =>
-        displayStatus(reservation) === "pending",
-    ).length,
-
-    incomplete: reservations.filter(
-      (reservation) =>
-        displayStatus(reservation) === "incomplete",
-    ).length,
-
-    unvalidated: reservations.filter(
-      (reservation) =>
-        displayStatus(reservation) === "unvalidated",
-    ).length,
-
-    confirmed: reservations.filter(
-      (reservation) =>
-        displayStatus(reservation) === "confirmed",
-    ).length,
-
-    closed: reservations.filter(
-      (reservation) =>
-        displayStatus(reservation) === "closed",
-    ).length,
-  };
-
-  const filteredReservations = reservations.filter(
-    (reservation) => {
-      const statusMatches =
-        selectedStatus === "all" ||
-        displayStatus(reservation) === selectedStatus;
-
-      return (
-        statusMatches &&
-        matchesSearch(reservation, search)
-      );
-    },
-  );
-
-  const filtersActive =
-    search !== "" || selectedStatus !== "all";
-
-  return (
-    <main className="min-h-screen bg-black px-3 py-6 text-white sm:px-8 sm:py-12">
-      <div className="mx-auto max-w-5xl">
-        <header className="border-b border-white/10 pb-6">
-          <p className="text-[11px] font-bold uppercase tracking-[0.22em] text-[#ea1b24]">
-            Fin &amp; Feathers
-          </p>
-
-          <h1 className="mt-2 text-2xl font-bold tracking-tight sm:text-4xl">
-            Reservations
-          </h1>
-
-          <p className="mt-2 text-sm font-medium text-zinc-300">
-            Staff Management Portal
-          </p>
-
-          <p className="mt-3 text-sm leading-6 text-zinc-400">
-            Review guest reservations, manage follow-ups,
-            and access guest conversations.
-          </p>
-
-          <p className="mt-3 text-xs text-zinc-500">
-            Authorized role:{" "}
-            <span className="font-semibold capitalize text-zinc-300">
-              {role.replace(/_/g, " ")}
+      {!error && <span className="rounded-full border border-amber-500/40 bg-amber-500/10 px-3 py-1 text-xs font-semibold text-amber-200">{openCount} open · {alerts.length} outstanding</span>}
+    </div>
+    {error ? <div role="alert" className="rounded-xl border border-amber-500/30 bg-amber-950/20 p-5">
+      <p className="font-semibold text-amber-200">Assistance alerts unavailable</p>
+      <p className="mt-2 text-sm text-amber-100">Refresh the page or contact an administrator.</p>
+      <p className="mt-2 text-xs text-amber-200/80">Database error code: {error}</p>
+    </div> : alerts.length === 0 ? <div className="rounded-xl border border-white/10 bg-zinc-950/90 p-5">
+      <p className="text-sm font-medium text-white">No outstanding assistance alerts</p>
+      <p className="mt-2 text-sm text-zinc-400">No guest assistance alerts require attention at this time.</p>
+    </div> : <div className="space-y-3">
+      {alerts.map(alert => {
+        const reservation = byId.get(alert.reservation_request_id);
+        return <article key={alert.id} className="rounded-xl border border-amber-500/25 bg-zinc-950/90 p-4 sm:p-5">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div className="min-w-0">
+              <p className="text-sm font-bold text-white">{reservation?.customer_name || "Guest assistance requested"}</p>
+              {reservation && <p className="mt-1 text-xs text-zinc-400">{formatPhone(reservation.customer_phone)} · Reservation {formatDate(reservation.reservation_date)}</p>}
+              <p className="mt-2 text-xs text-zinc-500">Alert created {formatTimestamp(alert.created_at)}</p>
+            </div>
+            <span className={`rounded-full border px-3 py-1 text-xs font-semibold ${alert.alert_status === "open" ? "border-amber-500/40 bg-amber-500/10 text-amber-200" : "border-blue-400/30 bg-blue-400/10 text-blue-200"}`}>
+              {alert.alert_status === "open" ? "Needs Attention" : "Acknowledged"}
             </span>
-          </p>
-        </header>
-
-        <section
-          aria-label="Reservation summary"
-          className="grid grid-cols-2 gap-3 py-6 sm:grid-cols-3 lg:grid-cols-5"
-        >
-          <SummaryCard
-            label="Pending"
-            count={counts.pending}
-            status="pending"
-            active={selectedStatus === "pending"}
-            search={search}
-          />
-
-          <SummaryCard
-            label="Incomplete"
-            count={counts.incomplete}
-            status="incomplete"
-            active={selectedStatus === "incomplete"}
-            search={search}
-          />
-
-          <SummaryCard
-            label="Unvalidated"
-            count={counts.unvalidated}
-            status="unvalidated"
-            active={selectedStatus === "unvalidated"}
-            search={search}
-          />
-
-          <SummaryCard
-            label="Confirmed"
-            count={counts.confirmed}
-            status="confirmed"
-            active={selectedStatus === "confirmed"}
-            search={search}
-          />
-
-          <SummaryCard
-            label="Closed"
-            count={counts.closed}
-            status="closed"
-            active={selectedStatus === "closed"}
-            search={search}
-          />
-        </section>
-
-        <GuestAssistanceSection
-          alerts={assistanceAlerts}
-          error={assistanceError?.code ?? null}
-          reservations={reservations}
-        />
-
-        <section aria-labelledby="staff-queue-heading">
-          <div className="mb-5 flex flex-col gap-2 border-b border-white/10 pb-4 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <h2
-                id="staff-queue-heading"
-                className="text-xl font-bold text-white"
-              >
-                Reservation Queue
-              </h2>
-
-              <p className="mt-1 text-xs text-zinc-500">
-                Search and filter the 100 most recent
-                reservation requests.
-              </p>
-            </div>
-
-            {!error && (
-              <p className="text-xs text-zinc-400">
-                Showing{" "}
-                <span className="font-semibold text-white">
-                  {filteredReservations.length}
-                </span>{" "}
-                of {reservations.length}
-              </p>
-            )}
           </div>
-
-          <form
-            action="/staff/reservations"
-            method="get"
-            className="mb-6 rounded-xl border border-white/10 bg-zinc-950/90 p-4"
-          >
-            <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_190px_auto] sm:items-end">
-              <div>
-                <label
-                  htmlFor="reservation-search"
-                  className="mb-2 block text-xs font-semibold text-zinc-300"
-                >
-                  Search Guests
-                </label>
-
-                <input
-                  id="reservation-search"
-                  name="q"
-                  type="search"
-                  defaultValue={search}
-                  maxLength={100}
-                  placeholder="Guest name or phone number"
-                  className="min-h-11 w-full rounded-lg border border-white/20 bg-black px-3 py-2.5 text-sm text-white placeholder:text-zinc-500 focus:border-[#ea1b24] focus:outline-none"
-                />
-              </div>
-
-              <div>
-                <label
-                  htmlFor="reservation-status"
-                  className="mb-2 block text-xs font-semibold text-zinc-300"
-                >
-                  Status
-                </label>
-
-                <select
-                  id="reservation-status"
-                  name="status"
-                  defaultValue={selectedStatus}
-                  className="min-h-11 w-full rounded-lg border border-white/20 bg-black px-3 py-2.5 text-sm text-white focus:border-[#ea1b24] focus:outline-none"
-                >
-                  {filterOptions.map((option) => (
-                    <option
-                      key={option.value}
-                      value={option.value}
-                    >
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <button
-                type="submit"
-                className="min-h-11 rounded-lg bg-[#ea1b24] px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-red-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
-              >
-                Apply Filters
-              </button>
-            </div>
-
-            {filtersActive && (
-              <div className="mt-3">
-                <Link
-                  href="/staff/reservations#staff-queue-heading"
-                  className="text-xs font-semibold text-zinc-300 underline underline-offset-4 transition hover:text-white"
-                >
-                  Clear filters
-                </Link>
-              </div>
-            )}
-          </form>
-
-          {error ? (
-            <div
-              role="alert"
-              className="rounded-xl border border-[#ea1b24]/30 bg-[#ea1b24]/10 p-6"
-            >
-              <h3 className="text-base font-bold text-white">
-                Reservation data unavailable
-              </h3>
-
-              <p className="mt-2 text-sm text-zinc-300">
-                The reservation queue could not be loaded.
-                Contact an administrator if the problem persists.
-              </p>
-
-              <p className="mt-3 text-xs text-zinc-400">
-                Database error code:{" "}
-                {error.code || "Unavailable"}
-              </p>
-            </div>
-          ) : reservations.length === 0 ? (
-            <div className="rounded-xl border border-white/10 bg-zinc-950/90 p-8 text-center">
-              <h3 className="text-lg font-bold text-white">
-                No reservation requests
-              </h3>
-
-              <p className="mt-3 text-sm text-zinc-400">
-                No reservation records are currently
-                available to your account.
-              </p>
-            </div>
-          ) : filteredReservations.length === 0 ? (
-            <div className="rounded-xl border border-white/10 bg-zinc-950/90 p-8 text-center">
-              <h3 className="text-lg font-bold text-white">
-                No matching reservations
-              </h3>
-
-              <p className="mt-3 text-sm text-zinc-400">
-                No results were found in the most recent
-                100 reservation requests. Try changing
-                your search or status filter.
-              </p>
-
-              <Link
-                href="/staff/reservations#staff-queue-heading"
-                className="mt-5 inline-flex min-h-11 items-center justify-center rounded-lg border border-white/20 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-white/10"
-              >
-                Clear Filters
-              </Link>
-            </div>
-          ) : (
-            <div className="space-y-4">
-              {filteredReservations.map((reservation) => (
-                <ReservationCard
-                  key={reservation.id}
-                  reservation={reservation}
-                />
-              ))}
-            </div>
-          )}
-        </section>
-
-        <footer className="mt-9 border-t border-white/10 pt-5">
-          <Link
-            href="/"
-            className="text-sm text-zinc-400 underline decoration-zinc-700 underline-offset-4 transition hover:text-white"
-          >
-            Return to the website
-          </Link>
-        </footer>
-      </div>
-    </main>
-  );
+          <p className="mt-3 text-sm leading-6 text-zinc-300">An incoming guest message requires review. Open the reservation to read the SMS in Guest Conversation.</p>
+          <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-start">
+            <Link href={`/staff/reservations/${alert.reservation_request_id}#guest-conversation`} className="inline-flex min-h-11 w-full items-center justify-center rounded-lg bg-[#ea1b24] px-4 py-3 text-sm font-semibold text-white transition hover:bg-red-700 sm:w-auto">Open Reservation →</Link>
+            <GuestAssistanceActions alertId={alert.id} status={alert.alert_status} />
+          </div>
+        </article>;
+      })}
+      {alerts.length === ALERT_LIMIT && <p className="text-xs text-amber-200">Showing the newest 100 outstanding alerts. Additional alerts may exist.</p>}
+    </div>}
+  </section>;
+}
+function Loading() {
+  return <main className="flex min-h-screen items-center justify-center bg-black px-5 text-white"><p role="status" className="text-sm text-zinc-300">Verifying reservation staff access...</p></main>;
+}
+function makeHref(params: { q: string; status: QueueFilter; sort: SortOrder; size: PageSize; page?: number; anchor?: boolean }) {
+  const query = new URLSearchParams();
+  if (params.q) query.set("q", params.q);
+  if (params.status !== "all") query.set("status", params.status);
+  if (params.sort !== "newest") query.set("sort", params.sort);
+  if (params.size !== 10) query.set("size", String(params.size));
+  if ((params.page ?? 1) > 1) query.set("page", String(params.page));
+  const qs = query.toString();
+  return `/staff/reservations${qs ? `?${qs}` : ""}${params.anchor ? "#staff-queue-heading" : ""}`;
 }
 
-export default function StaffReservationsPage(
-  props: PageProps,
-) {
-  return (
-    <Suspense fallback={<Loading />}>
-      <ProtectedReservationQueue
-        searchParams={props.searchParams}
-      />
-    </Suspense>
-  );
+async function ProtectedReservationQueue({ searchParams }: PageProps) {
+  await connection();
+  const { supabase, role } = await requireReservationStaff();
+  const params = await searchParams;
+  const search = single(params.q).trim().slice(0, 100);
+  const rawStatus = single(params.status);
+  const selectedStatus: QueueFilter = statuses.includes(rawStatus as QueueFilter) ? rawStatus as QueueFilter : "all";
+  const sort: SortOrder = single(params.sort) === "oldest" ? "oldest" : "newest";
+  const rawSize = Number(single(params.size));
+  const size: PageSize = [10, 20, 50, 100].includes(rawSize) ? rawSize as PageSize : 10;
+  const rawPage = Number(single(params.page));
+  const page = Number.isSafeInteger(rawPage) && rawPage > 0 ? Math.min(rawPage, 100000) : 1;
+
+  // Database-side filtering ensures that all historical requests are searchable,
+  // rather than only the first 100 records loaded into the page.
+  let query = supabase.from("reservation_requests")
+    .select("id, customer_phone, customer_name, reservation_date, reservation_time, party_size, occasion, vip_preference, request_status, details_validated, interruption_reason, interruption_stage, deposit_amount, deposit_status, created_at", { count: "exact" });
+  if (search) {
+    const safeSearch = search.replace(/[,%()]/g, " ").trim();
+    if (safeSearch) {
+      const digits = safeSearch.replace(/\D/g, "");
+      const pattern = `%${safeSearch}%`;
+      query = digits.length >= 3 ? query.or(`customer_name.ilike.${pattern},customer_phone.ilike.%${digits}%`) : query.ilike("customer_name", pattern);
+    }
+  }
+  if (selectedStatus === "unvalidated") query = query.or("request_status.eq.unvalidated,and(request_status.eq.incomplete,details_validated.eq.false)");
+  else if (selectedStatus === "incomplete") query = query.eq("request_status", "incomplete").eq("details_validated", true);
+  else if (selectedStatus !== "all") query = query.eq("request_status", selectedStatus);
+  const { data, error, count } = await query.order("created_at", { ascending: sort === "oldest" })
+    .order("id", { ascending: sort === "oldest" })
+    .range((page - 1) * size, page * size - 1);
+  const reservations = (data ?? []) as ReservationRequest[];
+  const total = count ?? 0;
+  const pages = Math.max(1, Math.ceil(total / size));
+  const start = total === 0 || reservations.length === 0 ? 0 : (page - 1) * size + 1;
+  const end = start === 0 ? 0 : start + reservations.length - 1;
+
+  // Summary numbers reflect all accessible records, not the current page.
+  const countStatus = async (status: ReservationStatus) => {
+    let q = supabase.from("reservation_requests").select("id", { count: "exact", head: true });
+    if (status === "unvalidated") q = q.or("request_status.eq.unvalidated,and(request_status.eq.incomplete,details_validated.eq.false)");
+    else if (status === "incomplete") q = q.eq("request_status", "incomplete").eq("details_validated", true);
+    else q = q.eq("request_status", status);
+    const result = await q;
+    return result.error ? null : (result.count ?? 0);
+  };
+  const [pending, incomplete, unvalidated, confirmed, closed] = await Promise.all([
+    countStatus("pending"), countStatus("incomplete"), countStatus("unvalidated"), countStatus("confirmed"), countStatus("closed"),
+  ]);
+  const counts = { pending, incomplete, unvalidated, confirmed, closed };
+
+  const { data: assistanceData, error: assistanceError } = await supabase
+    .from("reservation_guest_assistance_alerts")
+    .select("id, reservation_request_id, twilio_message_sid, alert_status, created_at")
+    .in("alert_status", ["open", "acknowledged"])
+    .order("created_at", { ascending: false }).limit(ALERT_LIMIT);
+  const assistanceAlerts = (assistanceData ?? []) as GuestAssistanceAlert[];
+
+  // Resolve alert guest names independently of queue pagination and sorting.
+  const alertReservationIds = [...new Set(assistanceAlerts.map(a => a.reservation_request_id))];
+  const { data: alertGuestData } = alertReservationIds.length > 0
+    ? await supabase.from("reservation_requests")
+      .select("id, customer_phone, customer_name, reservation_date, reservation_time, party_size, occasion, vip_preference, request_status, details_validated, interruption_reason, interruption_stage, deposit_amount, deposit_status, created_at")
+      .in("id", alertReservationIds)
+    : { data: [] };
+  const alertGuests = (alertGuestData ?? []) as ReservationRequest[];
+
+  const filtersActive = !!search || selectedStatus !== "all" || sort !== "newest" || size !== 10;
+  const common = { q: search, status: selectedStatus, sort, size };
+
+  return <main className="min-h-screen bg-black px-3 py-6 text-white sm:px-8 sm:py-12">
+    <div className="mx-auto max-w-5xl">
+      <header className="border-b border-white/10 pb-6">
+        <p className="text-[11px] font-bold uppercase tracking-[0.22em] text-[#ea1b24]">Fin &amp; Feathers</p>
+        <h1 className="mt-2 text-2xl font-bold tracking-tight sm:text-4xl">Reservations</h1>
+        <p className="mt-2 text-sm font-medium text-zinc-300">Staff Management Portal</p>
+        <p className="mt-3 text-sm leading-6 text-zinc-400">Review guest reservations, manage follow-ups, and access guest conversations.</p>
+        <p className="mt-3 text-xs text-zinc-500">Authorized role: <span className="font-semibold capitalize text-zinc-300">{role.replace(/_/g, " ")}</span></p>
+      </header>
+
+      <section aria-label="Reservation summary" className="grid grid-cols-2 gap-3 py-6 sm:grid-cols-3 lg:grid-cols-5">
+        {(["pending", "incomplete", "unvalidated", "confirmed", "closed"] as ReservationStatus[]).map(status =>
+          <SummaryCard key={status} label={status.charAt(0).toUpperCase() + status.slice(1)} count={counts[status] ?? 0}
+            status={status} active={selectedStatus === status} href={makeHref({ ...common, status, page: 1, anchor: true })} />)}
+      </section>
+
+      <GuestAssistanceSection alerts={assistanceAlerts} error={assistanceError?.code ?? null} reservations={alertGuests} />
+
+      <section aria-labelledby="staff-queue-heading">
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3 border-b border-white/10 pb-4">
+          <div>
+            <h2 id="staff-queue-heading" className="text-xl font-bold text-white">Reservation Queue</h2>
+            <p className="mt-1 text-xs text-zinc-400">{error ? "Unable to load reservations" : `${start}–${end} of ${total} reservations`}</p>
+          </div>
+          <span className="text-xs text-zinc-500">CSV export: next revision</span>
+        </div>
+
+        <form action="/staff/reservations" method="get" className="mb-4 rounded-xl border border-white/10 bg-zinc-950/90 p-3 sm:p-4">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-[minmax(0,1fr)_150px_135px_105px_auto] sm:items-end">
+            <div className="col-span-2 sm:col-span-1">
+              <label htmlFor="queue-search" className="mb-1 block text-xs font-semibold text-zinc-300">Search Guests</label>
+              <input id="queue-search" name="q" type="search" defaultValue={search} maxLength={100} placeholder="Name or phone"
+                className="min-h-11 w-full rounded-lg border border-white/20 bg-black px-3 py-2 text-sm text-white placeholder:text-zinc-500 focus:border-[#ea1b24] focus:outline-none" />
+            </div>
+            <div>
+              <label htmlFor="queue-status" className="mb-1 block text-xs font-semibold text-zinc-300">Status</label>
+              <select id="queue-status" name="status" defaultValue={selectedStatus} className="min-h-11 w-full rounded-lg border border-white/20 bg-black px-2 text-sm text-white">
+                {statuses.map(s => <option key={s} value={s}>{s === "all" ? "All statuses" : s.charAt(0).toUpperCase() + s.slice(1)}</option>)}
+              </select>
+            </div>
+            <div>
+              <label htmlFor="queue-sort" className="mb-1 block text-xs font-semibold text-zinc-300">Sort by received</label>
+              <select id="queue-sort" name="sort" defaultValue={sort} className="min-h-11 w-full rounded-lg border border-white/20 bg-black px-2 text-sm text-white">
+                <option value="newest">Newest first</option><option value="oldest">Oldest first</option>
+              </select>
+            </div>
+            <div>
+              <label htmlFor="queue-size" className="mb-1 block text-xs font-semibold text-zinc-300">Show</label>
+              <select id="queue-size" name="size" defaultValue={size} className="min-h-11 w-full rounded-lg border border-white/20 bg-black px-2 text-sm text-white">
+                {[10, 20, 50, 100].map(n => <option key={n} value={n}>{n} / page</option>)}
+              </select>
+            </div>
+            <button type="submit" className="min-h-11 rounded-lg bg-[#ea1b24] px-5 py-2 text-sm font-bold text-white transition hover:bg-red-700">Apply</button>
+          </div>
+          {filtersActive && <Link href="/staff/reservations#staff-queue-heading" className="mt-3 inline-block text-xs font-semibold text-zinc-300 underline underline-offset-4 hover:text-white">Clear filters</Link>}
+        </form>
+
+        {error ? <div role="alert" className="rounded-xl border border-[#ea1b24]/30 bg-[#ea1b24]/10 p-6">
+          <p className="font-bold">Reservation data unavailable</p><p className="mt-2 text-sm text-zinc-300">Please refresh or contact an administrator. Error: {error.code || "Unavailable"}</p>
+        </div> : reservations.length === 0 ? <div className="rounded-xl border border-white/10 bg-zinc-950/90 p-8 text-center">
+          <p className="font-bold text-white">No matching reservations</p>
+          <p className="mt-2 text-sm text-zinc-400">Try a different search, status, or page number.</p>
+          <Link href="/staff/reservations#staff-queue-heading" className="mt-4 inline-block text-sm text-white underline">Reset queue</Link>
+        </div> : <div className="space-y-2">{reservations.map(reservation => <ReservationRow key={reservation.id} reservation={reservation} />)}</div>}
+
+        {!error && total > 0 && <nav aria-label="Reservation pages" className="mt-5 flex flex-wrap items-center justify-between gap-3 border-t border-white/10 pt-4">
+          <p className="text-xs text-zinc-400">Page {page} of {pages} · {size} per page</p>
+          <div className="flex items-center gap-2">
+            {page > 1 ? <Link href={makeHref({ ...common, page: page - 1, anchor: true })} className="inline-flex min-h-10 items-center rounded-lg border border-white/20 px-3 text-sm font-semibold hover:bg-white/10">← Previous</Link>
+              : <span className="inline-flex min-h-10 items-center rounded-lg border border-white/10 px-3 text-sm text-zinc-600">← Previous</span>}
+            {page < pages ? <Link href={makeHref({ ...common, page: page + 1, anchor: true })} className="inline-flex min-h-10 items-center rounded-lg border border-white/20 px-3 text-sm font-semibold hover:bg-white/10">Next →</Link>
+              : <span className="inline-flex min-h-10 items-center rounded-lg border border-white/10 px-3 text-sm text-zinc-600">Next →</span>}
+          </div>
+        </nav>}
+      </section>
+      <footer className="mt-9 border-t border-white/10 pt-5"><Link href="/" className="text-sm text-zinc-400 underline decoration-zinc-700 underline-offset-4 hover:text-white">Return to the website</Link></footer>
+    </div>
+  </main>;
+}
+
+export default function StaffReservationsPage(props: PageProps) {
+  return <Suspense fallback={<Loading />}><ProtectedReservationQueue searchParams={props.searchParams} /></Suspense>;
 }
