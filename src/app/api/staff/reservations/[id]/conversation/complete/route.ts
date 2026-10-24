@@ -190,15 +190,18 @@ export async function POST(
   // A successful preflight alone does not grant SMS access.
   if (
     process.env
-      .RESERVATION_STAFF_HANDOFF_COMPLETION_ENABLED !==
-      "true" ||
+        .RESERVATION_STAFF_HANDOFF_COMPLETION_ENABLED !==
+        "true" ||
     process.env
-      .RESERVATION_STAFF_INBOUND_ROUTING_VERIFIED !==
-      "true" ||
+        .RESERVATION_STAFF_INBOUND_ROUTING_VERIFIED !==
+        "true" ||
     process.env
-      .RESERVATION_STUDIO_STAFF_ROUTING_ENABLED !==
-      "true"
-  ) {
+        .RESERVATION_STUDIO_STAFF_ROUTING_ENABLED !==
+        "true" ||
+    process.env
+        .RESERVATION_STUDIO_HANDOFF_FENCE_ENABLED !==
+        "true"
+    ) {
     return fail(
       "Staff conversation takeover is not enabled.",
       503,
