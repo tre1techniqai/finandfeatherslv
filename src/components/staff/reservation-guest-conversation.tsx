@@ -158,6 +158,14 @@ export default function ReservationGuestConversation({
   const [sending, setSending] = useState(false);
   const [sendError, setSendError] = useState("");
   const [sendSuccess, setSendSuccess] = useState("");
+  // A transport error is not proof Twilio rejected a message.
+  // Keep the attempted request ID for diagnosis; never submit it again.
+  const [sendReviewRequired, setSendReviewRequired] = useState(false);
+  const sendingGuardRef = useRef(false);
+  const attemptedRequestRef = useRef<{
+    clientRequestId: string;
+    body: string;
+  } | null>(null);
 
   const messageListRef =
     useRef<HTMLOListElement | null>(null);
@@ -277,6 +285,9 @@ export default function ReservationGuestConversation({
     setDraftMessage("");
     setSendError("");
     setSendSuccess("");
+    setSendReviewRequired(false);
+    sendingGuardRef.current = false;
+    attemptedRequestRef.current = null;
   }, [reservationId, clearScrollHideTimer]);
 
   useEffect(() => {
@@ -797,17 +808,25 @@ export default function ReservationGuestConversation({
     if (
       !canSend ||
       sending ||
+      sendingGuardRef.current ||
+      sendReviewRequired ||
+      attemptedRequestRef.current !== null ||
       text.length < 1 ||
       text.length > 1600
     ) {
       return;
     }
 
+    // Prevent repeat-clicks synchronously, even before React rerenders.
+    sendingGuardRef.current = true;
     setSending(true);
     setSendError("");
     setSendSuccess("");
 
+    let submitted = false;
     try {
+      // The read-only preflight is not the security boundary.
+      // The send endpoint independently performs atomic authorization.
       const ownershipResponse = await fetch(
         `/api/staff/reservations/${encodeURIComponent(
           reservationId,
@@ -832,11 +851,16 @@ export default function ReservationGuestConversation({
       ) {
         setStaffMessagingEnabled(false);
         setHandoff(null);
-
         throw new Error(
-          "Staff ownership could not be verified. No message was sent.",
+          "Staff ownership could not be verified. No submission was attempted.",
         );
       }
+
+      // A new UUID identifies a single message attempt. Never create a
+      // second operation ID to retry an ambiguous submission.
+      const clientRequestId = crypto.randomUUID();
+      attemptedRequestRef.current = { clientRequestId, body: text };
+      submitted = true;
 
       const response = await fetch(
         `/api/staff/reservations/${encodeURIComponent(
@@ -849,26 +873,37 @@ export default function ReservationGuestConversation({
           headers: {
             "Content-Type": "application/json",
           },
-          body: JSON.stringify({ body: text }),
+          body: JSON.stringify({ body: text, clientRequestId }),
         },
       );
 
       const result: {
         success?: boolean;
         error?: string;
+        operationStatus?: string;
+        operationId?: string;
+        messageSid?: string;
+        duplicate?: boolean;
       } = await response.json();
 
-      if (!response.ok || result.success !== true) {
+      if (
+        !response.ok ||
+        result.success !== true ||
+        result.operationStatus !== "accepted" ||
+        typeof result.messageSid !== "string" ||
+        !/^SM[0-9a-f]{32}$/i.test(result.messageSid)
+      ) {
         throw new Error(
           result.error ||
-            "Message was not accepted. Check the conversation before retrying.",
+            "SMS acceptance could not be confirmed. Do not resend this request; contact an administrator.",
         );
       }
 
+      attemptedRequestRef.current = null;
+      setSendReviewRequired(false);
       setDraftMessage("");
-
       setSendSuccess(
-        "Message accepted by Twilio. Check delivery status in the conversation history.",
+        "Twilio accepted the SMS. Check the conversation history for its delivery status.",
       );
 
       await loadConversation(
@@ -876,12 +911,17 @@ export default function ReservationGuestConversation({
         false,
       );
     } catch (caught) {
+      // Once POST was attempted, network failures and error responses
+      // cannot safely be interpreted as a definitively rejected send.
+      if (submitted) setSendReviewRequired(true);
       setSendError(
-        caught instanceof Error
-          ? caught.message
-          : "Could not send message. Check history before retrying.",
+        (caught instanceof Error ? caught.message : "SMS result unavailable.") +
+          (submitted
+            ? " Do not submit another copy of this message. Have an administrator review the SMS operation and Twilio records."
+            : ""),
       );
     } finally {
+      sendingGuardRef.current = false;
       setSending(false);
     }
   }
@@ -1332,7 +1372,7 @@ export default function ReservationGuestConversation({
                   setSendError("");
                   setSendSuccess("");
                 }}
-                disabled={!canSend || sending}
+                disabled={!canSend || sending || sendReviewRequired}
                 placeholder={
                   canSend
                     ? "Type an SMS reply to your guest..."
@@ -1352,11 +1392,16 @@ export default function ReservationGuestConversation({
                   disabled={
                     !canSend ||
                     sending ||
+                    sendReviewRequired ||
                     !draftMessage.trim()
                   }
                   className="min-h-11 rounded-lg bg-[#ea1b24] px-5 py-3 text-sm font-bold text-white transition hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-40"
                 >
-                  {sending ? "SENDING..." : "SEND SMS"}
+                  {sending
+                    ? "SENDING..."
+                    : sendReviewRequired
+                      ? "REVIEW REQUIRED"
+                      : "SEND SMS"}
                 </button>
               </div>
 
