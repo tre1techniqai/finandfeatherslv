@@ -3,6 +3,7 @@ import { connection } from "next/server";
 import Link from "next/link";
 import GuestAssistanceActions from "@/components/staff/guest-assistance-actions";
 import { requireReservationStaff } from "@/lib/auth/require-reservation-staff";
+import Image from "next/image";
 
 export const metadata = {
   title: "Reservations Staff Portal | Fin & Feathers Las Vegas",
@@ -264,12 +265,105 @@ async function ProtectedReservationQueue({ searchParams }: PageProps) {
 
   return <main className="min-h-screen bg-black px-3 py-6 text-white sm:px-8 sm:py-12">
     <div className="mx-auto max-w-5xl">
-      <header className="border-b border-white/10 pb-6">
-        <p className="text-[11px] font-bold uppercase tracking-[0.22em] text-[#ea1b24]">Fin &amp; Feathers</p>
-        <h1 className="mt-2 text-2xl font-bold tracking-tight sm:text-4xl">Reservations</h1>
-        <p className="mt-2 text-sm font-medium text-zinc-300">Staff Management Portal</p>
-        <p className="mt-3 text-sm leading-6 text-zinc-400">Review guest reservations, manage follow-ups, and access guest conversations.</p>
-        <p className="mt-3 text-xs text-zinc-500">Authorized role: <span className="font-semibold capitalize text-zinc-300">{role.replace(/_/g, " ")}</span></p>
+      <header className="mb-6">
+        <div className="relative grid grid-cols-[48px_1fr_48px] items-center border-b border-white/10 pb-4">
+          <Link
+            href="/"
+            aria-label="Fin & Feathers Home"
+            className="flex h-12 w-12 items-center justify-center rounded-lg focus-visible:outline-2 focus-visible:outline-[#ea1b24]"
+          >
+            <Image
+              src="/img/fin-feathers-icon-blk-alpha.png"
+              alt="Fin & Feathers"
+              width={44}
+              height={44}
+              className="h-11 w-11 object-contain"
+            />
+          </Link>
+
+          <h1 className="text-center text-lg font-bold tracking-tight text-white sm:text-2xl">
+            Reservations
+          </h1>
+
+          <details className="group relative z-30">
+            <summary
+              aria-label="Open navigation menu"
+              className="flex h-12 w-12 cursor-pointer list-none items-center justify-center rounded-lg border border-white/15 text-white transition hover:bg-white/10 focus-visible:outline-2 focus-visible:outline-[#ea1b24] [&::-webkit-details-marker]:hidden"
+            >
+              <svg
+                aria-hidden="true"
+                xmlns="http://www.w3.org/2000/svg"
+                width="25"
+                height="25"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2.5"
+                strokeLinecap="round"
+              >
+                <path d="M4 6h16M4 12h16M4 18h16" />
+              </svg>
+            </summary>
+
+            <nav
+              aria-label="Staff navigation"
+              className="absolute right-0 top-14 w-56 overflow-hidden rounded-xl border border-white/15 bg-zinc-950 p-2 shadow-2xl"
+            >
+              {[
+                { label: "Home", href: "/", icon: "⌂" },
+                { label: "Admin", href: "/admin", icon: "⚙" },
+                {
+                  label: "Reservations",
+                  href: "/staff/reservations",
+                  icon: "▦",
+                },
+                { label: "Menu", href: "/admin/menu", icon: "☰" },
+                {
+                  label: "Specials",
+                  href: "/admin/specials",
+                  icon: "★",
+                },
+                {
+                  label: "Gallery",
+                  href: "/admin/gallery",
+                  icon: "▧",
+                },
+              ].map((item) => (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  className="flex min-h-11 items-center gap-3 rounded-lg px-3 text-sm font-medium text-zinc-200 transition hover:bg-white/10 hover:text-white"
+                >
+                  <span
+                    aria-hidden="true"
+                    className="flex w-6 items-center justify-center text-lg text-[#ea1b24]"
+                  >
+                    {item.icon}
+                  </span>
+                  {item.label}
+                </Link>
+              ))}
+            </nav>
+          </details>
+        </div>
+
+        <div className="pt-5">
+          <p className="text-sm font-semibold text-zinc-200">
+            Staff Management Portal
+          </p>
+
+          <p className="mt-2 text-sm leading-6 text-zinc-400">
+            Review guest reservations, manage follow-ups, and
+            access guest conversations.
+          </p>
+
+          <p className="mt-3 text-xs text-zinc-500">
+            Authorized role:{" "}
+            <span className="font-semibold capitalize text-zinc-300">
+              {role.replace(/_/g, " ")}
+            </span>
+          </p>
+        </div>
       </header>
 
       <section aria-label="Reservation summary" className="grid grid-cols-3 gap-2 py-6 sm:gap-3 lg:grid-cols-5">
@@ -337,7 +431,17 @@ async function ProtectedReservationQueue({ searchParams }: PageProps) {
           </div>
         </nav>}
       </section>
-      <footer className="mt-9 border-t border-white/10 pt-5"><Link href="/" className="text-sm text-zinc-400 underline decoration-zinc-700 underline-offset-4 hover:text-white">Return to the website</Link></footer>
+      <footer className="mt-9 border-t border-white/10 pt-6">
+        <div className="flex justify-center">
+          <Link
+            href="/admin"
+            className="inline-flex min-h-11 items-center justify-center gap-2 rounded-full border border-white/20 bg-zinc-950 px-6 py-3 text-sm font-semibold text-white transition hover:border-[#ea1b24] hover:bg-white/10 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#ea1b24]"
+          >
+            <span aria-hidden="true">←</span>
+            Reservations Queue
+          </Link>
+        </div>
+      </footer>
     </div>
   </main>;
 }
