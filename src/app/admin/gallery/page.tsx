@@ -1,9 +1,10 @@
+
 import { Suspense } from "react";
 import { connection } from "next/server";
 import Link from "next/link";
+
 import GalleryImagePanel from "@/components/admin/gallery-image-panel";
 import { requireManager } from "@/lib/auth/require-manager";
-import { signOutManager } from "@/app/admin/menu/actions";
 import {
   saveGalleryImage,
   setGalleryImageActive,
@@ -11,7 +12,8 @@ import {
 
 export const metadata = {
   title: "Gallery Management | Fin & Feathers Las Vegas",
-  description: "Restricted gallery management for authorized managers.",
+  description:
+    "Restricted gallery management for authorized managers.",
 };
 
 type GalleryAdminImage = {
@@ -67,6 +69,7 @@ function TextField({
       <span className="mb-2 block text-sm font-medium text-zinc-300">
         {label}
       </span>
+
       <input
         name={name}
         type={type}
@@ -95,6 +98,7 @@ function TextAreaField({
       <span className="mb-2 block text-sm font-medium text-zinc-300">
         {label}
       </span>
+
       <textarea
         name={name}
         defaultValue={defaultValue ?? ""}
@@ -123,6 +127,7 @@ function CheckField({
         defaultChecked={defaultChecked}
         className="h-4 w-4 shrink-0 accent-[#ea1b24]"
       />
+
       <span>{label}</span>
     </label>
   );
@@ -190,9 +195,11 @@ function GalleryImageEditor({
             <span className="group-open:hidden">
               {isNew ? "Add" : "Edit"}
             </span>
+
             <span className="hidden group-open:inline">
               Close
             </span>
+
             <svg
               aria-hidden="true"
               viewBox="0 0 24 24"
@@ -212,7 +219,10 @@ function GalleryImageEditor({
       </summary>
 
       <div className="border-t border-white/10 p-4 sm:p-5">
-        <form action={saveGalleryImage} className="space-y-6">
+        <form
+          action={saveGalleryImage}
+          className="space-y-6"
+        >
           <input
             type="hidden"
             name="id"
@@ -258,8 +268,8 @@ function GalleryImageEditor({
             />
 
             <p className="text-xs leading-5 text-zinc-500">
-              Alternative text helps visitors using screen readers
-              understand the image.
+              Alternative text helps visitors using screen
+              readers understand the image.
             </p>
           </fieldset>
 
@@ -268,7 +278,9 @@ function GalleryImageEditor({
               Image and display settings
             </legend>
 
-            <GalleryImagePanel initialImageUrl={imageUrl} />
+            <GalleryImagePanel
+              initialImageUrl={imageUrl}
+            />
 
             <TextField
               label="Storage path"
@@ -279,11 +291,11 @@ function GalleryImageEditor({
             />
 
             <p className="text-xs leading-5 text-zinc-400">
-              The image editor uploads a cropped 4:3 WebP image
-              to the Gallery Storage bucket. After uploading,
-              the Storage path field is updated automatically.
-              Click Save Changes or Create Gallery Image to
-              save the database record.
+              The image editor uploads a cropped 4:3 WebP
+              image to the Gallery Storage bucket. After
+              uploading, the Storage path field is updated
+              automatically. Click Save Changes or Create
+              Gallery Image to save the database record.
             </p>
 
             <TextField
@@ -330,6 +342,7 @@ function GalleryImageEditor({
               name="id"
               value={item.id}
             />
+
             <input
               type="hidden"
               name="next_active"
@@ -373,7 +386,8 @@ async function ProtectedGalleryDashboard({
     (image) => image.is_active,
   ).length;
 
-  const inactiveCount = images.length - activeCount;
+  const inactiveCount =
+    images.length - activeCount;
 
   const galleryImages = images.map((item) => ({
     item,
@@ -383,46 +397,25 @@ async function ProtectedGalleryDashboard({
   }));
 
   return (
-    <main className="min-h-screen bg-black px-3 py-6 text-white sm:px-8 sm:py-12">
+    <main className="w-full flex-1 bg-black px-3 py-6 text-white sm:px-8 sm:py-12">
       <div className="mx-auto max-w-6xl">
-        <header className="border-b border-white/10 pb-6">
-          <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
-            <div>
-              <p className="text-[11px] font-bold uppercase tracking-[0.22em] text-[#ea1b24]">
-                Fin &amp; Feathers
-              </p>
+        {/*
+          The shared Admin Portal layout supplies
+          the Gallery Management header, navigation,
+          Sign Out action, and universal footer.
+        */}
+        <div className="flex flex-col gap-3 border-b border-white/10 pb-5 sm:flex-row sm:items-center sm:justify-between">
+          <p className="max-w-2xl text-sm leading-6 text-zinc-400">
+            Manage gallery images, visibility, and display order.
+          </p>
 
-              <h1 className="mt-2 text-2xl font-bold tracking-tight sm:text-4xl">
-                Gallery Management
-              </h1>
-
-              <p className="mt-2 max-w-2xl text-sm leading-6 text-zinc-400">
-                Manage gallery images, visibility, and display order.
-              </p>
-            </div>
-
-            <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:gap-3">
-              <Link
-                href="/"
-                className="inline-flex min-h-11 items-center justify-center rounded-lg border border-white/15 px-3 py-2.5 text-center text-sm font-medium text-white transition hover:bg-white/10 sm:px-4"
-              >
-                View Public Gallery
-              </Link>
-
-              <form
-                action={signOutManager}
-                className="min-w-0"
-              >
-                <button
-                  type="submit"
-                  className="inline-flex min-h-11 w-full items-center justify-center rounded-lg bg-[#ea1b24] px-3 py-2.5 text-sm font-semibold text-white transition hover:bg-red-700 sm:px-4"
-                >
-                  Sign Out
-                </button>
-              </form>
-            </div>
-          </div>
-        </header>
+          <Link
+            href="/"
+            className="inline-flex min-h-11 shrink-0 items-center justify-center rounded-lg border border-white/15 px-4 py-2.5 text-center text-sm font-medium text-white transition hover:bg-white/10"
+          >
+            View Public Gallery
+          </Link>
+        </div>
 
         {params.saved === "1" ? (
           <div
@@ -438,8 +431,8 @@ async function ProtectedGalleryDashboard({
             role="alert"
             className="mt-5 rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-200"
           >
-            Some fields are missing or invalid. Review the form
-            and try again.
+            Some fields are missing or invalid. Review the
+            form and try again.
           </div>
         ) : null}
 
@@ -475,6 +468,7 @@ async function ProtectedGalleryDashboard({
                 <p className="text-xs text-zinc-400 sm:text-sm">
                   Total images
                 </p>
+
                 <p className="mt-1 text-xl font-bold tabular-nums sm:mt-2 sm:text-3xl">
                   {images.length}
                 </p>
@@ -484,6 +478,7 @@ async function ProtectedGalleryDashboard({
                 <p className="text-xs text-zinc-400 sm:text-sm">
                   Active
                 </p>
+
                 <p className="mt-1 text-xl font-bold tabular-nums text-emerald-300 sm:mt-2 sm:text-3xl">
                   {activeCount}
                 </p>
@@ -493,6 +488,7 @@ async function ProtectedGalleryDashboard({
                 <p className="text-xs text-zinc-400 sm:text-sm">
                   Inactive
                 </p>
+
                 <p className="mt-1 text-xl font-bold tabular-nums text-zinc-300 sm:mt-2 sm:text-3xl">
                   {inactiveCount}
                 </p>
@@ -561,15 +557,6 @@ async function ProtectedGalleryDashboard({
             </section>
           </>
         )}
-
-        <footer className="mt-10 border-t border-white/10 pt-5">
-          <Link
-            href="/admin"
-            className="text-sm text-zinc-400 underline decoration-zinc-700 underline-offset-4 transition hover:text-white"
-          >
-            Return to Admin Dashboard
-          </Link>
-        </footer>
       </div>
     </main>
   );

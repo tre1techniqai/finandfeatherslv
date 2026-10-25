@@ -4,7 +4,7 @@ import { connection } from "next/server";
 import Link from "next/link";
 
 import { requireManager } from "@/lib/auth/require-manager";
-import { signOutManager } from "@/app/admin/menu/actions";
+import SpecialsImagePanel from "@/components/admin/specials-image-panel";
 import {
   saveDailySpecial,
   setDailySpecialActive,
@@ -400,17 +400,9 @@ function SpecialEditor({
               Promotional media
             </legend>
 
-            {item?.thumbnail_url ? (
-              <div className="max-w-xs overflow-hidden rounded-lg border border-white/10 bg-zinc-900">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={item.thumbnail_url}
-                  alt={`${item.title} preview`}
-                  loading="lazy"
-                  className="aspect-[4/3] w-full object-cover"
-                />
-              </div>
-            ) : null}
+            <SpecialsImagePanel
+              initialImageUrl={item?.thumbnail_url}
+            />
 
             <TextField
               label="Thumbnail image URL"
@@ -446,11 +438,14 @@ function SpecialEditor({
             />
 
             <p className="text-xs leading-5 text-zinc-400">
-              Phase 1 preserves existing promotional images
-              and videos in the website-media/specials folder.
-              Enter an existing public Storage URL.
-              Direct media uploads are not included in this
-              initial editor.
+              Use the thumbnail editor to upload and crop a 4:3
+              WebP image to Supabase Storage. After the upload
+              succeeds, the Thumbnail Image URL field updates
+              automatically. Click Save Changes or Create Daily
+              Special to publish the replacement thumbnail.
+
+              Promotional videos continue to use their existing
+              public Supabase Storage URLs.
             </p>
           </fieldset>
 
@@ -569,44 +564,26 @@ async function ProtectedSpecialsDashboard({
   );
 
   return (
-    <main className="min-h-screen bg-black px-3 py-6 text-white sm:px-8 sm:py-12">
+    <main className="w-full flex-1 bg-black px-3 py-6 text-white sm:px-8 sm:py-12">
       <div className="mx-auto max-w-6xl">
-        <header className="border-b border-white/10 pb-6">
-          <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
-            <div>
-              <p className="text-[11px] font-bold uppercase tracking-[0.22em] text-[#ea1b24]">
-                Fin &amp; Feathers
-              </p>
+        {/*
+          Page-specific action.
+          Navigation and Sign Out are supplied
+          by the shared Admin Portal header.
+        */}
+        <div className="flex flex-col gap-3 border-b border-white/10 pb-5 sm:flex-row sm:items-center sm:justify-between">
+          <p className="max-w-2xl text-sm leading-6 text-zinc-400">
+            Manage weekday promotions, advertised hours,
+            promotional content, and publication status.
+          </p>
 
-              <h1 className="mt-2 text-2xl font-bold tracking-tight sm:text-4xl">
-                SPECIALS Management
-              </h1>
-
-              <p className="mt-2 max-w-2xl text-sm leading-6 text-zinc-400">
-                Manage weekday promotions, advertised hours,
-                promotional content, and publication status.
-              </p>
-            </div>
-
-            <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:gap-3">
-              <Link
-                href="/"
-                className="inline-flex min-h-11 items-center justify-center rounded-lg border border-white/15 px-3 py-2.5 text-center text-sm font-medium text-white transition hover:bg-white/10 sm:px-4"
-              >
-                View Public SPECIALS
-              </Link>
-
-              <form action={signOutManager} className="min-w-0">
-                <button
-                  type="submit"
-                  className="inline-flex min-h-11 w-full items-center justify-center rounded-lg bg-[#ea1b24] px-3 py-2.5 text-sm font-semibold text-white transition hover:bg-red-700 sm:px-4"
-                >
-                  Sign Out
-                </button>
-              </form>
-            </div>
-          </div>
-        </header>
+          <Link
+            href="/"
+            className="inline-flex min-h-11 shrink-0 items-center justify-center rounded-lg border border-white/15 px-4 py-2.5 text-center text-sm font-medium text-white transition hover:bg-white/10"
+          >
+            View Public SPECIALS
+          </Link>
+        </div>
 
         {params.saved === "1" ? (
           <div
@@ -732,7 +709,10 @@ async function ProtectedSpecialsDashboard({
               ) : (
                 <div className="grid grid-cols-1 items-start gap-3 lg:grid-cols-3 lg:gap-4">
                   {specials.map((item) => (
-                    <SpecialEditor key={item.id} item={item} />
+                    <SpecialEditor
+                      key={item.id}
+                      item={item}
+                    />
                   ))}
                 </div>
               )}
@@ -754,15 +734,6 @@ async function ProtectedSpecialsDashboard({
             </section>
           </>
         )}
-
-        <footer className="mt-10 border-t border-white/10 pt-5">
-          <Link
-            href="/admin"
-            className="text-sm text-zinc-400 underline decoration-zinc-700 underline-offset-4 transition hover:text-white"
-          >
-            Return to Admin Dashboard
-          </Link>
-        </footer>
       </div>
     </main>
   );

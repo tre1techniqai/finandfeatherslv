@@ -1,0 +1,132 @@
+
+import { randomUUID } from "node:crypto";
+import { NextResponse } from "next/server";
+import { createSupabaseServerClient } from "@/lib/supabase/server";
+
+const BUCKET = "website-media";
+const FOLDER = "specials";
+const MAX_FILE_SIZE = 5 * 1024 * 1024;
+
+export async function POST(request: Request) {
+  const supabase = await createSupabaseServerClient();
+
+  const { data: claimsData, error: claimsError } =
+    await supabase.auth.getClaims();
+
+  const userId = claimsData?.claims?.sub;
+
+  if (claimsError || !userId) {
+    return NextResponse.json(
+      { error: "Please sign in to continue." },
+      { status: 401 },
+    );
+  }
+
+  const { data: staffRole, error: roleError } =
+    await supabase
+      .from("staff_roles")
+      .select("role, is_active")
+      .eq("user_id", userId)
+      .eq("is_active", true)
+      .maybeSingle();
+
+  if (
+    roleError ||
+    !staffRole ||
+    staffRole.role !== "manager" ||
+    staffRole.is_active !== true
+  ) {
+    return NextResponse.json(
+      { error: "Manager access required." },
+      { status: 403 },
+    );
+  }
+
+  let formData: FormData;
+
+  try {
+    formData = await request.formData();
+  } catch {
+    return NextResponse.json(
+      { error: "Invalid upload request." },
+      { status: 400 },
+    );
+  }
+
+  const file = formData.get("file");
+
+  if (!(file instanceof File)) {
+    return NextResponse.json(
+      { error: "No image was provided." },
+      { status: 400 },
+    );
+  }
+
+  if (file.type !== "image/webp") {
+    return NextResponse.json(
+      { error: "Thumbnail images must be WebP files." },
+      { status: 415 },
+    );
+  }
+
+  if (file.size === 0 || file.size > MAX_FILE_SIZE) {
+    return NextResponse.json(
+      { error: "Image must be smaller than 5 MB." },
+      { status: 413 },
+    );
+  }
+
+  const header = new Uint8Array(
+    await file.slice(0, 12).arrayBuffer(),
+  );
+
+  const isWebP =
+    header.length === 12 &&
+    String.fromCharCode(...header.slice(0, 4)) === "RIFF" &&
+    String.fromCharCode(...header.slice(8, 12)) === "WEBP";
+
+  if (!isWebP) {
+    return NextResponse.json(
+      { error: "Invalid WebP image data." },
+      { status: 415 },
+    );
+  }
+
+  const storagePath =
+    `${FOLDER}/${randomUUID()}.webp`;
+
+  const { error: uploadError } = await supabase.storage
+    .from(BUCKET)
+    .upload(storagePath, file, {
+      contentType: "image/webp",
+      cacheControl: "3600",
+      upsert: false,
+    });
+
+  if (uploadError) {
+    console.error("SPECIALS thumbnail upload failed:", {
+      message: uploadError.message,
+    });
+
+    return NextResponse.json(
+      { error: "Unable to upload SPECIALS thumbnail." },
+      { status: 500 },
+    );
+  }
+
+  const { data } = supabase.storage
+    .from(BUCKET)
+    .getPublicUrl(storagePath);
+
+  return NextResponse.json(
+    {
+      imageUrl: data.publicUrl,
+      storagePath,
+    },
+    {
+      headers: {
+        "Cache-Control": "no-store",
+      },
+    },
+  );
+}

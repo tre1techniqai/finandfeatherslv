@@ -1,7 +1,9 @@
+
 import { Suspense } from "react";
 import { connection } from "next/server";
 import Link from "next/link";
 import { notFound } from "next/navigation";
+
 import { requireReservationStaff } from "@/lib/auth/require-reservation-staff";
 import ReservationWorkflowActions from "@/components/staff/reservation-workflow-actions";
 import ReservationGuestConversation from "@/components/staff/reservation-guest-conversation";
@@ -65,8 +67,12 @@ type PageProps = {
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-function displayValue(value: string | number | null | undefined) {
-  return value === null || value === undefined || value === ""
+function displayValue(
+  value: string | number | null | undefined,
+) {
+  return value === null ||
+    value === undefined ||
+    value === ""
     ? "Not provided"
     : String(value);
 }
@@ -131,16 +137,23 @@ function formatDeposit(value: number | null) {
 
 function formatUsPhone(value: string) {
   const digits = value.replace(/\D/g, "");
-  const national = digits.length === 11 && digits.startsWith("1")
-    ? digits.slice(1)
-    : digits;
+
+  const national =
+    digits.length === 11 && digits.startsWith("1")
+      ? digits.slice(1)
+      : digits;
 
   if (national.length !== 10) return value;
 
-  return `(${national.slice(0, 3)}) ${national.slice(3, 6)}-${national.slice(6)}`;
+  return `(${national.slice(0, 3)}) ${national.slice(
+    3,
+    6,
+  )}-${national.slice(6)}`;
 }
 
-function displayStatus(reservation: ReservationRequest) {
+function displayStatus(
+  reservation: ReservationRequest,
+) {
   if (
     (reservation.request_status === "incomplete" ||
       reservation.request_status === "unvalidated") &&
@@ -149,12 +162,17 @@ function displayStatus(reservation: ReservationRequest) {
     return "Unvalidated";
   }
 
-  return reservation.request_status.replace(/_/g, " ");
+  return reservation.request_status.replace(
+    /_/g,
+    " ",
+  );
 }
 
-// Show a personal follow-up alert only for recorded, unresolved interruptions.
-// These fields describe the automation interruption, not the guest's exact SMS.
-function getGuestFollowUpReason(reservation: ReservationRequest): string | null {
+// Show a personal follow-up alert only for
+// recorded, unresolved interruptions.
+function getGuestFollowUpReason(
+  reservation: ReservationRequest,
+): string | null {
   if (
     reservation.request_status === "confirmed" ||
     reservation.request_status === "closed"
@@ -162,8 +180,15 @@ function getGuestFollowUpReason(reservation: ReservationRequest): string | null 
     return null;
   }
 
-  const reason = reservation.interruption_reason?.trim().toUpperCase() ?? "";
-  const stage = reservation.interruption_stage?.trim().toUpperCase() ?? "";
+  const reason =
+    reservation.interruption_reason
+      ?.trim()
+      .toUpperCase() ?? "";
+
+  const stage =
+    reservation.interruption_stage
+      ?.trim()
+      .toUpperCase() ?? "";
 
   if (!reason && !stage) return null;
 
@@ -183,7 +208,10 @@ function getGuestFollowUpReason(reservation: ReservationRequest): string | null 
     return "Guest did not complete the requested reservation details.";
   }
 
-  if (stage.includes("ALTERNATIVE") || stage.includes("TIME SELECTION")) {
+  if (
+    stage.includes("ALTERNATIVE") ||
+    stage.includes("TIME SELECTION")
+  ) {
     return "Guest did not select one of the offered times.";
   }
 
@@ -219,7 +247,9 @@ function Section({
 }) {
   return (
     <section className="rounded-xl border border-white/10 bg-zinc-950/90 p-5 sm:p-6">
-      <h2 className="text-lg font-bold text-white">{title}</h2>
+      <h2 className="text-lg font-bold text-white">
+        {title}
+      </h2>
 
       <dl className="mt-5 grid grid-cols-1 gap-x-6 gap-y-6 sm:grid-cols-2">
         {children}
@@ -231,14 +261,19 @@ function Section({
 function Loading() {
   return (
     <main className="flex min-h-screen items-center justify-center bg-black px-5 text-white">
-      <p role="status" className="text-sm text-zinc-300">
+      <p
+        role="status"
+        className="text-sm text-zinc-300"
+      >
         Verifying reservation staff access...
       </p>
     </main>
   );
 }
 
-async function ProtectedReservationDetail({ params }: PageProps) {
+async function ProtectedReservationDetail({
+  params,
+}: PageProps) {
   await connection();
 
   const { id } = await params;
@@ -247,9 +282,10 @@ async function ProtectedReservationDetail({ params }: PageProps) {
     notFound();
   }
 
-  const { supabase, role } = await requireReservationStaff(
-    `/staff/reservations/${id}`,
-  );
+  const { supabase, role } =
+    await requireReservationStaff(
+      `/staff/reservations/${id}`,
+    );
 
   const { data, error } = await supabase
     .from("reservation_requests")
@@ -280,11 +316,15 @@ async function ProtectedReservationDetail({ params }: PageProps) {
     .eq("id", id)
     .maybeSingle();
 
-  const reservation = data as ReservationRequest | null;
+  const reservation =
+    data as ReservationRequest | null;
 
-  // This table is introduced by the manager-only workflow migration.
-  // A missing table or permission error must not block reservation details.
-  const { data: workflowData, error: workflowError } =
+  // A workflow table or permission error must
+  // not prevent guest details from loading.
+  const {
+    data: workflowData,
+    error: workflowError,
+  } =
     error || !reservation
       ? { data: null, error: null }
       : await supabase
@@ -304,30 +344,48 @@ async function ProtectedReservationDetail({ params }: PageProps) {
           .eq("reservation_request_id", id)
           .maybeSingle();
 
-  const workflow = workflowData as ReservationWorkflow | null;
+  const workflow =
+    workflowData as ReservationWorkflow | null;
 
-  // The notification is read through the existing manager session.
-  // A query error must not enable the SMS action or block guest details.
-  const { data: notificationData, error: notificationError } =
+  // An unavailable notification status must
+  // never enable confirmation SMS sending.
+  const {
+    data: notificationData,
+    error: notificationError,
+  } =
     error || !reservation || workflowError
       ? { data: null, error: null }
       : await supabase
           .from("reservation_notification_events")
-          .select("notification_status, twilio_message_sid, failure_code")
+          .select(
+            "notification_status, twilio_message_sid, failure_code",
+          )
           .eq("reservation_request_id", id)
-          .eq("notification_type", "reservation_confirmed")
+          .eq(
+            "notification_type",
+            "reservation_confirmed",
+          )
           .maybeSingle();
 
-  const confirmationNotification = notificationError
-    ? null
-    : (notificationData as ConfirmationNotification | null);
+  const confirmationNotification =
+    notificationError
+      ? null
+      : (notificationData as ConfirmationNotification | null);
 
   return (
-    <main className="min-h-screen bg-black px-3 py-6 text-white sm:px-8 sm:py-12">
+    <main className="w-full flex-1 bg-black px-3 py-6 text-white sm:px-8 sm:py-12">
       <div className="mx-auto max-w-5xl">
+        {/*
+          The universal Staff Portal layout supplies
+          the main header, navigation, Sign Out,
+          and footer.
+
+          This link remains as useful page-specific
+          navigation back to the reservation queue.
+        */}
         <Link
           href="/staff/reservations"
-          className="text-sm text-zinc-400 underline decoration-zinc-700 underline-offset-4 transition hover:text-white"
+          className="inline-flex min-h-11 items-center text-sm text-zinc-400 underline decoration-zinc-700 underline-offset-4 transition hover:text-white"
         >
           ← Reservation Queue
         </Link>
@@ -335,31 +393,36 @@ async function ProtectedReservationDetail({ params }: PageProps) {
         {error ? (
           <section
             role="alert"
-            className="mt-8 rounded-xl border border-[#ea1b24]/30 bg-[#ea1b24]/10 p-6"
+            className="mt-6 rounded-xl border border-[#ea1b24]/30 bg-[#ea1b24]/10 p-6"
           >
             <h1 className="text-xl font-bold text-white">
               Reservation data unavailable
             </h1>
 
             <p className="mt-3 text-sm leading-6 text-zinc-300">
-              This reservation could not be loaded. Please try
-              again or contact an administrator.
+              This reservation could not be loaded.
+              Please try again or contact an
+              administrator.
             </p>
 
             <p className="mt-3 text-xs text-zinc-400">
-              Database error code: {error.code || "Unavailable"}
+              Database error code:{" "}
+              {error.code || "Unavailable"}
             </p>
           </section>
         ) : !reservation ? (
           notFound()
         ) : (
           <>
-            <header className="mt-7 border-b border-white/10 pb-6">
-              <p className="text-[11px] font-bold uppercase tracking-[0.22em] text-[#ea1b24]">
-                Fin &amp; Feathers
-              </p>
-
-              <h1 className="mt-3 text-2xl font-bold tracking-tight text-white sm:text-4xl">
+            {/*
+              Guest-specific context remains here.
+              This is not the universal portal header.
+            */}
+            <section
+              aria-label="Reservation guest summary"
+              className="mt-5 border-b border-white/10 pb-6"
+            >
+              <h1 className="text-2xl font-bold tracking-tight text-white sm:text-4xl">
                 {reservation.customer_name ||
                   "Guest name unavailable"}
               </h1>
@@ -370,39 +433,50 @@ async function ProtectedReservationDetail({ params }: PageProps) {
                 </span>
 
                 <span className="text-xs capitalize text-zinc-500">
-                  Signed in as {role.replace(/_/g, " ")}
+                  Signed in as{" "}
+                  {role.replace(/_/g, " ")}
                 </span>
               </div>
 
               <p className="mt-4 text-sm text-zinc-400">
                 Reservation details and staff follow-up
               </p>
-            </header>
+            </section>
 
             <div className="mt-6 space-y-5">
               <Section title="Guest Information">
                 <Detail
                   label="Guest Name"
-                  value={displayValue(reservation.customer_name)}
+                  value={displayValue(
+                    reservation.customer_name,
+                  )}
                 />
 
                 <Detail
                   label="Phone"
-                  value={formatUsPhone(reservation.customer_phone)}
+                  value={formatUsPhone(
+                    reservation.customer_phone,
+                  )}
                 />
 
                 <Detail
                   label="Email"
-                  value={displayValue(reservation.email)}
+                  value={displayValue(
+                    reservation.email,
+                  )}
                 />
 
                 <Detail
                   label="VIP Preference"
-                  value={displayValue(reservation.vip_preference)}
+                  value={displayValue(
+                    reservation.vip_preference,
+                  )}
                 />
               </Section>
 
-              {getGuestFollowUpReason(reservation) && (
+              {getGuestFollowUpReason(
+                reservation,
+              ) && (
                 <section
                   role="alert"
                   aria-labelledby="guest-follow-up-heading"
@@ -423,6 +497,7 @@ async function ProtectedReservationDetail({ params }: PageProps) {
                       <path d="M12 9v4" />
                       <path d="M12 17h.01" />
                     </svg>
+
                     <h2
                       id="guest-follow-up-heading"
                       className="text-base font-bold text-amber-100"
@@ -432,13 +507,18 @@ async function ProtectedReservationDetail({ params }: PageProps) {
                   </div>
 
                   <p className="mt-3 text-sm leading-6 text-amber-100">
-                    <span className="font-semibold">Reason:</span>{" "}
-                    {getGuestFollowUpReason(reservation)}
+                    <span className="font-semibold">
+                      Reason:
+                    </span>{" "}
+                    {getGuestFollowUpReason(
+                      reservation,
+                    )}
                   </p>
 
                   <p className="mt-2 text-sm leading-6 text-zinc-300">
-                    Review the guest conversation to see what happened and
-                    prepare a personal reply.
+                    Review the guest conversation
+                    to see what happened and prepare
+                    a personal reply.
                   </p>
 
                   <a
@@ -450,32 +530,44 @@ async function ProtectedReservationDetail({ params }: PageProps) {
                 </section>
               )}
 
-              <ReservationGuestConversation reservationId={reservation.id} />
+              <ReservationGuestConversation
+                reservationId={reservation.id}
+              />
 
               <Section title="Reservation Information">
                 <Detail
                   label="Requested Date"
-                  value={formatDate(reservation.reservation_date)}
+                  value={formatDate(
+                    reservation.reservation_date,
+                  )}
                 />
 
                 <Detail
                   label="Requested Time (Las Vegas)"
-                  value={formatTime(reservation.reservation_time)}
+                  value={formatTime(
+                    reservation.reservation_time,
+                  )}
                 />
 
                 <Detail
                   label="Party Size"
-                  value={displayValue(reservation.party_size)}
+                  value={displayValue(
+                    reservation.party_size,
+                  )}
                 />
 
                 <Detail
                   label="Occasion"
-                  value={displayValue(reservation.occasion)}
+                  value={displayValue(
+                    reservation.occasion,
+                  )}
                 />
 
                 <Detail
                   label="Request Status"
-                  value={displayStatus(reservation)}
+                  value={displayStatus(
+                    reservation,
+                  )}
                 />
 
                 <Detail
@@ -491,12 +583,17 @@ async function ProtectedReservationDetail({ params }: PageProps) {
               <Section title="Deposit Information">
                 <Detail
                   label="Required Deposit"
-                  value={formatDeposit(reservation.deposit_amount)}
+                  value={formatDeposit(
+                    reservation.deposit_amount,
+                  )}
                 />
 
                 <Detail
                   label="Deposit Status"
-                  value={reservation.deposit_status.replace(/_/g, " ")}
+                  value={reservation.deposit_status.replace(
+                    /_/g,
+                    " ",
+                  )}
                 />
               </Section>
 
@@ -514,22 +611,30 @@ async function ProtectedReservationDetail({ params }: PageProps) {
               <Section title="Activity">
                 <Detail
                   label="Received"
-                  value={formatTimestamp(reservation.created_at)}
+                  value={formatTimestamp(
+                    reservation.created_at,
+                  )}
                 />
 
                 <Detail
                   label="Last Updated"
-                  value={formatTimestamp(reservation.updated_at)}
+                  value={formatTimestamp(
+                    reservation.updated_at,
+                  )}
                 />
 
                 <Detail
                   label="Confirmed At"
-                  value={formatTimestamp(reservation.confirmed_at)}
+                  value={formatTimestamp(
+                    reservation.confirmed_at,
+                  )}
                 />
 
                 <Detail
                   label="Closed At"
-                  value={formatTimestamp(reservation.closed_at)}
+                  value={formatTimestamp(
+                    reservation.closed_at,
+                  )}
                 />
               </Section>
 
@@ -541,10 +646,12 @@ async function ProtectedReservationDetail({ params }: PageProps) {
                   <h2 className="text-base font-semibold text-white">
                     Reservation Actions Unavailable
                   </h2>
+
                   <p className="mt-3 text-sm leading-6 text-amber-200">
-                    The manager workflow database is not ready or cannot be
-                    accessed. Reservation details remain available, but no
-                    booking actions can be submitted.
+                    The manager workflow database
+                    is not ready or cannot be accessed.
+                    Reservation details remain available,
+                    but no booking actions can be submitted.
                   </p>
                 </section>
               ) : (
@@ -557,36 +664,61 @@ async function ProtectedReservationDetail({ params }: PageProps) {
                       <h2 className="text-base font-semibold text-white">
                         Guest Notification Status Unavailable
                       </h2>
+
                       <p className="mt-3 text-sm leading-6 text-amber-200">
-                        The confirmation notification could not be loaded.
-                        Sending is disabled until its status can be verified.
+                        The confirmation notification
+                        could not be loaded. Sending
+                        is disabled until its status
+                        can be verified.
                       </p>
                     </section>
                   )}
+
                   <ReservationWorkflowActions
-                  key={`${reservation.id}:${workflow?.workflow_status ?? "awaiting_review"}:${reservation.deposit_status}`}
-                  reservationId={reservation.id}
-                  requestedDate={reservation.reservation_date}
-                  requestedTime={reservation.reservation_time}
-                  requestStatus={reservation.request_status}
-                  detailsValidated={reservation.details_validated}
-                  depositAmount={reservation.deposit_amount}
-                  depositStatus={reservation.deposit_status}
-                  workflow={workflow}
-                  confirmationNotification={confirmationNotification}
-                />
+                    key={`${reservation.id}:${workflow?.workflow_status ?? "awaiting_review"}:${reservation.deposit_status}`}
+                    reservationId={reservation.id}
+                    requestedDate={
+                      reservation.reservation_date
+                    }
+                    requestedTime={
+                      reservation.reservation_time
+                    }
+                    requestStatus={
+                      reservation.request_status
+                    }
+                    detailsValidated={
+                      reservation.details_validated
+                    }
+                    depositAmount={
+                      reservation.deposit_amount
+                    }
+                    depositStatus={
+                      reservation.deposit_status
+                    }
+                    workflow={workflow}
+                    confirmationNotification={
+                      confirmationNotification
+                    }
+                  />
                 </>
               )}
             </div>
 
-            <footer className="mt-8 border-t border-white/10 pt-5">
+            {/*
+              Contextual return link. This is not
+              a duplicate universal footer.
+            */}
+            <nav
+              aria-label="Reservation detail navigation"
+              className="mt-8 border-t border-white/10 pt-5"
+            >
               <Link
                 href="/staff/reservations"
                 className="inline-flex min-h-11 items-center text-sm font-medium text-zinc-300 underline decoration-zinc-600 underline-offset-4 transition hover:text-white"
               >
                 ← Return to Reservation Queue
               </Link>
-            </footer>
+            </nav>
           </>
         )}
       </div>
@@ -594,7 +726,9 @@ async function ProtectedReservationDetail({ params }: PageProps) {
   );
 }
 
-export default function StaffReservationDetailPage(props: PageProps) {
+export default function StaffReservationDetailPage(
+  props: PageProps,
+) {
   return (
     <Suspense fallback={<Loading />}>
       <ProtectedReservationDetail {...props} />

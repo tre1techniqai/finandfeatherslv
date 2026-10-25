@@ -1225,7 +1225,7 @@ export default function ReservationGuestConversation({
           )}
 
           <div className="mt-6 border-t border-white/10 pt-5">
-            <div className="grid gap-3 sm:grid-cols-2">
+            <div className="grid gap-3 sm:grid-cols-3">
               <button
                 type="button"
                 onClick={() => void refreshConversation()}
@@ -1243,6 +1243,38 @@ export default function ReservationGuestConversation({
                   ? "Refreshing..."
                   : "REFRESH MESSAGES"}
               </button>
+
+              <a
+                href={`/api/staff/reservations/${encodeURIComponent(
+                  reservationId,
+                )}/conversation/pdf`}
+                download
+                aria-disabled={!loaded || loading || !!error}
+                onClick={(event) => {
+                  if (!loaded || loading || !!error) {
+                    event.preventDefault();
+                  }
+                }}
+                className={`inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-white/20 bg-white/5 px-4 py-3 text-sm font-semibold text-white transition hover:bg-white/10 ${
+                  !loaded || loading || !!error
+                    ? "cursor-not-allowed opacity-40"
+                    : ""
+                }`}
+              >
+                <svg
+                  aria-hidden="true"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  className="h-4 w-4"
+                >
+                  <path d="M12 3v12m0 0 4-4m-4 4-4-4M5 17v3h14v-3" />
+                </svg>
+                SAVE AS PDF
+              </a>
 
               <button
                 type="button"
