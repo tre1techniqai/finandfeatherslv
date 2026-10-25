@@ -66,7 +66,7 @@ export default function LoyaltyProgram() {
     >
       <div className="mx-auto max-w-[1500px]">
         <div className="mx-auto max-w-2xl">
-          <div className="mb-8 text-center">
+          <div className="mb-[10px] rounded-2xl border border-white/15 bg-black/65 p-5 text-center shadow-xl sm:p-8">
             <p className="mb-3 text-sm font-bold tracking-[0.2em] text-yellow-400">
               FIN &amp; FEATHERS · LAS VEGAS
             </p>
@@ -90,13 +90,18 @@ export default function LoyaltyProgram() {
               You&apos;re more than a guest. You&apos;re family.
             </p>
 
-            <p className="text-left mx-auto mt-3 max-w-xl font-medium text-sm leading-7 text-white/80 sm:text-sm border-y border-yellow-400 pt-4 pb-4 mb-3">
+            <p className="mx-auto mt-3 max-w-xl text-left text-sm font-medium leading-7 text-white/80">
               Join the F&amp;F Fam Club for exclusive offers, dining
               specials, insider announcements, and invitations to
               special events. Get the inside scoop on what&apos;s happening
               at Fin &amp; Feathers—and never miss a reason to come
               through.
             </p>
+
+            <div
+              aria-hidden="true"
+              className="mt-[10px] mb-[10px] border-b border-white/15"
+            />
           </div>
 
           <form
