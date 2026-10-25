@@ -1,7 +1,9 @@
 
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+
+const BACK_TO_TOP_EVENT = "fin-feathers:back-to-top";
 
 function prefersReducedMotion() {
   return window.matchMedia(
@@ -22,11 +24,25 @@ function scrollToElement(id: string) {
 
 export function HomepageDownChevron() {
   const [visible, setVisible] = useState(true);
+  const restoreOnTopRef = useRef(false);
 
   useEffect(() => {
     function handleScroll() {
-      if (window.scrollY > 8) {
+        if (window.scrollY <= 8) {
+            restoreOnTopRef.current = false;
+            setVisible(true);
+            return;
+        }
+
         setVisible(false);
+    }
+
+    function handleBackToTop() {
+      restoreOnTopRef.current = true;
+
+      if (window.scrollY <= 8) {
+        restoreOnTopRef.current = false;
+        setVisible(true);
       }
     }
 
@@ -34,10 +50,23 @@ export function HomepageDownChevron() {
       passive: true,
     });
 
+    window.addEventListener(
+      BACK_TO_TOP_EVENT,
+      handleBackToTop,
+    );
+
     handleScroll();
 
     return () => {
-      window.removeEventListener("scroll", handleScroll);
+      window.removeEventListener(
+        "scroll",
+        handleScroll,
+      );
+
+      window.removeEventListener(
+        BACK_TO_TOP_EVENT,
+        handleBackToTop,
+      );
     };
   }, []);
 
@@ -49,6 +78,7 @@ export function HomepageDownChevron() {
       aria-label="Scroll down to Hours of Operation"
       onClick={() => {
         setVisible(false);
+        restoreOnTopRef.current = false;
         scrollToElement("homepage-hours");
       }}
       className="group flex h-16 w-16 items-center justify-center rounded-full border-2 border-white bg-black text-white shadow-[0_0_20px_rgba(255,255,255,0.12)] transition-colors hover:border-[#ea1b24] hover:bg-[#ea1b24]/20 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-white xl:hidden"
@@ -113,11 +143,16 @@ export function HomepageBackToTop() {
       );
     }
 
-    window.addEventListener("scroll", updateVisibility, {
-      passive: true,
-    });
+    window.addEventListener(
+      "scroll",
+      updateVisibility,
+      { passive: true },
+    );
 
-    window.addEventListener("resize", updateVisibility);
+    window.addEventListener(
+      "resize",
+      updateVisibility,
+    );
 
     updateVisibility();
 
@@ -142,6 +177,10 @@ export function HomepageBackToTop() {
       aria-label="Back to top of page"
       onClick={() => {
         setVisible(false);
+
+        window.dispatchEvent(
+          new Event(BACK_TO_TOP_EVENT),
+        );
 
         window.scrollTo({
           top: 0,

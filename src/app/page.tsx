@@ -180,7 +180,7 @@ export default function HomePage() {
                 </div>
 
                 {/* Mobile/tablet: chevron 30px below slogan */}
-                <div className="mt-[30px] flex w-full justify-center px-4 xl:hidden">
+                <div className="mobile-hero-chevron mt-[30px] flex w-full justify-center px-4 xl:hidden">
                   <HomepageDownChevron />
                 </div>
               </div>
@@ -227,7 +227,7 @@ export default function HomePage() {
           </ScrollReveal>
 
           {/* Ribeye video */}
-          <ScrollReveal className="mt-7 w-full">
+          <ScrollReveal className="mt-16 w-full sm:mt-20">
             <RibeyeVideo />
           </ScrollReveal>
         </section>
@@ -255,7 +255,7 @@ export default function HomePage() {
           </div>
 
           {/* Reservations by Text: mobile-width presentation */}
-          <div className="w-full min-w-0">
+          <div className="mt-24 w-full min-w-0 sm:mt-32">
             <ScrollReveal>
               <div className="mx-auto w-full max-w-sm">
                 <ReservationsTextHero />
