@@ -1,10 +1,13 @@
+
 "use client";
 
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
-const VIDEO_URL =
-  "https://ikxruiemlczfritxrjqr.supabase.co/storage/v1/object/public/website-media/fin-feathers-ribeye.mp4";
+const YOUTUBE_VIDEO_ID = "rsDx4_QeEfc";
+
+const YOUTUBE_EMBED_URL =
+  `https://www.youtube-nocookie.com/embed/${YOUTUBE_VIDEO_ID}?autoplay=1&playsinline=1&rel=0`;
 
 const POSTER_URL = "/img/ribeye-video-thumb.png";
 
@@ -14,6 +17,7 @@ export default function RibeyeVideo() {
 
   const closeButtonRef = useRef<HTMLButtonElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
+  const modalRef = useRef<HTMLElement>(null);
 
   useEffect(() => {
     setPortalReady(true);
@@ -28,40 +32,43 @@ export default function RibeyeVideo() {
 
     function handleKeyDown(event: KeyboardEvent) {
       if (event.key === "Escape") {
+        event.preventDefault();
         setIsOpen(false);
+        return;
       }
 
-      if (event.key === "Tab") {
-        const modal = document.querySelector(
-          '[data-ribeye-modal="true"]',
+      if (event.key !== "Tab") return;
+
+      const modal = modalRef.current;
+
+      if (!modal) return;
+
+      const focusableElements =
+        modal.querySelectorAll<HTMLElement>(
+          'button:not([disabled]), iframe, [tabindex]:not([tabindex="-1"])',
         );
 
-        if (!modal) return;
+      if (focusableElements.length === 0) {
+        event.preventDefault();
+        return;
+      }
 
-        const focusableElements =
-          modal.querySelectorAll<HTMLElement>(
-            'button:not([disabled]), video[controls], [tabindex]:not([tabindex="-1"])',
-          );
+      const firstElement = focusableElements[0];
+      const lastElement =
+        focusableElements[focusableElements.length - 1];
 
-        if (focusableElements.length === 0) return;
-
-        const firstElement = focusableElements[0];
-        const lastElement =
-          focusableElements[focusableElements.length - 1];
-
-        if (
-          event.shiftKey &&
-          document.activeElement === firstElement
-        ) {
-          event.preventDefault();
-          lastElement.focus();
-        } else if (
-          !event.shiftKey &&
-          document.activeElement === lastElement
-        ) {
-          event.preventDefault();
-          firstElement.focus();
-        }
+      if (
+        event.shiftKey &&
+        document.activeElement === firstElement
+      ) {
+        event.preventDefault();
+        lastElement.focus();
+      } else if (
+        !event.shiftKey &&
+        document.activeElement === lastElement
+      ) {
+        event.preventDefault();
+        firstElement.focus();
       }
     }
 
@@ -93,7 +100,9 @@ export default function RibeyeVideo() {
         >
           <div
             className="relative aspect-square w-full overflow-hidden rounded-full border-[3px] border-white bg-cover bg-center bg-no-repeat shadow-[0_10px_28px_rgba(0,0,0,0.38)]"
-            style={{ backgroundImage: `url("${POSTER_URL}")` }}
+            style={{
+              backgroundImage: `url("${POSTER_URL}")`,
+            }}
           >
             <span className="absolute inset-0 bg-black/20 transition-colors duration-300 group-hover:bg-black/28" />
 
@@ -193,6 +202,7 @@ export default function RibeyeVideo() {
             }}
           >
             <section
+              ref={modalRef}
               data-ribeye-modal="true"
               role="dialog"
               aria-modal="true"
@@ -218,19 +228,24 @@ export default function RibeyeVideo() {
                 </button>
               </header>
 
-              <div className="bg-black">
-                <video
-                  controls
-                  autoPlay
-                  playsInline
-                  preload="metadata"
-                  poster={POSTER_URL}
-                  aria-label="Fin & Feathers ribeye steak video"
-                  className="block max-h-[75dvh] w-full bg-black object-contain"
+              <div className="flex items-center justify-center bg-black p-2 sm:p-4">
+                <div
+                  className="aspect-[9/16] max-w-full overflow-hidden rounded-lg bg-black"
+                  style={{
+                    width:
+                      "min(100%, 420px, calc(75dvh * 9 / 16))",
+                  }}
                 >
-                  <source src={VIDEO_URL} type="video/mp4" />
-                  Your browser does not support video playback.
-                </video>
+                  <iframe
+                    src={YOUTUBE_EMBED_URL}
+                    title="Fin & Feathers Hand-Cut USDA Ribeye Video"
+                    allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture; web-share"
+                    referrerPolicy="strict-origin-when-cross-origin"
+                    allowFullScreen
+                    loading="eager"
+                    className="block h-full w-full border-0"
+                  />
+                </div>
               </div>
             </section>
           </div>,

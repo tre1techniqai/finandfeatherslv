@@ -4,6 +4,7 @@ import { createClient } from "@supabase/supabase-js";
 import SiteHeader from "@/components/site-header";
 import SiteFooter from "@/components/site-footer";
 import MenuBrowser, { type MenuItem } from "./menu-browser";
+import { connection } from "next/server";
 
 export const metadata: Metadata = {
   title: "Menu | Fin & Feathers Las Vegas",
@@ -29,6 +30,8 @@ function getSupabaseClient() {
 }
 
 async function MenuContent() {
+  await connection();
+
   let items: MenuItem[] = [];
   let loadError = false;
 
