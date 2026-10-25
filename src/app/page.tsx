@@ -14,6 +14,9 @@ import ScrollReveal from "@/components/scroll-reveal";
 import TodaySpecialsLive from "@/components/todays-specials-live";
 import ReservationsTextHero from "@/components/reservations-text-hero";
 import ManagerInviteRedirect from "@/components/manager-invite-redirect";
+import {
+  HomepageDownChevron,
+} from "@/components/homepage-scroll-controls";
 
 const homeButtons = [
   { label: "FULL MENU", href: "/menu" },
@@ -124,73 +127,123 @@ export default function HomePage() {
       <SiteHeader />
 
       <main className="flex-1">
-        {/* Homepage hero */}
-        <section className="mx-auto w-full max-w-[1500px] px-0 py-6 sm:px-6">
-          <div className="grid grid-cols-1 items-start gap-8 xl:grid-cols-[minmax(0,896px)_minmax(0,500px)] xl:items-start xl:justify-between xl:gap-x-10">
-            {/* LEFT: Logo, slogan, sub-header, hours */}
-            <div className="mx-auto w-full min-w-0 max-w-4xl xl:mx-0">
-              {/* Mobile logo */}
-              <Image
-                src="/img/fin-feathers-lv-logo-1000.png"
-                alt="Fin & Feathers Las Vegas"
-                width={500}
-                height={174}
-                priority
-                sizes="100vw"
-                className="neon-flicker mb-6 block h-auto w-full object-contain md:hidden"
-              />
+        {/*
+          HOMEPAGE INTRO
 
-              {/* Desktop logo */}
-              <Image
-                src="/img/fin-feathers-lv-logo-1000.png"
-                alt="Fin & Feathers Las Vegas"
-                width={1000}
-                height={348}
-                priority
-                sizes="(min-width: 1280px) 896px, (min-width: 768px) calc(100vw - 48px), 100vw"
-                className="neon-flicker mb-6 hidden h-auto w-full object-contain md:block"
-              />
+          Mobile/tablet:
+          The intro occupies at least one viewport height.
+          Hours and links begin in the following section,
+          below the initial viewport.
 
-              <div className="px-4 sm:px-0">
-                <h1 className="slogan-fade-in max-w-4xl text-center text-3xl font-bold leading-tight tracking-tight sm:text-4xl">
-                  ELEVATED DINING MEETS SOUTHERN SOUL
-                </h1>
+          Desktop:
+          Logo/slogan on the left, with hours and
+          vertical links inside the centered black
+          container on the right.
+        */}
+        <section
+          aria-label="Fin and Feathers introduction"
+          className="w-full border-b border-white/15"
+        >
+          <div className="mx-auto flex min-h-[100svh] w-full max-w-[1500px] flex-col px-0 pt-6 pb-7 sm:px-6 xl:min-h-[calc(100svh-5rem)] xl:justify-center xl:py-12">
+            <div className="grid w-full grid-cols-1 items-start gap-8 xl:grid-cols-[minmax(0,896px)_minmax(0,500px)] xl:items-center xl:justify-between xl:gap-x-10">
+              {/* LEFT: Logo and slogan */}
+              <div className="mx-auto w-full min-w-0 max-w-4xl xl:mx-0">
+                {/* Mobile logo */}
+                <Image
+                  src="/img/fin-feathers-lv-logo-1000.png"
+                  alt="Fin & Feathers Las Vegas"
+                  width={500}
+                  height={174}
+                  priority
+                  sizes="100vw"
+                  className="neon-flicker mb-11 block h-auto w-full object-contain md:hidden"
+                />
 
-                <p className="slogan-reveal mt-3 max-w-4xl text-center text-lg leading-8 text-slate-400 sm:text-2xl">
-                  Every dish crafted with fresh ingredients and genuine
-                  hospitality.
-                </p>
+                {/* Tablet and desktop logo */}
+                <Image
+                  src="/img/fin-feathers-lv-logo-1000.png"
+                  alt="Fin & Feathers Las Vegas"
+                  width={1000}
+                  height={348}
+                  priority
+                  sizes="(min-width: 1280px) 896px, (min-width: 768px) calc(100vw - 48px), 100vw"
+                  className="neon-flicker mb-6 hidden h-auto w-full object-contain md:block xl:mb-[54px]"
+                />
+
+                <div className="px-4 sm:px-0">
+                  <h1 className="slogan-fade-in max-w-4xl text-center text-3xl font-bold leading-tight tracking-tight sm:text-4xl">
+                    ELEVATED DINING MEETS SOUTHERN SOUL
+                  </h1>
+
+                  <p className="slogan-reveal mt-3 max-w-4xl text-center text-lg leading-8 text-slate-400 sm:text-2xl">
+                    Every dish crafted with fresh ingredients and genuine
+                    hospitality.
+                  </p>
+                </div>
               </div>
 
-              {/* Hours immediately below sub-header */}
-              <ScrollReveal className="mt-7 w-full min-w-0 px-3 sm:px-0">
-                <HoursOfOperation />
-              </ScrollReveal>
+              {/*
+                RIGHT: Desktop hours and links.
+                Hidden on mobile/tablet.
+              */}
+              <div className="hidden w-full min-w-0 rounded-2xl border border-white/10 bg-black/90 p-5 shadow-xl xl:block xl:p-7">
+                <div className="mb-[30px]">
+                  <HoursOfOperation />
+                </div>
 
-              {/* Mobile/tablet links: 2 x 2, no black container */}
-              <div className="mt-7 w-full px-4 sm:px-0 xl:hidden">
                 <HomepageLinks />
               </div>
             </div>
 
-            {/* RIGHT: Desktop links only */}
-            <div className="hidden w-full min-w-0 rounded-2xl border border-white/10 bg-black/90 p-5 shadow-xl xl:block xl:p-7">
-              <HomepageLinks />
+            {/*
+              Mobile/tablet scroll invitation.
+
+              Flex-auto spacing keeps the chevron toward
+              the lower portion of the intro viewport.
+              The client component hides itself after
+              a tap or scroll.
+            */}
+            <div className="mt-auto flex w-full justify-center px-4 pt-10 xl:hidden">
+              <HomepageDownChevron />
             </div>
+          </div>
+        </section>
+
+        {/*
+          MOBILE/TABLET HOURS AND LINKS
+
+          This section begins after the initial
+          viewport. It is not wrapped in ScrollReveal,
+          so Hours appears immediately when the user
+          taps the chevron or scrolls here.
+
+          scroll-mt-20 reserves space below the
+          sticky navigation bar.
+        */}
+        <section
+          id="homepage-hours"
+          aria-label="Restaurant hours and navigation"
+          className="mx-auto w-full max-w-[1500px] scroll-mt-20 px-4 pt-7 pb-5 sm:px-6 xl:hidden"
+        >
+          <HoursOfOperation />
+
+          <div className="mt-7 w-full">
+            <HomepageLinks />
           </div>
         </section>
 
         {/* Full-width SPECIALS and Ribeye feature */}
         <section
+          id="featured-specials"
           aria-label="Featured restaurant promotions"
-          className="mx-auto w-full max-w-[1500px] px-4 pb-8 sm:px-6"
+          className="mx-auto w-full max-w-[1500px] scroll-mt-20 px-4 pb-8 pt-5 sm:px-6"
         >
           {/* Full-width Today's Specials */}
-          <ScrollReveal className="w-full">
+          <ScrollReveal className="mx-auto w-full xl:max-w-3xl">
             <TodaySpecialsLive />
           </ScrollReveal>
 
-          {/* Ribeye video below the SPECIALS section */}
+          {/* Ribeye video below Today's Specials */}
           <ScrollReveal className="mt-7 w-full">
             <RibeyeVideo />
           </ScrollReveal>

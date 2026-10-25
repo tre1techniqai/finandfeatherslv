@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import ReservationTrigger from "@/components/reservation-trigger";
 
 const TITLE_TEXT = "Reservations by Text";
+const MAX_TITLE_FONT_SIZE = 18;
 const HOLD_AFTER_TYPING_MS = 10000;
 const PULSE_SEQUENCE_MS = 1800;
 const RESET_DELAY_MS = 700;
@@ -28,7 +29,7 @@ export default function ReservationsTextHero() {
   const [showCta, setShowCta] = useState(false);
   const [pulseTitle, setPulseTitle] = useState(false);
   const [isExiting, setIsExiting] = useState(false);
-  const [titleScale, setTitleScale] = useState(1);
+  const [titleFontSize, setTitleFontSize] = useState(MAX_TITLE_FONT_SIZE);
   const titleContainerRef = useRef<HTMLDivElement>(null);
   const titleMeasureRef = useRef<HTMLSpanElement>(null);
   const [visibleBubbleCount, setVisibleBubbleCount] = useState(0);
@@ -43,24 +44,27 @@ export default function ReservationsTextHero() {
     return () => query.removeEventListener("change", update);
   }, []);
 
-  // Measure the complete title AND cursor so its final rendered width
-  // matches the CTA's full width, including the CTA's horizontal padding.
+  // Fit the title by adjusting its real font size instead of scaleX().
+  // The complete title and cursor are measured at 18px, preserving glyph
+  // proportions at every breakpoint and for the entire typing sequence.
   useEffect(() => {
     const container = titleContainerRef.current;
     const measure = titleMeasureRef.current;
     if (!container || !measure) return;
 
-    const updateScale = () => {
+    const updateFontSize = () => {
       const availableWidth = container.clientWidth;
-      const naturalWidth = measure.offsetWidth;
+      const naturalWidth = measure.getBoundingClientRect().width;
       if (availableWidth > 0 && naturalWidth > 0) {
-        setTitleScale(availableWidth / naturalWidth);
+        const fit = (availableWidth - 2) / naturalWidth;
+        setTitleFontSize(MAX_TITLE_FONT_SIZE * Math.min(1, fit));
       }
     };
 
-    updateScale();
-    const observer = new ResizeObserver(updateScale);
+    updateFontSize();
+    const observer = new ResizeObserver(updateFontSize);
     observer.observe(container);
+    document.fonts.ready.then(updateFontSize).catch(() => {});
     return () => observer.disconnect();
   }, []);
 
@@ -211,7 +215,7 @@ export default function ReservationsTextHero() {
           >
             <span
               className="title-line"
-              style={{ transform: `scaleX(${titleScale})` }}
+              style={{ fontSize: `${titleFontSize}px` }}
             >
               <span className="title-text">{typedText}</span>
               <span className="typing-cursor" />
@@ -372,7 +376,7 @@ export default function ReservationsTextHero() {
           background: rgba(255,255,255,.24);
         }
         .title-wrap { min-height: 42px; display: flex; align-items: center; max-width: 100%; position: relative; transform-origin: center; }
-        .title-measure { position: absolute; left: 0; top: 0; visibility: hidden; pointer-events: none; }
+        .title-measure { position: absolute; left: 0; top: 0; visibility: hidden; pointer-events: none; font-size: 18px !important; }
         .measure-cursor { animation: none !important; }
         .title-line {
           display: inline-flex;
@@ -382,7 +386,7 @@ export default function ReservationsTextHero() {
           flex-shrink: 0;
           transform-origin: left center;
           white-space: nowrap;
-          font-size: clamp(.72rem, 2.5vw, 1.14rem);
+          font-size: 18px;
           line-height: 1.15;
           font-weight: 900;
           letter-spacing: -.035em;
@@ -480,7 +484,7 @@ export default function ReservationsTextHero() {
         }
         @media (max-width: 420px) {
           .phone-shell { width: 110px; height: 205px; }
-          .title-line { font-size: clamp(.68rem, 2.85vw, .84rem); }
+
         }
         @media (prefers-reduced-motion: reduce) {
           .phone-float, .typing-cursor, .typing-dot, .title-pulse-on .title-line, .title-exiting, .cta-visible, .cta-exiting { animation: none !important; }

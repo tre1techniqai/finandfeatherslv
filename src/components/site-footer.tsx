@@ -1,8 +1,12 @@
+
 "use client";
 
 import Image from "next/image";
+import { usePathname } from "next/navigation";
+import { HomepageBackToTop } from "@/components/homepage-scroll-controls";
 
-const ORDER_ONLINE_URL = "https://toast.app/r/fin-feathers-las-vegas-1229-s-casino-center-blvd/order?utm_medium=redirect";
+const ORDER_ONLINE_URL =
+  "https://toast.app/r/fin-feathers-las-vegas-1229-s-casino-center-blvd/order?utm_medium=redirect";
 
 function FooterIcon({
   type,
@@ -35,7 +39,7 @@ function FooterIcon({
     case "phone":
       return (
         <svg {...common}>
-          <path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.4 19.4 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1 1 .4 2 .7 2.9a2 2 0 0 1-.5 2.1L8 9.9a16 16 0 0 0 6 6l1.2-1.3a2 2 0 0 1 2.1-.5c.9.3 1.9.6 2.9.7a2 2 0 0 1 1.8 2.1Z" />
+          <path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.4 19.4 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 1.8 2.1Z" />
         </svg>
       );
 
@@ -58,12 +62,18 @@ function FooterIcon({
 }
 
 export default function SiteFooter() {
+  const pathname = usePathname();
+  const isHomepage = pathname === "/";
+
   const currentYear = 2026;
 
   const linkClass =
     "text-sm text-white/65 transition-colors hover:text-white";
 
-  function openModal(event: React.MouseEvent<HTMLAnchorElement>, name: string) {
+  function openModal(
+    event: React.MouseEvent<HTMLAnchorElement>,
+    name: string,
+  ) {
     event.preventDefault();
     window.dispatchEvent(new CustomEvent(name));
   }
@@ -78,25 +88,28 @@ export default function SiteFooter() {
               href="#loyalty-program"
               className="group inline-flex items-center gap-3"
             >
-
               <div className="flex items-center gap-2">
-                  <Image
-                    src="/img/fin-feathers-icon-alpha.png"
-                    alt=""
-                    aria-hidden="true"
-                    width={36}
-                    height={36}
-                    className="h-9 w-9 shrink-0 object-contain"
-                  />
+                <Image
+                  src="/img/fin-feathers-icon-alpha.png"
+                  alt=""
+                  aria-hidden="true"
+                  width={36}
+                  height={36}
+                  className="h-9 w-9 shrink-0 object-contain"
+                />
 
-                  <span className="text-lg font-bold tracking-wide">
-                    FIN &amp; FEATHERS
-                  </span>
+                <span className="text-lg font-bold tracking-wide">
+                  FIN &amp; FEATHERS
+                </span>
               </div>
             </a>
 
             <p className="mt-5 max-w-md text-sm leading-6 text-white/65">
-              Join the F&amp;F Fam Club for exclusive offers, dining specials, insider announcements, and invitations to special events. Get the inside scoop on what&apos;s happening at Fin &amp; Feathers—and never miss a reason to come through.
+              Join the F&amp;F Fam Club for exclusive offers, dining
+              specials, insider announcements, and invitations to
+              special events. Get the inside scoop on what&apos;s
+              happening at Fin &amp; Feathers—and never miss a reason
+              to come through.
             </p>
 
             <a
@@ -104,7 +117,7 @@ export default function SiteFooter() {
               className="mt-5 inline-flex items-center gap-2 rounded-lg border border-white/25 px-4 py-3 text-sm font-bold text-white transition-colors hover:border-[#ea1b24] hover:bg-[#ea1b24]"
             >
               <FooterIcon type="loyalty" size={18} />
-              JOIN OUR F&F FAM CLUB
+              JOIN OUR F&amp;F FAM CLUB
             </a>
           </div>
 
@@ -120,7 +133,10 @@ export default function SiteFooter() {
                   <a
                     href="#full-menu"
                     onClick={(event) =>
-                      openModal(event, "fin-feathers:open-menu-modal")
+                      openModal(
+                        event,
+                        "fin-feathers:open-menu-modal",
+                      )
                     }
                     className={linkClass}
                   >
@@ -205,9 +221,13 @@ export default function SiteFooter() {
             </div>
 
             <div className="mt-6 border-t border-white/15 pt-5">
-              <h3 className="text-xs font-bold tracking-[0.14em] text-white/80">
-                LEGAL
-              </h3>
+              <div className="flex min-h-12 items-center justify-between gap-3">
+                <h3 className="text-xs font-bold tracking-[0.14em] text-white/80">
+                  LEGAL
+                </h3>
+
+                {isHomepage ? <HomepageBackToTop /> : null}
+              </div>
 
               <nav aria-label="Legal links" className="mt-3">
                 <ul className="space-y-3">
@@ -230,7 +250,7 @@ export default function SiteFooter() {
         {/* Copyright */}
         <div className="mt-10 border-t border-white/15 pt-6 text-center sm:mt-12 sm:flex sm:items-center sm:justify-between sm:gap-4 sm:text-left">
           <p className="text-xs leading-5 text-white/50">
-            © {currentYear ?? "2026"} Fin &amp; Feathers. All rights reserved.
+            © {currentYear} Fin &amp; Feathers. All rights reserved.
           </p>
 
           <p className="mt-2 text-xs text-white/50 sm:mt-0">
