@@ -36,9 +36,19 @@ const homeButtons = [
 const buttonClassName =
   "flex min-h-[64px] w-full items-center justify-center rounded-xl border border-white/30 bg-[rgb(234_27_36_/_60%)] px-3 py-4 text-center text-sm font-bold tracking-wide text-white transition-colors duration-200 hover:bg-[#ea1b24] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white sm:text-base";
 
-function HomepageLinks() {
+function HomepageLinks({
+  desktop = false,
+}: {
+  desktop?: boolean;
+}) {
   return (
-    <div className="homepage-buttons-reveal grid w-full grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-1">
+    <div
+      className={
+        desktop
+          ? "desktop-hero-links grid w-full grid-cols-1 gap-4"
+          : "homepage-buttons-reveal grid w-full grid-cols-2 gap-3 sm:gap-4"
+      }
+    >
       {homeButtons.map((button) => {
         if (button.label === "FULL MENU") {
           return (
@@ -127,26 +137,14 @@ export default function HomePage() {
       <SiteHeader />
 
       <main className="flex-1">
-        {/*
-          HOMEPAGE INTRO
-
-          Mobile/tablet:
-          The intro occupies at least one viewport height.
-          Hours and links begin in the following section,
-          below the initial viewport.
-
-          Desktop:
-          Logo/slogan on the left, with hours and
-          vertical links inside the centered black
-          container on the right.
-        */}
+        {/* Homepage introduction */}
         <section
           aria-label="Fin and Feathers introduction"
           className="w-full border-b border-white/15"
         >
           <div className="mx-auto flex min-h-[100svh] w-full max-w-[1500px] flex-col px-0 pt-6 pb-7 sm:px-6 xl:min-h-[calc(100svh-5rem)] xl:justify-center xl:py-12">
             <div className="grid w-full grid-cols-1 items-start gap-8 xl:grid-cols-[minmax(0,896px)_minmax(0,500px)] xl:items-center xl:justify-between xl:gap-x-10">
-              {/* LEFT: Logo and slogan */}
+              {/* Logo and slogan */}
               <div className="mx-auto w-full min-w-0 max-w-4xl xl:mx-0">
                 {/* Mobile logo */}
                 <Image
@@ -180,46 +178,31 @@ export default function HomePage() {
                     hospitality.
                   </p>
                 </div>
+
+                {/* Mobile/tablet: chevron 30px below slogan */}
+                <div className="mt-[30px] flex w-full justify-center px-4 xl:hidden">
+                  <HomepageDownChevron />
+                </div>
               </div>
 
               {/*
-                RIGHT: Desktop hours and links.
-                Hidden on mobile/tablet.
+                Desktop hours and navigation:
+                Styled to match the social-link boxes.
+                Container, hours and links share the
+                slogan-completion timing.
               */}
-              <div className="hidden w-full min-w-0 rounded-2xl border border-white/10 bg-black/90 p-5 shadow-xl xl:block xl:p-7">
-                <div className="mb-[30px]">
+              <div className="desktop-hero-box hidden w-full min-w-0 rounded-xl border border-white/15 bg-black/50 p-5 text-center text-white shadow-lg xl:block xl:p-7">
+                <div className="desktop-hero-hours mb-[30px]">
                   <HoursOfOperation />
                 </div>
 
-                <HomepageLinks />
+                <HomepageLinks desktop />
               </div>
-            </div>
-
-            {/*
-              Mobile/tablet scroll invitation.
-
-              Flex-auto spacing keeps the chevron toward
-              the lower portion of the intro viewport.
-              The client component hides itself after
-              a tap or scroll.
-            */}
-            <div className="mt-auto flex w-full justify-center px-4 pt-10 xl:hidden">
-              <HomepageDownChevron />
             </div>
           </div>
         </section>
 
-        {/*
-          MOBILE/TABLET HOURS AND LINKS
-
-          This section begins after the initial
-          viewport. It is not wrapped in ScrollReveal,
-          so Hours appears immediately when the user
-          taps the chevron or scrolls here.
-
-          scroll-mt-20 reserves space below the
-          sticky navigation bar.
-        */}
+        {/* Mobile/tablet hours and links */}
         <section
           id="homepage-hours"
           aria-label="Restaurant hours and navigation"
@@ -232,18 +215,18 @@ export default function HomePage() {
           </div>
         </section>
 
-        {/* Full-width SPECIALS and Ribeye feature */}
+        {/* Full-width promotional section */}
         <section
           id="featured-specials"
           aria-label="Featured restaurant promotions"
           className="mx-auto w-full max-w-[1500px] scroll-mt-20 px-4 pb-8 pt-5 sm:px-6"
         >
-          {/* Full-width Today's Specials */}
+          {/* Today's Specials: max 3xl on desktop */}
           <ScrollReveal className="mx-auto w-full xl:max-w-3xl">
             <TodaySpecialsLive />
           </ScrollReveal>
 
-          {/* Ribeye video below Today's Specials */}
+          {/* Ribeye video */}
           <ScrollReveal className="mt-7 w-full">
             <RibeyeVideo />
           </ScrollReveal>
@@ -271,10 +254,10 @@ export default function HomePage() {
             </ScrollReveal>
           </div>
 
-          {/* Reservations by Text */}
+          {/* Reservations by Text: mobile-width presentation */}
           <div className="w-full min-w-0">
             <ScrollReveal>
-              <div className="mx-auto w-full max-w-4xl">
+              <div className="mx-auto w-full max-w-sm">
                 <ReservationsTextHero />
               </div>
             </ScrollReveal>

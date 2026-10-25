@@ -382,3 +382,72 @@ input[type="date"] {
     padding-right: 0.5rem;
   }
 }
+
+
+/* =========================================
+   DESKTOP HERO — SYNCHRONIZED ENTRANCE
+   Slogan reveal completes at 3600ms.
+   ========================================= */
+
+@media (min-width: 1280px) {
+  .desktop-hero-box {
+    opacity: 0;
+    animation: desktop-hero-box-enter 800ms ease-out 3600ms both;
+  }
+
+  .desktop-hero-hours {
+    opacity: 0;
+    animation: desktop-hero-hours-enter 800ms
+      cubic-bezier(0.22, 1, 0.36, 1) 3600ms both;
+  }
+
+  .desktop-hero-links {
+    opacity: 0;
+    animation: desktop-hero-links-enter 800ms
+      cubic-bezier(0.22, 1, 0.36, 1) 3600ms both;
+  }
+}
+
+@keyframes desktop-hero-box-enter {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes desktop-hero-hours-enter {
+  from {
+    opacity: 0;
+    transform: translateY(-15px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes desktop-hero-links-enter {
+  from {
+    opacity: 0;
+    transform: translateY(15px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .desktop-hero-box,
+  .desktop-hero-hours,
+  .desktop-hero-links {
+    opacity: 1;
+    transform: none;
+    animation: none;
+  }
+}
