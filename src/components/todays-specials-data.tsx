@@ -197,7 +197,7 @@ export default function TodaySpecials({
     <>
       <section
         aria-label="Today's special"
-        className="mx-auto mt-5 w-full max-w-4xl text-left"
+        className="mx-auto mt-5 w-full text-left"
       >
         <button
           type="button"
