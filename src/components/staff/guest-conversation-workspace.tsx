@@ -28,6 +28,26 @@ type HistoryResponse = {
   error?: string;
 };
 
+type OwnershipResponse = {
+  success?: boolean;
+  reservationId?: string;
+  staffMessagingEnabled?: boolean;
+  handoff?: {
+    status?: string;
+    reservationId?: string | null;
+    claimedByCurrentManager?: boolean;
+  };
+  error?: string;
+};
+
+type SendResponse = {
+  success?: boolean;
+  operationStatus?: string;
+  operationId?: string;
+  messageSid?: string;
+  error?: string;
+};
+
 type Props = {
   reservationId: string;
 };
@@ -171,6 +191,18 @@ export default function GuestConversationWorkspace({
   >(null);
 
   const [messageDraft, setMessageDraft] = useState("");
+  const [ownershipLoading, setOwnershipLoading] = useState(true);
+  const [messagingEnabled, setMessagingEnabled] = useState(false);
+  const [ownershipMessage, setOwnershipMessage] = useState("");
+  const [sending, setSending] = useState(false);
+  const [sendError, setSendError] = useState("");
+  const [sendSuccess, setSendSuccess] = useState("");
+  const [sendReviewRequired, setSendReviewRequired] = useState(false);
+  const sendingGuardRef = useRef(false);
+  const attemptedRequestRef = useRef<{
+    clientRequestId: string;
+    body: string;
+  } | null>(null);
 
   const [coverageComplete, setCoverageComplete] =
     useState(false);
@@ -179,6 +211,68 @@ export default function GuestConversationWorkspace({
   const loadOlderGuardRef = useRef(false);
   const initialScrollRef = useRef(false);
   const activeRequestRef = useRef<AbortController | null>(null);
+
+  const ownershipUrl =
+    `/api/staff/reservations/${encodeURIComponent(reservationId)}/conversation/ownership`;
+
+  const verifyOwnership = useCallback(async (
+    signal?: AbortSignal,
+  ): Promise<boolean> => {
+    const response = await fetch(ownershipUrl, {
+      method: "GET",
+      credentials: "same-origin",
+      cache: "no-store",
+      signal,
+    });
+
+    const result: OwnershipResponse = await response.json();
+
+    return (
+      response.ok &&
+      result.success === true &&
+      result.reservationId === reservationId &&
+      result.staffMessagingEnabled === true &&
+      result.handoff?.status === "staff" &&
+      result.handoff.claimedByCurrentManager === true &&
+      result.handoff.reservationId === reservationId
+    );
+  }, [ownershipUrl, reservationId]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+
+    setOwnershipLoading(true);
+    setMessagingEnabled(false);
+    setOwnershipMessage("");
+
+    void (async () => {
+      try {
+        const allowed = await verifyOwnership(controller.signal);
+
+        if (controller.signal.aborted) return;
+
+        setMessagingEnabled(allowed);
+        setOwnershipMessage(
+          allowed
+            ? "Manager ownership verified. Staff SMS is available."
+            : "Messaging is unavailable until staff ownership and routing are verified."
+        );
+      } catch {
+        if (controller.signal.aborted) return;
+
+        setMessagingEnabled(false);
+        setOwnershipMessage(
+          "Unable to verify staff messaging permissions."
+        );
+      } finally {
+        if (!controller.signal.aborted) {
+          setOwnershipLoading(false);
+        }
+      }
+    })();
+
+    return () => controller.abort();
+  }, [verifyOwnership]);
 
   const historyUrl = useCallback(
     (cursor?: string | null) => {
@@ -387,6 +481,121 @@ export default function GuestConversationWorkspace({
     }
 
     void loadOlder();
+  }
+
+  const canSend =
+    messagingEnabled &&
+    !ownershipLoading &&
+    !sending &&
+    !sendReviewRequired &&
+    attemptedRequestRef.current === null &&
+    messageDraft.trim().length > 0 &&
+    messageDraft.trim().length <= MAX_MESSAGE_LENGTH;
+
+  async function sendGuestMessage() {
+    const text = messageDraft.trim();
+
+    if (
+      !canSend ||
+      sendingGuardRef.current ||
+      attemptedRequestRef.current !== null
+    ) {
+      return;
+    }
+
+    sendingGuardRef.current = true;
+    setSending(true);
+    setSendError("");
+    setSendSuccess("");
+
+    let submitted = false;
+
+    try {
+      // Client preflight is advisory. The server independently
+      // authorizes ownership and atomically registers the SMS.
+      const allowed = await verifyOwnership();
+
+      if (!allowed) {
+        setMessagingEnabled(false);
+        throw new Error(
+          "Manager ownership or messaging eligibility changed. No SMS was submitted."
+        );
+      }
+
+      const clientRequestId = crypto.randomUUID();
+
+      attemptedRequestRef.current = {
+        clientRequestId,
+        body: text,
+      };
+
+      // From this point forward, any failure may represent
+      // an uncertain Twilio submission. Never auto-retry.
+      submitted = true;
+
+      const response = await fetch(
+        `/api/staff/reservations/${encodeURIComponent(reservationId)}/conversation/send`,
+        {
+          method: "POST",
+          credentials: "same-origin",
+          cache: "no-store",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            body: text,
+            clientRequestId,
+          }),
+        }
+      );
+
+      const result: SendResponse = await response.json();
+
+      if (
+        !response.ok ||
+        result.success !== true ||
+        result.operationStatus !== "accepted" ||
+        typeof result.messageSid !== "string" ||
+        !/^SM[0-9a-f]{32}$/i.test(result.messageSid)
+      ) {
+        throw new Error(
+          result.error ??
+          "SMS acceptance could not be confirmed."
+        );
+      }
+
+      attemptedRequestRef.current = null;
+      setSendReviewRequired(false);
+      setMessageDraft("");
+      setSendSuccess(
+        "Twilio accepted the SMS. This does not yet confirm delivery to the guest."
+      );
+
+      try {
+        await loadInitial();
+      } catch {
+        // History refresh cannot invalidate confirmed
+        // acceptance or trigger another SMS submission.
+      }
+    } catch (caught) {
+      if (submitted) {
+        setSendReviewRequired(true);
+      }
+
+      const detail =
+        caught instanceof Error
+          ? caught.message
+          : "SMS result unavailable.";
+
+      setSendError(
+        submitted
+          ? `${detail} Do not resend. An administrator must review the SMS operation and Twilio records.`
+          : detail
+      );
+    } finally {
+      sendingGuardRef.current = false;
+      setSending(false);
+    }
   }
 
   return (
@@ -619,11 +828,12 @@ export default function GuestConversationWorkspace({
 
           <button
             type="button"
-            disabled
-            aria-disabled="true"
-            className="min-h-11 cursor-not-allowed rounded-lg bg-zinc-700 px-6 py-3 text-sm font-bold text-zinc-300 opacity-70"
+            onClick={() => void sendGuestMessage()}
+            disabled={!canSend}
+            aria-disabled={!canSend}
+            className="min-h-11 rounded-lg bg-[#ea1b24] px-6 py-3 text-sm font-bold text-white transition hover:bg-red-700 disabled:cursor-not-allowed disabled:bg-zinc-700 disabled:text-zinc-300 disabled:opacity-70"
           >
-            Send Message
+            {sending ? "Submitting..." : "Send Message"}
           </button>
         </div>
 
@@ -631,10 +841,39 @@ export default function GuestConversationWorkspace({
           role="status"
           className="mt-4 rounded-lg border border-white/10 bg-black/40 p-3 text-xs leading-5 text-zinc-400"
         >
-          Sending is not yet enabled in this development
-          workspace. No SMS will be submitted while the
-          shared-conversation backend is being connected.
+          {ownershipLoading
+            ? "Checking staff messaging eligibility..."
+            : ownershipMessage}
         </p>
+
+        {sendSuccess && (
+          <p
+            role="status"
+            className="mt-3 rounded-lg border border-emerald-500/30 p-3 text-sm text-emerald-200"
+          >
+            {sendSuccess}
+          </p>
+        )}
+
+        {sendError && (
+          <p
+            role="alert"
+            className="mt-3 rounded-lg border border-red-500/30 p-3 text-sm text-red-200"
+          >
+            {sendError}
+          </p>
+        )}
+
+        {sendReviewRequired && (
+          <p
+            role="alert"
+            className="mt-3 rounded-lg border border-amber-500/30 p-3 text-sm text-amber-200"
+          >
+            This SMS attempt requires administrative review.
+            Further sends from this workspace are blocked.
+            Do not resend until the operation has been reconciled.
+          </p>
+        )}
       </section>
     </div>
   );
