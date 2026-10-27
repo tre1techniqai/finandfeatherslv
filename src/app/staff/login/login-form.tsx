@@ -1,35 +1,22 @@
+
 "use client";
 
 import { useActionState } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
+
 import {
   signInReservationStaff,
   type StaffLoginState,
 } from "./actions";
 
+import { safeStaffReturnPath } from "@/lib/auth/safe-staff-return-path";
+
 const initialState: StaffLoginState = {};
-
-function safeStaffRedirect(value: string | null): string {
-  if (value === "/staff/reservations") {
-    return value;
-  }
-
-  if (
-    value &&
-    /^\/staff\/reservations\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
-      value,
-    )
-  ) {
-    return value;
-  }
-
-  return "/staff/reservations";
-}
 
 export default function StaffLoginForm() {
   const searchParams = useSearchParams();
-  const nextPath = safeStaffRedirect(searchParams.get("next"));
+  const nextPath = safeStaffReturnPath(searchParams.get("next"));
 
   const [state, formAction, pending] = useActionState(
     signInReservationStaff,
@@ -86,7 +73,7 @@ export default function StaffLoginForm() {
           required
           maxLength={128}
           disabled={pending}
-          className="w-full rounded-lg border border-white/15 bg-black px-4 py-3 text-white outline-none transition placeholder:text-zinc-500 focus:border-[#ea1b24] focus:ring-1 focus:ring-[#ea1b24] disabled:opacity-60"
+          className="w-full rounded-lg border border-white/15 bg-black px-4 py-3 text-white placeholder:text-zinc-500 focus:border-[#ea1b24] focus:ring-1 focus:ring-[#ea1b24] disabled:opacity-60"
           placeholder="Enter your password"
         />
       </div>

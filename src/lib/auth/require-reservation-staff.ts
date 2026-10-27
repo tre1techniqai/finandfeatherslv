@@ -1,27 +1,12 @@
+
 import { redirect } from "next/navigation";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { safeStaffReturnPath } from "@/lib/auth/safe-staff-return-path";
 
 export type ReservationStaffRole = "manager";
 
-const UUID_PATTERN =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
-function getSafeReturnPath(value?: string): string {
-  if (!value || value === "/staff/reservations") {
-    return "/staff/reservations";
-  }
-
-  const match = /^\/staff\/reservations\/([^/]+)$/.exec(value);
-
-  if (match && UUID_PATTERN.test(match[1])) {
-    return value;
-  }
-
-  return "/staff/reservations";
-}
-
 export async function requireReservationStaff(returnPath?: string) {
-  const safeReturnPath = getSafeReturnPath(returnPath);
+  const safeReturnPath = safeStaffReturnPath(returnPath);
 
   const loginUrl =
     `/staff/login?next=${encodeURIComponent(safeReturnPath)}`;

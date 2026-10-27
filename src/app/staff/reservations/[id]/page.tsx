@@ -1,4 +1,3 @@
-
 import { Suspense } from "react";
 import { connection } from "next/server";
 import Link from "next/link";
@@ -529,6 +528,24 @@ async function ProtectedReservationDetail({
                   </a>
                 </section>
               )}
+
+              <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-white/10 bg-zinc-950/90 p-4 sm:p-5">
+                <div className="min-w-0">
+                  <h2 className="text-sm font-bold text-white">
+                    Guest Communication
+                  </h2>
+                  <p className="mt-1 text-sm leading-6 text-zinc-400">
+                    Open the standalone read-only SMS history, or continue using the existing guest conversation below.
+                  </p>
+                </div>
+
+                <Link
+                  href={`/staff/conversations/guest/${reservation.id}`}
+                  className="inline-flex min-h-11 items-center justify-center rounded-lg border border-[#ea1b24]/60 bg-[#ea1b24]/15 px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#ea1b24]/25 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
+                >
+                  OPEN GUEST CONVERSATION →
+                </Link>
+              </div>
 
               <ReservationGuestConversation
                 reservationId={reservation.id}

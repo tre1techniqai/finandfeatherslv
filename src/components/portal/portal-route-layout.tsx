@@ -66,6 +66,18 @@ function getPageTitle(pathname: string): string {
   }
 
   if (
+    /^\/staff\/conversations\/guest\/[^/]+\/?$/.test(
+      pathname,
+    )
+  ) {
+    return "Guest Conversation";
+  }
+
+  if (pathname.startsWith("/staff/conversations")) {
+    return "Conversations";
+  }
+
+  if (
     /^\/staff\/reservations\/[^/]+\/?$/.test(
       pathname,
     )

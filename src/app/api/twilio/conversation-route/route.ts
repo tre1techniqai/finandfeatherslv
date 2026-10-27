@@ -2,9 +2,31 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
+import {
+  decideSharedConversationRoute,
+  type OwnershipLookup,
+  type SharedConversationLookup,
+  type SharedRoutingDecision,
+} from "@/lib/reservations/conversation-routing-decision";
+
 const E164 = /^\+[1-9]\d{7,14}$/;
 const MAX_BYTES = 1024;
 const CLOCK_SKEW_SECONDS = 300;
+
+type LegacyOwnershipStatus =
+  | "automation"
+  | "handoff_pending"
+  | "staff"
+  | "released";
+
+type SharedConversationMode =
+  | "automation"
+  | "transitioning_to_staff"
+  | "staff";
+
+type SharedConversationRouteRow = {
+  mode: SharedConversationMode;
+};
 
 function json(
   data: Record<string, unknown>,
@@ -26,6 +48,15 @@ function errorResponse(status: number): NextResponse {
     },
     status,
   );
+}
+
+function routeResponse(
+  route: "automation" | "staff",
+): NextResponse {
+  return json({
+    success: true,
+    route,
+  });
 }
 
 function validSignature(
@@ -85,6 +116,52 @@ function staffRoutingEnabled(): boolean {
   );
 }
 
+function sharedRoutingEnabled(): boolean {
+  return (
+    process.env.RESERVATION_SHARED_SMS_ROUTING_ENABLED ===
+    "true"
+  );
+}
+
+function validLegacyStatus(
+  value: unknown,
+): value is LegacyOwnershipStatus {
+  return (
+    value === "automation" ||
+    value === "handoff_pending" ||
+    value === "staff" ||
+    value === "released"
+  );
+}
+
+function validSharedMode(
+  value: unknown,
+): value is SharedConversationMode {
+  return (
+    value === "automation" ||
+    value === "transitioning_to_staff" ||
+    value === "staff"
+  );
+}
+
+function decisionResponse(
+  decision: SharedRoutingDecision,
+): NextResponse {
+  if (decision.reason === "LEGACY_PENDING_BLOCKED") {
+    console.info("Studio automation blocked for pending handoff.");
+  }
+
+  if (decision.reason === "SHARED_LEGACY_CONFLICT") {
+    console.error("Shared SMS routing blocked by legacy ownership.");
+  }
+
+  if (decision.route === "block") {
+    return errorResponse(503);
+  }
+
+  return routeResponse(decision.route);
+}
+
 export async function POST(
   request: Request,
 ): Promise<NextResponse> {
@@ -102,11 +179,11 @@ export async function POST(
   const restaurantPhone =
     process.env.TWILIO_FROM_NUMBER;
 
-  // This endpoint is exclusively for signed
-  // server-to-server Twilio Function requests.
+  // Exclusively for signed server-to-server
+  // Twilio Function requests.
   //
-  // Never fall back to automation when configuration
-  // or ownership verification fails.
+  // Never fall back to automation after a
+  // configuration or verification failure.
   if (
     !secret ||
     Buffer.byteLength(secret, "utf8") < 32 ||
@@ -190,8 +267,14 @@ export async function POST(
 
   if (
     Object.keys(fields).length !== 2 ||
-    !Object.prototype.hasOwnProperty.call(fields, "from") ||
-    !Object.prototype.hasOwnProperty.call(fields, "to") ||
+    !Object.prototype.hasOwnProperty.call(
+      fields,
+      "from",
+    ) ||
+    !Object.prototype.hasOwnProperty.call(
+      fields,
+      "to",
+    ) ||
     typeof fields.from !== "string" ||
     typeof fields.to !== "string" ||
     !E164.test(fields.from) ||
@@ -213,9 +296,12 @@ export async function POST(
       },
     );
 
+    // Always read legacy ownership first.
+    // This preserves existing safety checks
+    // during the shared SMS migration.
     const {
-      data,
-      error,
+      data: legacyData,
+      error: legacyError,
     } = await supabase
       .from("reservation_conversation_ownership")
       .select("ownership_status")
@@ -223,82 +309,110 @@ export async function POST(
       .eq("restaurant_phone", restaurantPhone)
       .maybeSingle();
 
-    if (error) {
+    if (legacyError) {
       console.error(
         "Studio conversation router ownership lookup failed:",
         {
-          code: error.code,
+          code: legacyError.code,
         },
       );
 
       return errorResponse(503);
     }
 
-    const status =
-      data?.ownership_status;
+    const rawLegacyStatus =
+      legacyData?.ownership_status ?? null;
 
-    // Existing behavior:
-    // Conversations with no ownership record,
-    // or conversations returned to automation,
-    // continue through Studio normally.
     if (
-      !data ||
-      status === "automation" ||
-      status === "released"
+      rawLegacyStatus !== null &&
+      !validLegacyStatus(rawLegacyStatus)
     ) {
-      return json({
-        success: true,
-        route: "automation",
-      });
+      console.error(
+        "Studio router encountered unknown legacy ownership status.",
+      );
+
+      return errorResponse(503);
     }
 
-    if (status === "handoff_pending") {
-      // A pending handoff is not a completed
-      // manager takeover.
-      //
-      // When the fence is enabled, do not authorize
-      // new automation executions for this guest.
-      //
-      // The protected Twilio Function currently
-      // maps a non-2xx router response to "block",
-      // and the published Studio branch terminates
-      // that execution without an automated reply.
-      //
-      // Existing Studio executions are NOT stopped
-      // by this change and require separate checks.
-      if (handoffFenceEnabled()) {
-        console.info(
-          "Studio automation blocked for pending handoff.",
+    const legacy: OwnershipLookup =
+      rawLegacyStatus === null
+        ? { kind: "not_found" }
+        : {
+            kind: "found",
+            status: rawLegacyStatus,
+          };
+
+    const readiness = {
+      sharedRoutingEnabled: sharedRoutingEnabled(),
+      staffRoutingEnabled: staffRoutingEnabled(),
+      handoffFenceEnabled: handoffFenceEnabled(),
+    };
+
+    // Preserve the existing legacy-only behavior.
+    // Do not call the shared RPC when its feature flag is off.
+    if (!readiness.sharedRoutingEnabled) {
+      return decisionResponse(
+        decideSharedConversationRoute(
+          legacy,
+          { kind: "not_found" },
+          readiness,
+        ),
+      );
+    }
+
+    // The shared RPC is a narrow, read-only, trusted lookup.
+    const {
+      data: sharedData,
+      error: sharedError,
+    } = await supabase
+      .rpc(
+        "get_reservation_shared_conversation_route",
+        {
+          p_restaurant_phone: restaurantPhone,
+          p_guest_phone: fields.from,
+        },
+      )
+      .maybeSingle();
+
+    if (sharedError) {
+      console.error(
+        "Studio shared conversation lookup failed:",
+        { code: sharedError.code },
+      );
+
+      return errorResponse(503);
+    }
+
+    let shared: SharedConversationLookup;
+
+    if (!sharedData) {
+      shared = { kind: "not_found" };
+    } else {
+      const rawSharedMode = (
+        sharedData as SharedConversationRouteRow
+      ).mode;
+
+      if (!validSharedMode(rawSharedMode)) {
+        console.error(
+          "Studio router encountered unknown shared conversation mode.",
         );
 
         return errorResponse(503);
       }
 
-      // Preserve existing production behavior
-      // until the complete handoff procedure is ready.
-      return json({
-        success: true,
-        route: "automation",
-      });
+      shared = {
+        kind: "found",
+        mode: rawSharedMode,
+      };
     }
 
-    if (status === "staff") {
-      // Staff routing remains independently gated.
-      // Do not accidentally route staff-owned
-      // conversations to automation when disabled.
-      if (!staffRoutingEnabled()) {
-        return errorResponse(503);
-      }
-
-      return json({
-        success: true,
-        route: "staff",
-      });
-    }
-
-    // Unknown ownership states must never
-    // default to automation.
-    return errorResponse(503);
+    return decisionResponse(
+      decideSharedConversationRoute(
+        legacy,
+        shared,
+        readiness,
+      ),
+    );
   } catch {
     console.error(
       "Studio conversation router request failed.",
