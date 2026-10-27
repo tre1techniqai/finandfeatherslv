@@ -1,4 +1,3 @@
-
 import twilio from "twilio";
 
 const E164 = /^\+[1-9]\d{7,14}$/;
@@ -6,16 +5,19 @@ const MESSAGE_SID = /^SM[0-9a-f]{32}$/i;
 const ACCOUNT_SID = /^AC[0-9a-f]{32}$/i;
 
 const FUTURE_CLOCK_SKEW_MS = 5 * 60 * 1000;
-
-// Bound the production Twilio HTTP request.
-// This does not establish a deadline for the entire
-// inbound recording API operation.
 const TWILIO_REQUEST_TIMEOUT_MS = 3500;
+const MAX_MESSAGE_CHARS = 1600;
+
+const INVALID_BODY_CHARACTERS =
+  /[\u0000-\u0008\u000b\u000c\u000e-\u001f]/;
 
 /**
  * Minimal Twilio SDK interface required by this helper.
  *
- * Tests can provide an in-memory implementation.
+ * Existing test clients may omit body. In that case,
+ * message identity can still be verified, but reservation
+ * attribution must not use missing text.
+ *
  * Production uses the normal Twilio SDK.
  */
 export type InboundMessageClient = {
@@ -28,6 +30,7 @@ export type InboundMessageClient = {
       to: string;
       direction: string;
       dateCreated: Date;
+      body?: string | null;
     }>;
   };
 };
@@ -43,6 +46,17 @@ export type VerifiedInboundMessage = {
   guestPhone: string;
   restaurantPhone: string;
   messageCreatedAt: string;
+
+  /**
+   * Verified message text obtained from Twilio.
+   *
+   * null means the body was unavailable or unsuitable
+   * for automated reservation attribution.
+   *
+   * null must never be interpreted as an empty reply,
+   * YES, NO, or any other Studio trigger.
+   */
+  messageBody: string | null;
 };
 
 export type InboundMessageVerificationResult =
@@ -66,7 +80,7 @@ export type VerifyInboundMessageOptions = {
    * Internal dependency injection.
    *
    * Never obtain this value from an HTTP request.
-   * The Next.js API will call this helper without it.
+   * The Next.js API calls this helper without it.
    */
   client?: InboundMessageClient;
 
@@ -89,12 +103,44 @@ function reject(
 }
 
 /**
+ * Normalize the body only for reservation attribution.
+ *
+ * Do not modify or overwrite Twilio's stored message.
+ * Do not infer content if Twilio does not supply it.
+ */
+function verifiedMessageBody(
+  value: unknown,
+): string | null {
+  if (typeof value !== "string") {
+    return null;
+  }
+
+  if (
+    value.length > MAX_MESSAGE_CHARS ||
+    INVALID_BODY_CHARACTERS.test(value)
+  ) {
+    return null;
+  }
+
+  const body = value.trim();
+
+  return body.length > 0 ? body : null;
+}
+
+/**
  * Fetch and verify a specific inbound Twilio message.
  *
- * This establishes message identity, not permission to
- * record the message into a shared conversation.
+ * Establishes:
+ * - Twilio Message SID identity
+ * - Exact guest and restaurant phone numbers
+ * - Inbound direction
+ * - Valid creation timestamp
+ * - Available verified message text
  *
- * It does not send SMS, update Twilio, or write to Supabase.
+ * This does NOT establish reservation ownership.
+ *
+ * It does not send SMS, modify Twilio, or write to
+ * Supabase.
  */
 export async function verifyInboundTwilioMessage(
   input: VerifyInboundMessageInput,
@@ -169,6 +215,7 @@ export async function verifyInboundTwilioMessage(
         guestPhone: message.from,
         restaurantPhone: message.to,
         messageCreatedAt: createdAt.toISOString(),
+        messageBody: verifiedMessageBody(message.body),
       },
     };
   } catch (error) {
@@ -183,11 +230,8 @@ export async function verifyInboundTwilioMessage(
       return reject("MESSAGE_NOT_FOUND");
     }
 
-    // Do not expose Twilio credentials, response bodies,
-    // exception text, or message contents to callers.
-    //
-    // Request timeout and transport failures are handled
-    // through the existing fail-closed lookup result.
+    // Never expose Twilio credentials, message bodies,
+    // response contents, or exception text.
     return reject("MESSAGE_LOOKUP_FAILED");
   }
 }

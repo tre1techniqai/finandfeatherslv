@@ -4,12 +4,16 @@ import twilio from "twilio";
 
 import { requireReservationStaff } from "@/lib/auth/require-reservation-staff";
 
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const UUID =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
 const MESSAGE_SID = /^SM[0-9a-f]{32}$/i;
 const E164 = /^\+[1-9]\d{7,14}$/;
 const ACCOUNT_SID = /^AC[0-9a-f]{32}$/i;
 
 const PAGE_SIZE = 10;
+const MAX_ASSOCIATIONS_PER_SOURCE = 1000;
+const SID_LOOKUP_BATCH_SIZE = 100;
 
 type RouteContext = {
   params: Promise<{ id: string }>;
@@ -25,6 +29,21 @@ type Source = {
   table: string;
   sidColumn: string;
   timestampColumn: string;
+};
+
+type Cursor = {
+  timestamp: string;
+  sid: string;
+};
+
+type ConversationMessage = {
+  sid: string;
+  direction: "inbound" | "outbound";
+  body: string;
+  status: string;
+  dateCreated: string | null;
+  dateSent: string | null;
+  errorCode: number | null;
 };
 
 const SOURCES: Source[] = [
@@ -46,10 +65,10 @@ const SOURCES: Source[] = [
 ];
 
 function respond(
-  data: Record<string, unknown>,
+  payload: Record<string, unknown>,
   status = 200,
 ) {
-  return NextResponse.json(data, {
+  return NextResponse.json(payload, {
     status,
     headers: {
       "Cache-Control": "no-store",
@@ -57,70 +76,158 @@ function respond(
   });
 }
 
-function validCursor(value: string | null): number | null {
-  if (value === null) return 0;
+function fail(error: string, status: number) {
+  return respond(
+    {
+      success: false,
+      error,
+    },
+    status,
+  );
+}
 
-  if (!/^(0|[1-9]\d{0,8})$/.test(value)) {
+function normalizeTimestamp(value: unknown): string {
+  if (
+    typeof value === "string" &&
+    Number.isFinite(Date.parse(value))
+  ) {
+    return new Date(value).toISOString();
+  }
+
+  return "1970-01-01T00:00:00.000Z";
+}
+
+function encodeCursor(value: Cursor): string {
+  return Buffer.from(
+    JSON.stringify([value.timestamp, value.sid]),
+    "utf8",
+  ).toString("base64url");
+}
+
+function decodeCursor(value: string | null): Cursor | null | false {
+  if (value === null) {
     return null;
   }
 
-  const offset = Number(value);
+  if (
+    value.length > 256 ||
+    !/^[A-Za-z0-9_-]+$/.test(value)
+  ) {
+    return false;
+  }
 
-  return Number.isSafeInteger(offset) ? offset : null;
+  try {
+    const decoded: unknown = JSON.parse(
+      Buffer.from(value, "base64url").toString("utf8"),
+    );
+
+    if (
+      !Array.isArray(decoded) ||
+      decoded.length !== 2 ||
+      typeof decoded[0] !== "string" ||
+      typeof decoded[1] !== "string" ||
+      !MESSAGE_SID.test(decoded[1]) ||
+      !Number.isFinite(Date.parse(decoded[0])) ||
+      normalizeTimestamp(decoded[0]) !== decoded[0]
+    ) {
+      return false;
+    }
+
+    return {
+      timestamp: decoded[0],
+      sid: decoded[1],
+    };
+  } catch {
+    return false;
+  }
+}
+
+function compareAssociations(
+  a: Association,
+  b: Association,
+): number {
+  const timeDifference =
+    Date.parse(b.timestamp) - Date.parse(a.timestamp);
+
+  return (
+    timeDifference ||
+    b.sid.localeCompare(a.sid)
+  );
+}
+
+function isOlderThanCursor(
+  association: Association,
+  cursor: Cursor,
+): boolean {
+  return (
+    compareAssociations(association, {
+      sid: cursor.sid,
+      timestamp: cursor.timestamp,
+      reservationId: association.reservationId,
+    }) > 0
+  );
+}
+
+function batches<T>(
+  values: T[],
+  size: number,
+): T[][] {
+  const result: T[][] = [];
+
+  for (let start = 0; start < values.length; start += size) {
+    result.push(values.slice(start, start + size));
+  }
+
+  return result;
 }
 
 export async function GET(
   request: Request,
   context: RouteContext,
-) {
+): Promise<NextResponse> {
   try {
     const { id } = await context.params;
 
     if (!UUID.test(id)) {
-      return respond(
-        { success: false, error: "Invalid reservation." },
-        400,
-      );
+      return fail("Invalid reservation.", 400);
     }
 
     const url = new URL(request.url);
-    const offset = validCursor(url.searchParams.get("cursor"));
 
-    if (offset === null) {
-      return respond(
-        { success: false, error: "Invalid history cursor." },
-        400,
-      );
+    const cursorValues = url.searchParams.getAll("cursor");
+
+    if (cursorValues.length > 1) {
+      return fail("Invalid history cursor.", 400);
     }
 
-    const { supabase, role } = await requireReservationStaff();
+    const cursor = decodeCursor(cursorValues[0] ?? null);
+
+    if (cursor === false) {
+      return fail("Invalid history cursor.", 400);
+    }
+
+    const { supabase, role } =
+      await requireReservationStaff();
 
     if (role !== "manager") {
-      return respond(
-        { success: false, error: "Manager access required." },
-        403,
-      );
+      return fail("Manager access required.", 403);
     }
 
-    const { data: reservation, error: reservationError } =
-      await supabase
-        .from("reservation_requests")
-        .select("id, customer_name, customer_phone")
-        .eq("id", id)
-        .maybeSingle();
+    const {
+      data: reservation,
+      error: reservationError,
+    } = await supabase
+      .from("reservation_requests")
+      .select("id, customer_name, customer_phone")
+      .eq("id", id)
+      .maybeSingle();
 
     if (reservationError) {
-      return respond(
-        { success: false, error: "Reservation lookup failed." },
-        500,
-      );
+      return fail("Reservation lookup failed.", 500);
     }
 
     if (!reservation) {
-      return respond(
-        { success: false, error: "Reservation not found." },
-        404,
-      );
+      return fail("Reservation not found.", 404);
     }
 
     const guestPhone = reservation.customer_phone;
@@ -137,6 +244,7 @@ export async function GET(
       process.env.SUPABASE_SERVICE_ROLE_KEY;
 
     if (
+      typeof guestPhone !== "string" ||
       !E164.test(guestPhone) ||
       !restaurantPhone ||
       !E164.test(restaurantPhone) ||
@@ -147,11 +255,8 @@ export async function GET(
       !supabaseUrl ||
       !serviceKey
     ) {
-      return respond(
-        {
-          success: false,
-          error: "Conversation service is not configured.",
-        },
+      return fail(
+        "Conversation service is not configured.",
         503,
       );
     }
@@ -164,158 +269,244 @@ export async function GET(
     });
 
     const associations = new Map<string, Association>();
-    const conflicting = new Set<string>();
 
-    // Collect associations across ALL reservations so a SID linked
-    // to multiple reservations is never assigned to either thread.
+    // Read only records explicitly linked to the selected
+    // reservation. Never select history by phone number alone.
     for (const source of SOURCES) {
-      const batchSize = 1000;
-      let start = 0;
+      const {
+        data,
+        error,
+      } = await admin
+        .from(source.table)
+        .select(
+          `reservation_request_id, ${source.sidColumn}, ${source.timestampColumn}`,
+        )
+        .eq("reservation_request_id", id)
+        .not(source.sidColumn, "is", null)
+        .order(source.timestampColumn, {
+          ascending: false,
+          nullsFirst: false,
+        })
+        .limit(MAX_ASSOCIATIONS_PER_SOURCE + 1);
 
-      while (true) {
+      if (error) {
+        console.error("Scoped history source lookup failed", {
+          table: source.table,
+          code: error.code,
+        });
+
+        return fail(
+          "Unable to verify conversation history.",
+          503,
+        );
+      }
+
+      const rows =
+        (data ?? []) as unknown as Record<string, unknown>[];
+
+      // Fail closed rather than silently truncate a large
+      // reservation's history. A future database-native
+      // keyset query can remove this development limit.
+      if (rows.length > MAX_ASSOCIATIONS_PER_SOURCE) {
+        return fail(
+          "Conversation history exceeds the current safe retrieval limit.",
+          503,
+        );
+      }
+
+      for (const row of rows) {
+        const sid = row[source.sidColumn];
+        const reservationId = row.reservation_request_id;
+
+        if (
+          typeof sid !== "string" ||
+          !MESSAGE_SID.test(sid) ||
+          reservationId !== id
+        ) {
+          continue;
+        }
+
+        const timestamp = normalizeTimestamp(
+          row[source.timestampColumn],
+        );
+
+        const existing = associations.get(sid);
+
+        if (
+          !existing ||
+          Date.parse(timestamp) >
+            Date.parse(existing.timestamp)
+        ) {
+          associations.set(sid, {
+            sid,
+            reservationId: id,
+            timestamp,
+          });
+        }
+      }
+    }
+
+    // Cross-check every candidate SID against all three
+    // association sources. If another reservation claims
+    // the same SID, that message is excluded.
+    const allSids = [...associations.keys()];
+    const conflictingSids = new Set<string>();
+
+    for (const source of SOURCES) {
+      for (const sidBatch of batches(
+        allSids,
+        SID_LOOKUP_BATCH_SIZE,
+      )) {
         const { data, error } = await admin
           .from(source.table)
           .select(
-            `reservation_request_id, ${source.sidColumn}, ${source.timestampColumn}`,
+            `reservation_request_id, ${source.sidColumn}`,
           )
-          .order("reservation_request_id", { ascending: true })
-          .range(start, start + batchSize - 1);
+          .in(source.sidColumn, sidBatch);
 
         if (error) {
-          console.error("Scoped history association lookup failed", {
-            table: source.table,
-            code: error.code,
-          });
-
-          return respond(
+          console.error(
+            "Scoped history conflict check failed",
             {
-              success: false,
-              error: "Unable to verify conversation history.",
+              table: source.table,
+              code: error.code,
             },
+          );
+
+          return fail(
+            "Unable to verify message associations.",
             503,
           );
         }
 
-        const rows = (data ?? []) as unknown as Record<string, unknown>[];
-
-        for (const row of rows) {
+        for (const row of (
+          (data ?? []) as unknown as Record<string, unknown>[]
+        )) {
           const sid = row[source.sidColumn];
-          const reservationId = row.reservation_request_id;
-          const timestamp = row[source.timestampColumn];
+          const linkedReservationId =
+            row.reservation_request_id;
 
           if (
-            typeof sid !== "string" ||
-            !MESSAGE_SID.test(sid) ||
-            typeof reservationId !== "string" ||
-            !UUID.test(reservationId)
+            typeof sid === "string" &&
+            associations.has(sid) &&
+            linkedReservationId !== id
           ) {
-            continue;
-          }
-
-          const existing = associations.get(sid);
-
-          if (existing && existing.reservationId !== reservationId) {
-            conflicting.add(sid);
-            continue;
-          }
-
-          if (!existing) {
-            associations.set(sid, {
-              sid,
-              reservationId,
-              timestamp:
-                typeof timestamp === "string" &&
-                Number.isFinite(Date.parse(timestamp))
-                  ? timestamp
-                  : "1970-01-01T00:00:00.000Z",
-            });
+            conflictingSids.add(sid);
           }
         }
-
-        if (rows.length < batchSize) break;
-        start += batchSize;
       }
     }
 
-    const candidates = [...associations.values()]
+    const ordered = [...associations.values()]
       .filter(
-        (entry) =>
-          entry.reservationId === id &&
-          !conflicting.has(entry.sid),
+        (association) =>
+          !conflictingSids.has(association.sid),
       )
-      .sort(
-        (a, b) =>
-          Date.parse(b.timestamp) - Date.parse(a.timestamp) ||
-          b.sid.localeCompare(a.sid),
-      );
+      .sort(compareAssociations);
+
+    const candidates = cursor
+      ? ordered.filter(
+          (association) =>
+            isOlderThanCursor(association, cursor),
+        )
+      : ordered;
 
     const client = twilio(accountSid, authToken, {
       autoRetry: false,
     });
 
-    const verified: {
-      sid: string;
-      direction: "inbound" | "outbound";
-      body: string;
-      status: string;
-      dateCreated: string | null;
-      dateSent: string | null;
-      errorCode: number | null;
+    const collected: {
+      association: Association;
+      message: ConversationMessage;
     }[] = [];
 
-    // Verify the phone pair and direction using Twilio.
-    // Do not return unrelated or unverified message content.
-    for (const entry of candidates) {
-      const message = await client.messages(entry.sid).fetch();
+    // Fetch only enough Twilio messages to fill one page
+    // and detect whether another verified message exists.
+    for (const association of candidates) {
+      if (collected.length >= PAGE_SIZE + 1) {
+        break;
+      }
+
+      let message;
+
+      try {
+        message = await client.messages(
+          association.sid,
+        ).fetch();
+      } catch (error) {
+        console.error(
+          "Reservation-associated Twilio message unavailable",
+          {
+            category: "SCOPED_HISTORY_TWILIO_ERROR",
+            name:
+              error instanceof Error
+                ? error.name
+                : "UnknownError",
+          },
+        );
+
+        // Do not silently treat an unavailable message as
+        // absent or skip over uncertain historical records.
+        return fail(
+          "Unable to verify all requested SMS history. Please retry.",
+          503,
+        );
+      }
 
       const inbound =
         message.from === guestPhone &&
-        message.to === restaurantPhone;
+        message.to === restaurantPhone &&
+        message.direction === "inbound";
 
       const outbound =
         message.from === restaurantPhone &&
-        message.to === guestPhone;
+        message.to === guestPhone &&
+        message.direction !== "inbound";
 
-      if (!inbound && !outbound) continue;
+      if (!inbound && !outbound) {
+        continue;
+      }
 
-      verified.push({
-        sid: message.sid,
-        direction: inbound ? "inbound" : "outbound",
-        body: message.body ?? "",
-        status: message.status,
-        dateCreated: message.dateCreated?.toISOString() ?? null,
-        dateSent: message.dateSent?.toISOString() ?? null,
-        errorCode: message.errorCode ?? null,
+      collected.push({
+        association,
+        message: {
+          sid: message.sid,
+          direction: inbound ? "inbound" : "outbound",
+          body: message.body ?? "",
+          status: message.status,
+          dateCreated:
+            message.dateCreated?.toISOString() ?? null,
+          dateSent:
+            message.dateSent?.toISOString() ?? null,
+          errorCode: message.errorCode ?? null,
+        },
       });
     }
 
-    verified.sort((a, b) => {
-      const aTime = a.dateCreated
-        ? Date.parse(a.dateCreated)
-        : 0;
+    const hasMore = collected.length > PAGE_SIZE;
+    const page = collected.slice(0, PAGE_SIZE);
 
-      const bTime = b.dateCreated
-        ? Date.parse(b.dateCreated)
-        : 0;
+    const last = page[page.length - 1];
 
-      return bTime - aTime || b.sid.localeCompare(a.sid);
-    });
-
-    const page = verified.slice(offset, offset + PAGE_SIZE);
-    const nextOffset = offset + page.length;
+    const nextCursor =
+      hasMore && last
+        ? encodeCursor({
+            timestamp: last.association.timestamp,
+            sid: last.association.sid,
+          })
+        : null;
 
     return respond({
       success: true,
       reservationId: id,
       guestName: reservation.customer_name,
       guestPhone,
-      messages: page.reverse(),
+      messages: page
+        .map((item) => item.message)
+        .reverse(),
       count: page.length,
-      hasMore: nextOffset < verified.length,
-      nextCursor:
-        nextOffset < verified.length
-          ? String(nextOffset)
-          : null,
+      hasMore,
+      nextCursor,
       pageSize: PAGE_SIZE,
       reservationScoped: true,
       historicalCoverageComplete: false,
@@ -323,14 +514,15 @@ export async function GET(
     });
   } catch (error) {
     console.error("Scoped conversation history failed", {
-      name: error instanceof Error ? error.name : "UnknownError",
+      category: "SCOPED_HISTORY_ERROR",
+      name:
+        error instanceof Error
+          ? error.name
+          : "UnknownError",
     });
 
-    return respond(
-      {
-        success: false,
-        error: "Unable to load conversation history.",
-      },
+    return fail(
+      "Unable to load conversation history.",
       502,
     );
   }

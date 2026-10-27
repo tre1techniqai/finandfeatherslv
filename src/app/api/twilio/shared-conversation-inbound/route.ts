@@ -18,6 +18,10 @@ import {
   verifyInboundTwilioMessage,
 } from "@/lib/reservations/verified-inbound-twilio-message";
 
+import {
+  resolveReservationInboundContext,
+} from "@/lib/reservations/reservation-inbound-context";
+
 const E164 = /^\+[1-9]\d{7,14}$/;
 const MESSAGE_SID = /^SM[0-9a-f]{32}$/i;
 const UUID =
@@ -680,7 +684,52 @@ export async function POST(
     }
 
     // ======================================================
-    // 5. Record verified inbound metadata.
+    // 5. Resolve reservation attribution (read-only).
+    // ======================================================
+
+    // A verified phone pair is only transport identity.
+    // It does not identify the reservation that owns this SMS.
+    // The resolver uses the body retrieved directly from Twilio,
+    // never an untrusted body supplied in the signed payload.
+    //
+    // Coordinator persistence is not deployed. Do not attach
+    // this Message SID to a reservation, alter Studio state,
+    // or send any follow-up from this read-only decision.
+    //
+    // This lookup is intentionally nonblocking for the existing
+    // phone-level recording operation. Failures or unresolved
+    // attribution must never be interpreted as permission to
+    // assign a reservation or advance the Coordinator.
+
+    if (
+      verified.message.messageBody !== null &&
+      remainingDatabaseSignal(databaseDeadlineAt) !== null
+    ) {
+      const context = await resolveReservationInboundContext(
+        supabase,
+        {
+          from: verified.message.guestPhone,
+          body: verified.message.messageBody,
+        },
+      );
+
+      if (!context.success) {
+        // No message text, phone number, or reservation ID
+        // is included in diagnostics.
+        console.warn(
+          "Reservation inbound attribution lookup unavailable.",
+          { reason: context.error },
+        );
+      }
+
+      // context.attribution is a provisional policy result,
+      // not a durable message-to-reservation association.
+      // Persisting or acting on it requires the coordinator
+      // schema, event idempotency and a fresh state check.
+    }
+
+    // ======================================================
+    // 6. Record verified inbound metadata.
     // ======================================================
 
     // The review-only recording RPC independently
