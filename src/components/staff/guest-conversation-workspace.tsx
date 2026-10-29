@@ -61,9 +61,12 @@ type Props = {
 
 const PAGE_SIZE = 10;
 const MAX_MESSAGE_LENGTH = 1600;
+const POLL_INTERVAL_MS = 8000;
 
 const UUID =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+const MESSAGE_SID = /^SM[0-9a-f]{32}$/i;
 
 function messageTimestamp(
   message: ConversationMessage,
@@ -126,11 +129,11 @@ function validMessage(
     return false;
   }
 
-  const row =
-    value as Record<string, unknown>;
+  const row = value as Record<string, unknown>;
 
   return (
     typeof row.sid === "string" &&
+    MESSAGE_SID.test(row.sid) &&
     (
       row.direction === "inbound" ||
       row.direction === "outbound"
@@ -177,6 +180,9 @@ function validHistory(
     Array.isArray(result.messages) &&
     result.messages.length <= PAGE_SIZE &&
     result.messages.every(validMessage) &&
+    new Set(result.messages.map(
+      (message) => message.sid,
+    )).size === result.messages.length &&
     typeof result.hasMore === "boolean" &&
     (
       result.nextCursor === null ||
@@ -192,26 +198,62 @@ function validHistory(
   );
 }
 
+function sortMessages(
+  messages: ConversationMessage[],
+): ConversationMessage[] {
+  return [...messages].sort((a, b) => {
+    const aTime = a.dateCreated
+      ? Date.parse(a.dateCreated)
+      : 0;
+
+    const bTime = b.dateCreated
+      ? Date.parse(b.dateCreated)
+      : 0;
+
+    return (
+      (Number.isFinite(aTime) ? aTime : 0) -
+      (Number.isFinite(bTime) ? bTime : 0) ||
+      a.sid.localeCompare(b.sid)
+    );
+  });
+}
+
 function mergeMessages(
-  older: ConversationMessage[],
+  incoming: ConversationMessage[],
   existing: ConversationMessage[],
 ): ConversationMessage[] {
-  const seen = new Set<string>();
-  const merged: ConversationMessage[] = [];
+  const merged = new Map<string, ConversationMessage>();
 
-  for (const message of [
-    ...older,
-    ...existing,
-  ]) {
-    if (seen.has(message.sid)) {
-      continue;
-    }
-
-    seen.add(message.sid);
-    merged.push(message);
+  for (const message of existing) {
+    merged.set(message.sid, message);
   }
 
-  return merged;
+  for (const message of incoming) {
+    merged.set(message.sid, message);
+  }
+
+  return sortMessages([...merged.values()]);
+}
+
+function sameMessages(
+  a: ConversationMessage[],
+  b: ConversationMessage[],
+): boolean {
+  if (a.length !== b.length) return false;
+
+  return a.every((message, index) => {
+    const other = b[index];
+
+    return (
+      message.sid === other.sid &&
+      message.direction === other.direction &&
+      message.body === other.body &&
+      message.status === other.status &&
+      message.dateCreated === other.dateCreated &&
+      message.dateSent === other.dateSent &&
+      message.errorCode === other.errorCode
+    );
+  });
 }
 
 function resolveMode(
@@ -322,6 +364,12 @@ export default function GuestConversationWorkspace({
   const [coverageComplete, setCoverageComplete] =
     useState(false);
 
+  const [syncError, setSyncError] =
+    useState("");
+
+  const [lastSyncedAt, setLastSyncedAt] =
+    useState<Date | null>(null);
+
   const scrollRef =
     useRef<HTMLOListElement>(null);
 
@@ -334,6 +382,30 @@ export default function GuestConversationWorkspace({
   const activeRequestRef =
     useRef<AbortController | null>(null);
 
+  const pollRequestRef =
+    useRef<AbortController | null>(null);
+
+  const pollGuardRef =
+    useRef(false);
+
+  const mountedRef =
+    useRef(false);
+
+  const loadingRef =
+    useRef(true);
+
+  const loadingOlderRef =
+    useRef(false);
+
+  const joiningRef =
+    useRef(false);
+
+  const sendingRef =
+    useRef(false);
+
+  const shouldStickToBottomRef =
+    useRef(false);
+
   const [sharedLoading, setSharedLoading] =
     useState(true);
 
@@ -341,9 +413,7 @@ export default function GuestConversationWorkspace({
     useState("");
 
   const [sharedState, setSharedState] =
-    useState<SharedPreflightResponse | null>(
-      null,
-    );
+    useState<SharedPreflightResponse | null>(null);
 
   const [joining, setJoining] =
     useState(false);
@@ -375,15 +445,29 @@ export default function GuestConversationWorkspace({
   const sendGuardRef =
     useRef(false);
 
+  useEffect(() => {
+    loadingRef.current = loading;
+  }, [loading]);
+
+  useEffect(() => {
+    loadingOlderRef.current = loadingOlder;
+  }, [loadingOlder]);
+
+  useEffect(() => {
+    joiningRef.current = joining;
+  }, [joining]);
+
+  useEffect(() => {
+    sendingRef.current = sending;
+  }, [sending]);
+
   const sharedUrl =
     `/api/staff/reservations/` +
     `${encodeURIComponent(reservationId)}` +
     `/conversation/shared-preflight`;
 
   const loadSharedState = useCallback(
-    async (
-      signal?: AbortSignal,
-    ) => {
+    async (signal?: AbortSignal) => {
       setSharedLoading(true);
       setSharedError("");
 
@@ -403,10 +487,7 @@ export default function GuestConversationWorkspace({
 
         if (
           !response.ok ||
-          !validPreflight(
-            payload,
-            reservationId,
-          )
+          !validPreflight(payload, reservationId)
         ) {
           throw new Error(
             errorDetail(
@@ -416,15 +497,11 @@ export default function GuestConversationWorkspace({
           );
         }
 
-        if (signal?.aborted) {
-          return;
-        }
+        if (signal?.aborted) return;
 
         setSharedState(payload);
       } catch (caught) {
-        if (signal?.aborted) {
-          return;
-        }
+        if (signal?.aborted) return;
 
         setSharedState(null);
 
@@ -443,15 +520,11 @@ export default function GuestConversationWorkspace({
   );
 
   useEffect(() => {
-    const controller =
-      new AbortController();
+    const controller = new AbortController();
 
-    void loadSharedState(
-      controller.signal,
-    );
+    void loadSharedState(controller.signal);
 
-    return () =>
-      controller.abort();
+    return () => controller.abort();
   }, [loadSharedState]);
 
   const historyUrl = useCallback(
@@ -461,9 +534,7 @@ export default function GuestConversationWorkspace({
         `${encodeURIComponent(reservationId)}` +
         `/conversation/scoped-history`;
 
-      if (!cursor) {
-        return base;
-      }
+      if (!cursor) return base;
 
       return (
         `${base}?cursor=` +
@@ -493,10 +564,7 @@ export default function GuestConversationWorkspace({
 
       if (
         !response.ok ||
-        !validHistory(
-          payload,
-          reservationId,
-        )
+        !validHistory(payload, reservationId)
       ) {
         throw new Error(
           errorDetail(
@@ -511,69 +579,69 @@ export default function GuestConversationWorkspace({
     [historyUrl, reservationId],
   );
 
-  const loadInitial =
-    useCallback(async () => {
-      activeRequestRef.current?.abort();
+  const loadInitial = useCallback(async () => {
+    pollRequestRef.current?.abort();
+    activeRequestRef.current?.abort();
 
-      const controller =
-        new AbortController();
+    const controller = new AbortController();
 
-      activeRequestRef.current =
-        controller;
+    activeRequestRef.current = controller;
 
-      setLoading(true);
-      setError("");
-      setOlderError("");
-      setMessages([]);
-      setHasMore(false);
-      setNextCursor(null);
-      setCoverageComplete(false);
+    loadingRef.current = true;
+    setLoading(true);
+    setError("");
+    setOlderError("");
+    setSyncError("");
+    setMessages([]);
+    setHasMore(false);
+    setNextCursor(null);
+    setCoverageComplete(false);
 
-      initialScrollRef.current = false;
+    initialScrollRef.current = false;
 
-      try {
-        const payload =
-          await fetchHistory(
-            null,
-            controller.signal,
-          );
+    try {
+      const payload = await fetchHistory(
+        null,
+        controller.signal,
+      );
 
-        if (controller.signal.aborted) {
-          return;
-        }
+      if (controller.signal.aborted) return;
 
-        setMessages(payload.messages);
-        setHasMore(payload.hasMore);
-        setNextCursor(payload.nextCursor);
+      setMessages(sortMessages(payload.messages));
+      setHasMore(payload.hasMore);
+      setNextCursor(payload.nextCursor);
 
-        setCoverageComplete(
-          payload.historicalCoverageComplete ===
-            true,
-        );
+      setCoverageComplete(
+        payload.historicalCoverageComplete === true,
+      );
 
-        initialScrollRef.current = true;
-      } catch (caught) {
-        if (controller.signal.aborted) {
-          return;
-        }
+      setLastSyncedAt(new Date());
+      initialScrollRef.current = true;
+    } catch (caught) {
+      if (controller.signal.aborted) return;
 
-        setError(
-          caught instanceof Error
-            ? caught.message
-            : "Conversation history is unavailable.",
-        );
-      } finally {
-        if (!controller.signal.aborted) {
-          setLoading(false);
-        }
+      setError(
+        caught instanceof Error
+          ? caught.message
+          : "Conversation history is unavailable.",
+      );
+    } finally {
+      if (!controller.signal.aborted) {
+        loadingRef.current = false;
+        setLoading(false);
       }
-    }, [fetchHistory]);
+    }
+  }, [fetchHistory]);
 
   useEffect(() => {
+    mountedRef.current = true;
+
     void loadInitial();
 
     return () => {
+      mountedRef.current = false;
       activeRequestRef.current?.abort();
+      pollRequestRef.current?.abort();
     };
   }, [loadInitial]);
 
@@ -594,102 +662,107 @@ export default function GuestConversationWorkspace({
     initialScrollRef.current = false;
   }, [loading, messages]);
 
-  const loadOlder =
-    useCallback(async () => {
-      if (
-        loading ||
-        loadingOlder ||
-        loadOlderGuardRef.current ||
-        !hasMore ||
-        !nextCursor
-      ) {
-        return;
-      }
+  useEffect(() => {
+    if (
+      !shouldStickToBottomRef.current ||
+      !scrollRef.current
+    ) {
+      return;
+    }
 
-      const container =
-        scrollRef.current;
+    scrollRef.current.scrollTop =
+      scrollRef.current.scrollHeight;
 
-      if (!container) {
-        return;
-      }
+    shouldStickToBottomRef.current = false;
+  }, [messages]);
 
-      loadOlderGuardRef.current = true;
+  const loadOlder = useCallback(async () => {
+    if (
+      loading ||
+      loadingOlder ||
+      loadOlderGuardRef.current ||
+      !hasMore ||
+      !nextCursor
+    ) {
+      return;
+    }
 
-      setLoadingOlder(true);
-      setOlderError("");
+    const container = scrollRef.current;
 
-      const previousHeight =
-        container.scrollHeight;
+    if (!container) return;
 
-      const previousTop =
-        container.scrollTop;
+    loadOlderGuardRef.current = true;
+    loadingOlderRef.current = true;
 
-      const controller =
-        new AbortController();
+    pollRequestRef.current?.abort();
 
-      activeRequestRef.current =
-        controller;
+    setLoadingOlder(true);
+    setOlderError("");
 
-      try {
-        const payload =
-          await fetchHistory(
-            nextCursor,
-            controller.signal,
-          );
+    const previousHeight =
+      container.scrollHeight;
 
-        if (controller.signal.aborted) {
-          return;
-        }
+    const previousTop =
+      container.scrollTop;
 
-        setMessages(
-          (existing) =>
-            mergeMessages(
-              payload.messages,
-              existing,
-            ),
-        );
+    const controller = new AbortController();
 
-        setHasMore(payload.hasMore);
-        setNextCursor(payload.nextCursor);
+    activeRequestRef.current = controller;
 
+    try {
+      const payload = await fetchHistory(
+        nextCursor,
+        controller.signal,
+      );
+
+      if (controller.signal.aborted) return;
+
+      setMessages((existing) =>
+        mergeMessages(
+          payload.messages,
+          existing,
+        ),
+      );
+
+      setHasMore(payload.hasMore);
+      setNextCursor(payload.nextCursor);
+
+      requestAnimationFrame(() => {
         requestAnimationFrame(() => {
-          requestAnimationFrame(() => {
-            if (!scrollRef.current) {
-              return;
-            }
+          if (!scrollRef.current) return;
 
-            scrollRef.current.scrollTop =
-              previousTop +
-              scrollRef.current.scrollHeight -
-              previousHeight;
-          });
+          scrollRef.current.scrollTop =
+            previousTop +
+            scrollRef.current.scrollHeight -
+            previousHeight;
         });
-      } catch (caught) {
-        if (!controller.signal.aborted) {
-          setOlderError(
-            caught instanceof Error
-              ? caught.message
-              : "Unable to load older messages.",
-          );
-        }
-      } finally {
-        loadOlderGuardRef.current = false;
-
-        if (!controller.signal.aborted) {
-          setLoadingOlder(false);
-        }
+      });
+    } catch (caught) {
+      if (!controller.signal.aborted) {
+        setOlderError(
+          caught instanceof Error
+            ? caught.message
+            : "Unable to load older messages.",
+        );
       }
-    }, [
-      loading,
-      loadingOlder,
-      hasMore,
-      nextCursor,
-      fetchHistory,
-    ]);
+    } finally {
+      loadOlderGuardRef.current = false;
+      loadingOlderRef.current = false;
+
+      if (!controller.signal.aborted) {
+        setLoadingOlder(false);
+      }
+    }
+  }, [
+    loading,
+    loadingOlder,
+    hasMore,
+    nextCursor,
+    fetchHistory,
+  ]);
 
   function onHistoryScroll() {
-    const container =
-      scrollRef.current;
+    const container = scrollRef.current;
 
     if (
       !container ||
@@ -712,9 +785,7 @@ export default function GuestConversationWorkspace({
     sharedState?.checks ?? [];
 
   const passedChecks =
-    checks.filter(
-      (check) => check.passed,
-    ).length;
+    checks.filter((check) => check.passed).length;
 
   const validSharedAssociation =
     sharedState?.success === true &&
@@ -733,6 +804,153 @@ export default function GuestConversationWorkspace({
     !joining &&
     !sending &&
     sharedState?.checksPassed === true;
+
+  // ===================================================
+  // Automatic reservation-scoped message synchronization.
+  //
+  // Only active while the component is mounted,
+  // the tab is visible, and staff mode is verified.
+  //
+  // Refreshes never send SMS or change conversation mode.
+  //
+  // Recent messages replace their matching SIDs.
+  // Older loaded messages are preserved.
+  //
+  // The older-history cursor is intentionally unchanged.
+  // ===================================================
+
+  const refreshRecent = useCallback(async () => {
+    if (
+      !mountedRef.current ||
+      document.visibilityState !== "visible" ||
+      loadingRef.current ||
+      loadingOlderRef.current ||
+      joiningRef.current ||
+      sendingRef.current ||
+      pollGuardRef.current
+    ) {
+      return;
+    }
+
+    pollGuardRef.current = true;
+
+    const controller = new AbortController();
+    pollRequestRef.current = controller;
+
+    const container = scrollRef.current;
+
+    const nearBottom = container
+      ? (
+          container.scrollHeight -
+          container.scrollTop -
+          container.clientHeight
+        ) < 100
+      : false;
+
+    try {
+      const payload = await fetchHistory(
+        null,
+        controller.signal,
+      );
+
+      if (
+        controller.signal.aborted ||
+        !mountedRef.current ||
+        loadingRef.current ||
+        loadingOlderRef.current
+      ) {
+        return;
+      }
+
+      if (nearBottom) {
+        shouldStickToBottomRef.current = true;
+      }
+
+      setMessages((existing) => {
+        const merged = mergeMessages(
+          payload.messages,
+          existing,
+        );
+
+        return sameMessages(existing, merged)
+          ? existing
+          : merged;
+      });
+
+      // Do not replace the older pagination cursor.
+      // It identifies the boundary of previously
+      // loaded pages, not the newest messages.
+
+      setCoverageComplete(
+        payload.historicalCoverageComplete === true,
+      );
+
+      setLastSyncedAt(new Date());
+      setSyncError("");
+    } catch (caught) {
+      if (
+        controller.signal.aborted ||
+        !mountedRef.current
+      ) {
+        return;
+      }
+
+      setSyncError(
+        caught instanceof Error
+          ? caught.message
+          : "Automatic message synchronization failed.",
+      );
+    } finally {
+      if (pollRequestRef.current === controller) {
+        pollRequestRef.current = null;
+      }
+
+      pollGuardRef.current = false;
+    }
+  }, [fetchHistory]);
+
+  useEffect(() => {
+    if (
+      !validSharedAssociation ||
+      sharedMode !== "staff"
+    ) {
+      pollRequestRef.current?.abort();
+      return;
+    }
+
+    const interval = window.setInterval(() => {
+      void refreshRecent();
+    }, POLL_INTERVAL_MS);
+
+    function handleVisibilityChange() {
+      if (document.visibilityState === "hidden") {
+        pollRequestRef.current?.abort();
+        return;
+      }
+
+      void refreshRecent();
+    }
+
+    document.addEventListener(
+      "visibilitychange",
+      handleVisibilityChange,
+    );
+
+    return () => {
+      window.clearInterval(interval);
+
+      document.removeEventListener(
+        "visibilitychange",
+        handleVisibilityChange,
+      );
+
+      pollRequestRef.current?.abort();
+    };
+  }, [
+    validSharedAssociation,
+    sharedMode,
+    refreshRecent,
+  ]);
 
   async function joinConversation() {
     if (!canJoin || joinGuardRef.current) {
@@ -756,6 +974,9 @@ export default function GuestConversationWorkspace({
     }
 
     joinGuardRef.current = true;
+    joiningRef.current = true;
+
+    pollRequestRef.current?.abort();
 
     setJoining(true);
     setJoinError("");
@@ -827,16 +1048,12 @@ export default function GuestConversationWorkspace({
         );
       }
 
-      // Reflect the confirmed server response immediately.
-      // A fresh preflight remains authoritative.
-
       setSharedState((current) =>
         current
           ? {
               ...current,
               sharedMode: "staff",
-              modeVersion:
-                result.modeVersion as number,
+              modeVersion: result.modeVersion as number,
               activationAuthorized: true,
             }
           : current,
@@ -855,23 +1072,13 @@ export default function GuestConversationWorkspace({
           : "Unable to join this conversation.",
       );
 
-      // The server may have changed mode even if its
-      // response was interrupted. Refresh instead of
-      // automatically retrying a mode-changing request.
-
       await loadSharedState();
     } finally {
       joinGuardRef.current = false;
+      joiningRef.current = false;
       setJoining(false);
     }
   }
-
-  // Staff mode and reservation association determine
-  // whether the composer can be offered. The protected
-  // SMS endpoint independently enforces all send gates.
-  //
-  // Automation readiness checks are intentionally NOT
-  // required here: they may be false once automation ends.
 
   const canSend =
     validSharedAssociation &&
@@ -899,6 +1106,9 @@ export default function GuestConversationWorkspace({
     }
 
     sendGuardRef.current = true;
+    sendingRef.current = true;
+
+    pollRequestRef.current?.abort();
 
     setSending(true);
     setSendError("");
@@ -944,7 +1154,8 @@ export default function GuestConversationWorkspace({
         result.success === true &&
         result.conversationId === conversationId &&
         result.operationStatus === "accepted" &&
-        typeof result.messageSid === "string"
+        typeof result.messageSid === "string" &&
+        MESSAGE_SID.test(result.messageSid)
       ) {
         setMessageDraft("");
 
@@ -952,7 +1163,7 @@ export default function GuestConversationWorkspace({
           "Twilio accepted the SMS. Delivery status may update later.",
         );
 
-        void loadInitial();
+        await refreshRecent();
         void loadSharedState();
 
         return;
@@ -980,6 +1191,7 @@ export default function GuestConversationWorkspace({
       );
     } finally {
       sendGuardRef.current = false;
+      sendingRef.current = false;
       setSending(false);
     }
   }
@@ -1024,6 +1236,33 @@ export default function GuestConversationWorkspace({
               : "Refresh"}
           </button>
         </div>
+
+        {validSharedAssociation &&
+          sharedMode === "staff" && (
+            <p className="mt-3 text-xs text-emerald-200">
+              Messages update automatically while
+              this conversation is open.
+              {lastSyncedAt &&
+                ` Last updated ${lastSyncedAt.toLocaleTimeString(
+                  "en-US",
+                  {
+                    hour: "numeric",
+                    minute: "2-digit",
+                    timeZone: "America/Los_Angeles",
+                  },
+                )}.`}
+            </p>
+          )}
+
+        {syncError && (
+          <p
+            role="status"
+            className="mt-3 rounded-lg border border-amber-500/25 bg-amber-950/15 p-3 text-xs leading-5 text-amber-200"
+          >
+            Automatic updates are temporarily
+            unavailable. You can use Refresh.
+          </p>
+        )}
 
         {!coverageComplete &&
           !loading &&
@@ -1398,9 +1637,7 @@ export default function GuestConversationWorkspace({
           maxLength={MAX_MESSAGE_LENGTH}
           value={messageDraft}
           onChange={(event) =>
-            setMessageDraft(
-              event.target.value,
-            )
+            setMessageDraft(event.target.value)
           }
           placeholder="Type your message to the guest..."
           className="w-full resize-y rounded-lg border border-white/20 bg-black px-4 py-3 text-sm leading-6 text-white outline-none placeholder:text-zinc-500 focus:border-[#ea1b24]"

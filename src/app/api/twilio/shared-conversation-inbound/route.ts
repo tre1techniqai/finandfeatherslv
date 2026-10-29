@@ -1,4 +1,8 @@
-import { createHmac, timingSafeEqual } from "node:crypto";
+import {
+  createHmac,
+  timingSafeEqual,
+} from "node:crypto";
+
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
@@ -18,30 +22,16 @@ import {
   verifyInboundTwilioMessage,
 } from "@/lib/reservations/verified-inbound-twilio-message";
 
-import {
-  resolveReservationInboundContext,
-} from "@/lib/reservations/reservation-inbound-context";
-
 const E164 = /^\+[1-9]\d{7,14}$/;
 const MESSAGE_SID = /^SM[0-9a-f]{32}$/i;
+
 const UUID =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 const MAX_REQUEST_BYTES = 2048;
 const CLOCK_SKEW_SECONDS = 300;
 const DATABASE_WORK_BUDGET_MS = 5000;
-
-/**
- * Each database operation receives only the remaining request budget.
- * A timed-out write may still commit on the database server; do not
- * automatically retry recording RPCs.
- */
-function remainingDatabaseSignal(deadlineAt: number): AbortSignal | null {
-  const remainingMs = deadlineAt - Date.now();
-  if (remainingMs <= 0) return null;
-  return AbortSignal.timeout(Math.ceil(remainingMs));
-}
-
+const MAX_RESERVATION_CANDIDATES = 100;
 
 type InboundRequest = {
   from: string;
@@ -65,6 +55,18 @@ type RecordingResult = {
   inbound_event_id: string;
   duplicate: boolean;
   conversation_mode: SharedMode;
+};
+
+type ScopedConversation = {
+  conversation_id: string;
+  reservation_id: string;
+  conversation_mode: SharedMode;
+  staff_activated: boolean;
+};
+
+type VerifiedAssociation = {
+  reservationId: string;
+  conversationId: string;
 };
 
 function respond(
@@ -108,6 +110,20 @@ function configuredForRecording(): boolean {
   );
 }
 
+function remainingDatabaseSignal(
+  deadlineAt: number,
+): AbortSignal | null {
+  const remainingMs = deadlineAt - Date.now();
+
+  if (remainingMs <= 0) {
+    return null;
+  }
+
+  return AbortSignal.timeout(
+    Math.ceil(remainingMs),
+  );
+}
+
 function verifySignature(
   signature: string | null,
   timestamp: string | null,
@@ -127,17 +143,27 @@ function verifySignature(
 
   if (
     !Number.isSafeInteger(seconds) ||
-    Math.abs(Math.floor(Date.now() / 1000) - seconds) >
-      CLOCK_SKEW_SECONDS
+    Math.abs(
+      Math.floor(Date.now() / 1000) - seconds,
+    ) > CLOCK_SKEW_SECONDS
   ) {
     return false;
   }
 
-  const expected = createHmac("sha256", secret)
-    .update(`${timestamp}.${body}`, "utf8")
+  const expected = createHmac(
+    "sha256",
+    secret,
+  )
+    .update(
+      `${timestamp}.${body}`,
+      "utf8",
+    )
     .digest();
 
-  const received = Buffer.from(signature, "hex");
+  const received = Buffer.from(
+    signature,
+    "hex",
+  );
 
   return (
     received.length === expected.length &&
@@ -156,7 +182,8 @@ function parsePayload(
     return null;
   }
 
-  const fields = value as Record<string, unknown>;
+  const fields =
+    value as Record<string, unknown>;
 
   if (
     Object.keys(fields).length !== 3 ||
@@ -210,7 +237,8 @@ function validRecordingResult(
     return false;
   }
 
-  const row = value as Record<string, unknown>;
+  const row =
+    value as Record<string, unknown>;
 
   return (
     typeof row.conversation_id === "string" &&
@@ -218,10 +246,35 @@ function validRecordingResult(
     typeof row.inbound_event_id === "string" &&
     UUID.test(row.inbound_event_id) &&
     typeof row.duplicate === "boolean" &&
-    validSharedMode(row.conversation_mode)
+    validSharedMode(
+      row.conversation_mode,
+    )
   );
 }
 
+function validScopedConversation(
+  value: unknown,
+): value is ScopedConversation {
+  if (
+    !value ||
+    typeof value !== "object" ||
+    Array.isArray(value)
+  ) {
+    return false;
+  }
+
+  const row =
+    value as Record<string, unknown>;
+
+  return (
+    typeof row.conversation_id === "string" &&
+    UUID.test(row.conversation_id) &&
+    typeof row.reservation_id === "string" &&
+    UUID.test(row.reservation_id) &&
+    validSharedMode(row.conversation_mode) &&
+    typeof row.staff_activated === "boolean"
+  );
+}
 
 function legacyForInbound(
   status: LegacyStatus | null,
@@ -240,27 +293,15 @@ function legacyForInbound(
       return "staff";
 
     case "released":
-      // Preserve the actual legacy status.
-      // The shared inbound eligibility policy permits
-      // released ownership only when independently
-      // verified shared staff mode and routing
-      // safeguards are satisfied.
       return "released";
   }
 }
 
-
 export async function POST(
   request: Request,
 ): Promise<NextResponse> {
-  // Shared inbound recording remains disabled until
-  // the database, Studio handoff, and HTTP integration
-  // tests have been verified.
-  //
-  // Do not enable this route based solely on a
-  // successful TypeScript or production build.
-
-  const databaseDeadlineAt = Date.now() + DATABASE_WORK_BUDGET_MS;
+  const databaseDeadlineAt =
+    Date.now() + DATABASE_WORK_BUDGET_MS;
 
   if (!configuredForRecording()) {
     return fail(
@@ -312,28 +353,21 @@ export async function POST(
     );
   }
 
-  const contentLength =
+  const declaredLength =
     request.headers.get("content-length");
 
   if (
-    contentLength !== null &&
+    declaredLength !== null &&
     (
-      !/^\d+$/.test(contentLength) ||
-      !Number.isSafeInteger(Number(contentLength))
+      !/^\d+$/.test(declaredLength) ||
+      !Number.isSafeInteger(
+        Number(declaredLength),
+      ) ||
+      Number(declaredLength) > MAX_REQUEST_BYTES
     )
   ) {
     return fail(
       "Invalid request length.",
-      400,
-    );
-  }
-
-  if (
-    contentLength !== null &&
-    Number(contentLength) > MAX_REQUEST_BYTES
-  ) {
-    return fail(
-      "Request too large.",
       413,
     );
   }
@@ -350,8 +384,10 @@ export async function POST(
   }
 
   if (
-    Buffer.byteLength(rawBody, "utf8") >
-    MAX_REQUEST_BYTES
+    Buffer.byteLength(
+      rawBody,
+      "utf8",
+    ) > MAX_REQUEST_BYTES
   ) {
     return fail(
       "Request too large.",
@@ -397,11 +433,6 @@ export async function POST(
   }
 
   try {
-    const legacySignal = remainingDatabaseSignal(databaseDeadlineAt);
-    if (!legacySignal) {
-      return fail("Inbound request deadline exceeded.", 503);
-    }
-
     const supabase = createClient(
       supabaseUrl,
       serviceKey,
@@ -410,43 +441,73 @@ export async function POST(
           persistSession: false,
           autoRefreshToken: false,
         },
+
         global: {
           fetch: (input, init) => {
-            const deadlineSignal = remainingDatabaseSignal(databaseDeadlineAt);
+            const deadlineSignal =
+              remainingDatabaseSignal(
+                databaseDeadlineAt,
+              );
+
             if (!deadlineSignal) {
-              return Promise.reject(new Error("Inbound database request deadline exceeded."));
+              return Promise.reject(
+                new Error(
+                  "Inbound database request deadline exceeded.",
+                ),
+              );
             }
 
             const signal = init?.signal
-              ? AbortSignal.any([init.signal, deadlineSignal])
+              ? AbortSignal.any([
+                  init.signal,
+                  deadlineSignal,
+                ])
               : deadlineSignal;
 
-            return fetch(input, { ...init, signal });
+            return fetch(input, {
+              ...init,
+              signal,
+            });
           },
         },
       },
     );
 
-    // ======================================================
-    // 1. Read legacy ownership first.
-    // ======================================================
+    // ====================================================
+    // 1. Verify legacy ownership.
+    // ====================================================
+
+    if (
+      !remainingDatabaseSignal(
+        databaseDeadlineAt,
+      )
+    ) {
+      return fail(
+        "Inbound request deadline exceeded.",
+        503,
+      );
+    }
 
     const {
-        data: legacyData,
-        error: legacyError,
-        } = await supabase
-        .from("reservation_conversation_ownership")
-        .select("ownership_status")
-        .eq("guest_phone", payload.from)
-        .eq("restaurant_phone", restaurantPhone)
-        .maybeSingle()
-        .retry(false);
+      data: legacyRows,
+      error: legacyError,
+    } = await supabase
+      .from("reservation_conversation_ownership")
+      .select("ownership_status")
+      .eq("guest_phone", payload.from)
+      .eq("restaurant_phone", restaurantPhone)
+      .limit(2)
+      .retry(false);
 
-    if (legacyError) {
+    if (
+      legacyError ||
+      !Array.isArray(legacyRows) ||
+      legacyRows.length > 1
+    ) {
       console.error(
-        "Shared inbound legacy lookup failed.",
+        "Shared inbound legacy ownership verification failed.",
         {
-          code: legacyError.code,
+          code: legacyError?.code ?? "INVALID_RESULT",
         },
       );
 
@@ -457,7 +518,9 @@ export async function POST(
     }
 
     const rawLegacy =
-      legacyData?.ownership_status ?? null;
+      legacyRows.length === 0
+        ? null
+        : legacyRows[0]?.ownership_status;
 
     if (
       rawLegacy !== null &&
@@ -482,34 +545,40 @@ export async function POST(
     const inboundLegacy =
       legacyForInbound(rawLegacy);
 
-    // ======================================================
-    // 2. Read shared routing through the trusted RPC.
-    // ======================================================
+    // ====================================================
+    // 2. Resolve shared conversation routing.
+    // ====================================================
 
-    const sharedSignal = remainingDatabaseSignal(databaseDeadlineAt);
-    if (!sharedSignal) {
-      return fail("Inbound request deadline exceeded.", 503);
+    if (
+      !remainingDatabaseSignal(
+        databaseDeadlineAt,
+      )
+    ) {
+      return fail(
+        "Inbound request deadline exceeded.",
+        503,
+      );
     }
 
     const {
       data: sharedData,
       error: sharedError,
-    } = await supabase
-      .rpc(
-        "get_reservation_shared_conversation_route",
-        {
-          p_restaurant_phone: restaurantPhone,
-          p_guest_phone: payload.from,
-        },
-      )
-      .maybeSingle()
-      .retry(false);
+    } = await supabase.rpc(
+      "get_reservation_shared_conversation_route",
+      {
+        p_restaurant_phone: restaurantPhone,
+        p_guest_phone: payload.from,
+      },
+    ).retry(false);
 
-    if (sharedError) {
+    if (
+      sharedError ||
+      !Array.isArray(sharedData)
+    ) {
       console.error(
         "Shared inbound routing lookup failed.",
         {
-          code: sharedError.code,
+          code: sharedError?.code ?? "INVALID_RESULT",
         },
       );
 
@@ -519,60 +588,52 @@ export async function POST(
       );
     }
 
-    let shared: SharedConversationLookup;
-    let inboundShared: SharedInboundLookup;
+    // Shared-mode routing must be unambiguous.
+    // Never choose an arbitrary conversation.
 
-    if (sharedData == null) {
-      shared = {
-        kind: "not_found",
-      };
-
-      inboundShared = {
-        status: "missing",
-      };
-    } else {
-      const mode = (
-        sharedData as Record<string, unknown>
-      ).mode;
-
-      if (!validSharedMode(mode)) {
-        return fail(
-          "Unknown shared conversation mode.",
-          503,
-        );
-      }
-
-      shared = {
-        kind: "found",
-        mode,
-      };
-
-      inboundShared = {
-        status: "found",
-        mode,
-      };
+    if (sharedData.length !== 1) {
+      return fail(
+        "A unique shared conversation could not be verified.",
+        409,
+      );
     }
 
-    // ======================================================
-    // 3. Require both routing policies to approve.
-    // ======================================================
+    const routeRow =
+      sharedData[0] as Record<string, unknown>;
 
-    // Every required feature gate was checked at
-    // request entry. These values represent that
-    // enabled configuration; they do not independently
-    // establish Studio deployment readiness.
+    if (
+      !routeRow ||
+      !validSharedMode(routeRow.mode)
+    ) {
+      return fail(
+        "Invalid shared conversation mode.",
+        503,
+      );
+    }
 
-    const routingReadiness = {
-      sharedRoutingEnabled: true,
-      staffRoutingEnabled: true,
-      handoffFenceEnabled: true,
+    const shared: SharedConversationLookup = {
+      kind: "found",
+      mode: routeRow.mode,
     };
+
+    const inboundShared: SharedInboundLookup = {
+      status: "found",
+      mode: routeRow.mode,
+    };
+
+    // ====================================================
+    // 3. Enforce the existing routing policies.
+    // ====================================================
 
     const routingDecision =
       decideSharedConversationRoute(
         legacy,
         shared,
-        routingReadiness,
+        {
+          sharedRoutingEnabled: true,
+          staffRoutingEnabled: true,
+          handoffFenceEnabled: true,
+        },
       );
 
     const eligibility =
@@ -591,11 +652,6 @@ export async function POST(
       routingDecision.route !== "staff" ||
       eligibility.decision !== "record"
     ) {
-      // Existing automation remains responsible for
-      // messages that are explicitly safe to skip.
-      //
-      // No shared event is written, and no SMS is sent.
-
       if (
         routingDecision.route === "automation" &&
         eligibility.decision === "skip"
@@ -614,20 +670,19 @@ export async function POST(
       );
     }
 
-    // ======================================================
-    // 4. Verify the exact inbound message with Twilio.
-    // ======================================================
+    // ====================================================
+    // 4. Verify the actual incoming Twilio message.
+    // ====================================================
 
-    // A valid request signature is not enough to
-    // establish the identity of a Twilio Message SID.
-    //
-    // This call uses the normal server-side Twilio SDK.
-    // No synthetic test client is supplied by this route.
-    //
-    // The verified helper has no SMS send capability.
-
-    if (!remainingDatabaseSignal(databaseDeadlineAt)) {
-      return fail("Inbound request deadline exceeded.", 503);
+    if (
+      !remainingDatabaseSignal(
+        databaseDeadlineAt,
+      )
+    ) {
+      return fail(
+        "Inbound request deadline exceeded.",
+        503,
+      );
     }
 
     const verified =
@@ -646,10 +701,6 @@ export async function POST(
           );
 
         case "TWILIO_NOT_CONFIGURED":
-          console.error(
-            "Shared inbound Twilio configuration is incomplete.",
-          );
-
           return fail(
             "Inbound message verification unavailable.",
             503,
@@ -681,99 +732,217 @@ export async function POST(
       }
     }
 
-    // ======================================================
-    // 5. Resolve reservation attribution (read-only).
-    // ======================================================
+    // ====================================================
+    // 5. Resolve the unique verified staff conversation.
+    // ====================================================
 
-    // A verified phone pair is only transport identity.
-    // It does not identify the reservation that owns this SMS.
-    // The resolver uses the body retrieved directly from Twilio,
-    // never an untrusted body supplied in the signed payload.
+    // Staff conversation ownership is established by
+    // the protected reservation/conversation association,
+    // NOT by parsing the SMS body.
     //
-    // Coordinator persistence is not deployed. Do not attach
-    // this Message SID to a reservation, alter Studio state,
-    // or send any follow-up from this read-only decision.
+    // Phone number is used only to discover candidates.
+    // Each candidate must pass the protected RPC.
     //
-    // Reservation attribution is mandatory for recording. Any
-    // unresolved/ambiguous reply must fail closed without writing.
+    // Multiple reservations may share a phone number.
+    // Only one eligible staff conversation is permitted.
 
-    if (verified.message.messageBody === null) {
-      return fail("Verified message body unavailable for attribution.", 409);
-    }
-    if (!remainingDatabaseSignal(databaseDeadlineAt)) {
-      return fail("Inbound request deadline exceeded.", 503);
-    }
-
-    const context = await resolveReservationInboundContext(supabase, {
-      from: verified.message.guestPhone,
-      body: verified.message.messageBody,
-    });
-    if (!context.success) {
-      console.warn("Reservation inbound attribution unavailable.", {
-        reason: context.error,
-      });
-      return fail("Reservation attribution unavailable.", 503);
-    }
-    if (context.attribution.decision !== "attributed") {
-      return fail("Reservation attribution unresolved.", 409);
-    }
-    const attributedReservationId = context.attribution.reservationId;
-    if (!UUID.test(attributedReservationId)) {
-      return fail("Invalid attributed reservation.", 503);
-    }
-
-    // Protected, reservation-specific lookup: no direct table grants.
-    if (!remainingDatabaseSignal(databaseDeadlineAt)) {
-      return fail("Inbound request deadline exceeded.", 503);
-    }
-    const { data: scopedRows, error: scopedError } = await supabase.rpc(
-      "get_reservation_shared_conversation_for_inbound",
-      {
-        p_reservation_id: attributedReservationId,
-        p_restaurant_phone: restaurantPhone,
-        p_guest_phone: payload.from,
-      },
-    ).retry(false);
-    if (scopedError) {
-      console.error("Reservation-scoped conversation lookup failed.", {
-        code: scopedError.code,
-      });
-      return fail("Reservation conversation lookup unavailable.", 503);
-    }
-    if (!Array.isArray(scopedRows) || scopedRows.length !== 1) {
-      return fail("Verified reservation conversation unavailable.", 409);
-    }
-    const scoped = scopedRows[0] as Record<string, unknown>;
     if (
-      typeof scoped.conversation_id !== "string" ||
-      !UUID.test(scoped.conversation_id) ||
-      typeof scoped.reservation_id !== "string" ||
-      scoped.reservation_id.toLowerCase() !== attributedReservationId.toLowerCase() ||
-      scoped.conversation_mode !== "staff" ||
-      scoped.staff_activated !== true
+      !remainingDatabaseSignal(
+        databaseDeadlineAt,
+      )
     ) {
-      return fail("Reservation conversation is not activated for staff.", 409);
+      return fail(
+        "Inbound request deadline exceeded.",
+        503,
+      );
     }
-    const attributedConversationId = scoped.conversation_id;
 
-    // ======================================================
-    // 6. Record verified inbound metadata.
-    // ======================================================
+    const {
+      data: reservationRows,
+      error: reservationError,
+    } = await supabase
+      .from("reservation_requests")
+      .select("id, customer_phone")
+      .eq("customer_phone", payload.from)
+      .limit(MAX_RESERVATION_CANDIDATES + 1)
+      .retry(false);
 
-    // The review-only recording RPC independently
-    // requires an existing activated staff conversation
-    // while holding the conversation row lock.
+    if (
+      reservationError ||
+      !Array.isArray(reservationRows)
+    ) {
+      console.error(
+        "Staff inbound reservation candidate lookup failed.",
+        {
+          code:
+            reservationError?.code ?? "INVALID_RESULT",
+        },
+      );
+
+      return fail(
+        "Reservation association lookup unavailable.",
+        503,
+      );
+    }
+
+    if (
+      reservationRows.length === 0 ||
+      reservationRows.length >
+        MAX_RESERVATION_CANDIDATES
+    ) {
+      return fail(
+        "Reservation association is missing or ambiguous.",
+        409,
+      );
+    }
+
+    const candidateIds = new Set<string>();
+
+    for (const row of reservationRows) {
+      if (
+        !row ||
+        typeof row.id !== "string" ||
+        !UUID.test(row.id) ||
+        row.customer_phone !== payload.from ||
+        candidateIds.has(
+          row.id.toLowerCase(),
+        )
+      ) {
+        return fail(
+          "Invalid reservation candidate set.",
+          409,
+        );
+      }
+
+      candidateIds.add(
+        row.id.toLowerCase(),
+      );
+    }
+
+    const matches: VerifiedAssociation[] = [];
+
+    for (const reservationId of candidateIds) {
+      if (
+        !remainingDatabaseSignal(
+          databaseDeadlineAt,
+        )
+      ) {
+        return fail(
+          "Inbound request deadline exceeded.",
+          503,
+        );
+      }
+
+      const {
+        data: scopedRows,
+        error: scopedError,
+      } = await supabase.rpc(
+        "get_reservation_shared_conversation_for_inbound",
+        {
+          p_reservation_id: reservationId,
+          p_restaurant_phone:
+            restaurantPhone,
+          p_guest_phone: payload.from,
+        },
+      ).retry(false);
+
+      if (scopedError) {
+        console.error(
+          "Protected staff conversation lookup failed.",
+          {
+            code: scopedError.code,
+          },
+        );
+
+        return fail(
+          "Staff conversation association unavailable.",
+          503,
+        );
+      }
+
+      if (
+        !Array.isArray(scopedRows) ||
+        scopedRows.length > 1
+      ) {
+        return fail(
+          "Ambiguous protected conversation association.",
+          409,
+        );
+      }
+
+      if (scopedRows.length === 0) {
+        continue;
+      }
+
+      const scoped = scopedRows[0];
+
+      if (!validScopedConversation(scoped)) {
+        return fail(
+          "Invalid protected conversation association.",
+          503,
+        );
+      }
+
+      if (
+        scoped.reservation_id.toLowerCase() !==
+        reservationId
+      ) {
+        return fail(
+          "Reservation association mismatch.",
+          409,
+        );
+      }
+
+      if (
+        scoped.conversation_mode !== "staff" ||
+        scoped.staff_activated !== true
+      ) {
+        continue;
+      }
+
+      matches.push({
+        reservationId,
+        conversationId:
+          scoped.conversation_id,
+      });
+
+      if (matches.length > 1) {
+        return fail(
+          "Multiple staff conversations match this guest.",
+          409,
+        );
+      }
+    }
+
+    if (matches.length !== 1) {
+      return fail(
+        "A unique active staff conversation could not be verified.",
+        409,
+      );
+    }
+
+    const association = matches[0];
+
+    // ====================================================
+    // 6. Persist verified inbound message metadata.
+    // ====================================================
+
+    // This RPC is responsible for the final,
+    // row-locked conversation-mode authorization
+    // and unique Message SID constraint.
     //
-    // It also enforces globally unique Message SIDs
-    // and monotonic conversation activity timestamps.
-    //
-    // IMPORTANT:
-    // The RPC and its permissions have not yet been
-    // deployed or runtime-tested in production.
+    // Never retry an uncertain recording write
+    // automatically.
 
-    const recordingSignal = remainingDatabaseSignal(databaseDeadlineAt);
-    if (!recordingSignal) {
-      return fail("Inbound request deadline exceeded.", 503);
+    if (
+      !remainingDatabaseSignal(
+        databaseDeadlineAt,
+      )
+    ) {
+      return fail(
+        "Inbound request deadline exceeded.",
+        503,
+      );
     }
 
     const {
@@ -782,17 +951,19 @@ export async function POST(
     } = await supabase.rpc(
       "record_reservation_shared_inbound",
       {
-        p_restaurant_phone: restaurantPhone,
+        p_restaurant_phone:
+          restaurantPhone,
         p_guest_phone: payload.from,
         p_twilio_message_sid:
           verified.message.messageSid,
         p_message_created_at:
           verified.message.messageCreatedAt,
-        p_reservation_id: attributedReservationId,
-        p_conversation_id: attributedConversationId,
+        p_reservation_id:
+          association.reservationId,
+        p_conversation_id:
+          association.conversationId,
       },
-    )
-      .retry(false);
+    ).retry(false);
 
     if (recordedError) {
       console.error(
@@ -811,7 +982,9 @@ export async function POST(
     if (
       !Array.isArray(recordedData) ||
       recordedData.length !== 1 ||
-      !validRecordingResult(recordedData[0])
+      !validRecordingResult(
+        recordedData[0],
+      )
     ) {
       return fail(
         "Inbound recording result could not be verified.",
@@ -821,21 +994,17 @@ export async function POST(
 
     const result = recordedData[0];
 
-    // Response consistency is checked independently
-    // of the database's row-locked staff-mode check.
-    //
-    // A response check alone cannot undo a write.
-
     if (
       result.conversation_mode !== "staff" ||
-      result.conversation_id.toLowerCase() !== attributedConversationId.toLowerCase()
+      result.conversation_id.toLowerCase() !==
+        association.conversationId.toLowerCase()
     ) {
       console.error(
-        "Shared inbound recording returned a non-staff mode.",
+        "Shared inbound recording returned an unexpected conversation.",
       );
 
       return fail(
-        "Inbound recording state changed; administrative review required.",
+        "Inbound recording requires administrative review.",
         503,
       );
     }
@@ -844,10 +1013,13 @@ export async function POST(
       {
         success: true,
         recorded: true,
-        conversationId: result.conversation_id,
-        inboundEventId: result.inbound_event_id,
+        conversationId:
+          result.conversation_id,
+        inboundEventId:
+          result.inbound_event_id,
         duplicate: result.duplicate,
-        conversationMode: result.conversation_mode,
+        conversationMode:
+          result.conversation_mode,
       },
       result.duplicate ? 200 : 201,
     );
@@ -855,7 +1027,8 @@ export async function POST(
     console.error(
       "Shared inbound recording failed.",
       {
-        category: "SHARED_INBOUND_RECORDING_ERROR",
+        category:
+          "SHARED_INBOUND_RECORDING_ERROR",
         name:
           error instanceof Error
             ? error.name
