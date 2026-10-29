@@ -14,6 +14,7 @@ const navigation = [
   { label: "Home", href: "/" },
   { label: "Admin Dashboard", href: "/admin" },
   { label: "Reservations", href: "/staff/reservations" },
+  { label: "Conversations", href: "/staff/conversations" },
   { label: "Menu Management", href: "/admin/menu" },
   { label: "Gallery Management", href: "/admin/gallery" },
   { label: "SPECIALS Management", href: "/admin/specials" },

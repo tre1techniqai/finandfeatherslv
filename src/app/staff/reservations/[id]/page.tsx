@@ -1,4 +1,3 @@
-
 import { Suspense } from "react";
 import { connection } from "next/server";
 import Link from "next/link";
@@ -6,7 +5,6 @@ import { notFound } from "next/navigation";
 
 import { requireReservationStaff } from "@/lib/auth/require-reservation-staff";
 import ReservationWorkflowActions from "@/components/staff/reservation-workflow-actions";
-import ReservationGuestConversation from "@/components/staff/reservation-guest-conversation";
 
 export const metadata = {
   title: "Reservation Details | Fin & Feathers Las Vegas",
@@ -522,7 +520,7 @@ async function ProtectedReservationDetail({
                   </p>
 
                   <a
-                    href="#guest-conversation"
+                    href={`/staff/conversations/guest/${reservation.id}`}
                     className="mt-4 inline-flex min-h-11 items-center rounded-lg border border-amber-400/40 bg-amber-500/10 px-4 py-2 text-sm font-semibold text-amber-100 transition hover:bg-amber-500/20 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
                   >
                     VIEW GUEST CONVERSATION
@@ -530,9 +528,23 @@ async function ProtectedReservationDetail({
                 </section>
               )}
 
-              <ReservationGuestConversation
-                reservationId={reservation.id}
-              />
+              <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-white/10 bg-zinc-950/90 p-4 sm:p-5">
+                <div className="min-w-0">
+                  <h2 className="text-sm font-bold text-white">
+                    Guest Communication
+                  </h2>
+                  <p className="mt-1 text-sm leading-6 text-zinc-400">
+                    Open the reservation-specific guest communication interface to review SMS history and manage guest follow-up.
+                  </p>
+                </div>
+
+                <Link
+                  href={`/staff/conversations/guest/${reservation.id}`}
+                  className="inline-flex min-h-11 items-center justify-center rounded-lg border border-[#ea1b24]/60 bg-[#ea1b24]/15 px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#ea1b24]/25 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
+                >
+                  OPEN GUEST CONVERSATION →
+                </Link>
+              </div>
 
               <Section title="Reservation Information">
                 <Detail
