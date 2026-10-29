@@ -390,30 +390,21 @@ export async function POST(
       );
     }
 
-    // A shared guest phone must not be used to
-    // resume reservation-specific automation
-    // when multiple reservations match it.
-
-    const {
-      data: matchingReservations,
-      error: matchingError,
-    } = await admin
-      .from("reservation_requests")
-      .select("id")
-      .eq("customer_phone", row.guest_phone)
-      .limit(2);
-
-    if (
-      matchingError ||
-      !Array.isArray(matchingReservations) ||
-      matchingReservations.length !== 1 ||
-      matchingReservations[0]?.id !== id
-    ) {
-      return fail(
-        "Automation cannot safely resume because this phone number is associated with multiple reservations.",
-        409,
-      );
-    }
+    // Multiple historical reservations may share
+    // the same guest phone number.
+    //
+    // The protected shared-transition preflight
+    // above verifies the specific reservation,
+    // shared conversation, unique association,
+    // conversation mode, and mode version.
+    //
+    // Historical reservation count alone must
+    // not prevent a verified conversation from
+    // returning to automation.
+    //
+    // Legacy ownership, Studio execution safety,
+    // and outstanding SMS operation checks remain
+    // independently enforced.
 
     // Confirm that any legacy ownership record
     // belongs to this same reservation and is
