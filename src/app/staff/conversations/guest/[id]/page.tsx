@@ -1,4 +1,3 @@
-
 import { Suspense } from "react";
 import type { Metadata } from "next";
 import { connection } from "next/server";
@@ -9,7 +8,7 @@ import { requireReservationStaff } from "@/lib/auth/require-reservation-staff";
 import GuestConversationWorkspace from "@/components/staff/guest-conversation-workspace";
 
 export const metadata: Metadata = {
-  title: "Guest Conversation | Fin & Feathers Las Vegas",
+  title: "Reservation | Fin & Feathers Las Vegas",
   description: "Reservation-specific staff SMS conversation.",
 };
 
@@ -33,12 +32,6 @@ function formatPhone(value: string): string {
   return value;
 }
 
-function formatInternalId(id: string): string {
-  return `${id.slice(0, 8).toUpperCase()}...`;
-}
-
-// Reservation dates represent Las Vegas calendar dates,
-// not UTC instants that should be converted to local time.
 function formatReservationDate(
   value: string | null,
 ): string {
@@ -75,8 +68,6 @@ function formatReservationDate(
   }).format(date);
 }
 
-// Reservation times are stored as local wall-clock
-// values in HH:mm:ss format. Do not convert time zones.
 function formatReservationTime(
   value: string | null,
 ): string {
@@ -108,6 +99,26 @@ function formatReservationTime(
   return `${hour12}:${String(minutes).padStart(2, "0")} ${period}`;
 }
 
+function formatGuests(
+  value: number | null,
+): string {
+  if (
+    typeof value !== "number" ||
+    !Number.isSafeInteger(value) ||
+    value < 1
+  ) {
+    return "Not specified";
+  }
+
+  return String(value);
+}
+
+function isVip(
+  value: string | null,
+): boolean {
+  return value?.trim().toUpperCase() === "YES";
+}
+
 function Loading() {
   return (
     <main className="flex min-h-screen items-center justify-center bg-black px-5 text-white">
@@ -115,7 +126,7 @@ function Loading() {
         role="status"
         className="text-sm text-zinc-300"
       >
-        Verifying staff access and loading conversation...
+        Verifying staff access and loading reservation...
       </p>
     </main>
   );
@@ -147,8 +158,8 @@ async function ProtectedGuestConversation({
           </h1>
 
           <p className="mt-3 text-sm text-zinc-300">
-            This conversation is available to authorized
-            reservation managers.
+            This reservation conversation is available
+            to authorized reservation managers.
           </p>
         </div>
       </main>
@@ -161,8 +172,8 @@ async function ProtectedGuestConversation({
   } = await supabase
     .from("reservation_requests")
     .select(
-      "id, customer_name, customer_phone, reservation_date, reservation_time",
-    )
+  "id, customer_name, customer_phone, reservation_date, reservation_time, reservation_reference, party_size, vip_preference",
+)
     .eq("id", id)
     .maybeSingle();
 
@@ -196,40 +207,50 @@ async function ProtectedGuestConversation({
   const reservationTime =
     formatReservationTime(reservation.reservation_time);
 
-  const internalId = formatInternalId(reservation.id);
+  const reservationReference =
+    typeof reservation.reservation_reference === "string" &&
+    reservation.reservation_reference.trim().length > 0
+      ? reservation.reservation_reference.trim()
+      : null;
 
-  // The reservation_reference database column is not yet deployed.
-  // Do not generate or infer a reference in the presentation layer.
-  // When the migration is approved, retrieve the stored reference
-  // from the database and display it here.
-  const reservationReference: string | null = null;
+  const guestCount =
+    formatGuests(reservation.party_size);
+
+  const showVipBadge =
+    isVip(reservation.vip_preference);
+
+  const reservationDetailsHref =
+    `/staff/reservations/${reservation.id}`;
 
   return (
     <main className="w-full flex-1 bg-black px-3 py-6 text-white sm:px-8 sm:py-12">
       <div className="mx-auto max-w-4xl">
-        <nav className="mb-6 flex flex-wrap gap-x-6 gap-y-2 text-sm">
+        <nav
+          aria-label="Reservation navigation"
+          className="mb-6 flex flex-wrap items-center gap-x-6 gap-y-2 text-sm"
+        >
           <Link
-            href="/staff/conversations"
-            className="text-zinc-300 underline underline-offset-4 hover:text-white"
+            href="/admin/reservations"
+            className="inline-flex min-h-11 items-center text-zinc-300 underline underline-offset-4 hover:text-white"
           >
-            ← Conversations
+            ← Reservations
           </Link>
 
           <Link
-            href={`/staff/reservations/${reservation.id}`}
-            className="text-zinc-300 underline underline-offset-4 hover:text-white"
+            href={reservationDetailsHref}
+            className="inline-flex min-h-11 items-center text-zinc-300 underline underline-offset-4 hover:text-white"
           >
-            View Reservation Details
+            Reservation Details
           </Link>
         </nav>
 
         <header className="mb-6 border-b border-white/10 pb-6">
           <p className="text-xs font-bold uppercase tracking-widest text-[#ea1b24]">
-            Fin & Feathers Las Vegas
+            Fin &amp; Feathers Las Vegas
           </p>
 
           <h1 className="mt-2 text-2xl font-bold tracking-tight sm:text-3xl">
-            Guest Conversation
+            Reservation
           </h1>
 
           <p className="mt-3 text-xl font-semibold">
@@ -249,40 +270,14 @@ async function ProtectedGuestConversation({
               Reservation Reference
             </p>
 
-            {reservationReference ? (
-              <p className="mt-2 text-2xl font-bold tracking-wide text-white">
-                {reservationReference}
-              </p>
-            ) : (
-              <div className="mt-2">
-                <p className="text-lg font-semibold text-zinc-200">
-                  Pending assignment
-                </p>
-
-                <p className="mt-1 text-xs leading-5 text-zinc-400">
-                  Human-readable reservation references
-                  have not yet been activated.
-                </p>
-              </div>
-            )}
-
-            <div className="mt-4 border-t border-white/10 pt-3">
-              <p className="text-xs text-zinc-400">
-                Internal Reservation ID
-              </p>
-
-              <p
-                title={reservation.id}
-                className="mt-1 font-mono text-sm tracking-wide text-zinc-200"
-              >
-                {internalId}
-              </p>
-            </div>
+            <p className="mt-2 text-2xl font-bold tracking-wide text-white">
+              {reservationReference ?? "Reference unavailable"}
+            </p>
           </section>
 
-          <div className="mt-4 flex flex-wrap gap-3 text-xs text-zinc-400">
+          <div className="mt-4 flex flex-wrap gap-3 text-xs text-zinc-300">
             <span className="rounded-lg border border-white/15 px-3 py-2">
-              Reservation: {reservationDate}
+              Date: {reservationDate}
             </span>
 
             <span className="rounded-lg border border-white/15 px-3 py-2">
@@ -290,8 +285,15 @@ async function ProtectedGuestConversation({
             </span>
 
             <span className="rounded-lg border border-white/15 px-3 py-2">
-              Manager Access
+              Guests: {guestCount}
             </span>
+
+            {showVipBadge && (
+              <span className="inline-flex items-center gap-1.5 rounded-lg border border-amber-400/40 bg-amber-500/10 px-3 py-2 text-xs font-bold text-amber-300">
+                <span aria-hidden="true">★</span>
+                VIP
+              </span>
+            )}
           </div>
         </header>
 
@@ -299,12 +301,15 @@ async function ProtectedGuestConversation({
           reservationId={reservation.id}
         />
 
-        <nav className="mt-8 border-t border-white/10 pt-5">
+        <nav
+          aria-label="Return navigation"
+          className="mt-8 border-t border-white/10 pt-5"
+        >
           <Link
-            href={`/staff/reservations/${reservation.id}`}
+            href="/admin/reservations"
             className="inline-flex min-h-11 items-center text-sm font-semibold text-zinc-300 underline underline-offset-4 hover:text-white"
           >
-            Return to Reservation Details →
+            Return to Reservations →
           </Link>
         </nav>
       </div>

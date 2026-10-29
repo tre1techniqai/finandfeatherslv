@@ -39,7 +39,7 @@ export default function PortalHeader({
           className="flex h-12 w-12 items-center justify-center rounded-lg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
         >
           <Image
-            src="/img/fin-feathers-icon-blk-alpha.png"
+            src="/img/fin-feathers-icon-alpha.png"
             alt="Fin & Feathers"
             width={44}
             height={44}

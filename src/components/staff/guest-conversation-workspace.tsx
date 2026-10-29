@@ -278,7 +278,7 @@ function modeLabel(
     case "transitioning_to_staff":
       return "Transitioning to Staff";
     case "staff":
-      return "Shared Staff";
+      return "Staff Access";
     default:
       return "Unverified";
   }
@@ -361,14 +361,8 @@ export default function GuestConversationWorkspace({
   const [nextCursor, setNextCursor] =
     useState<string | null>(null);
 
-  const [coverageComplete, setCoverageComplete] =
-    useState(false);
-
   const [syncError, setSyncError] =
     useState("");
-
-  const [lastSyncedAt, setLastSyncedAt] =
-    useState<Date | null>(null);
 
   const scrollRef =
     useRef<HTMLOListElement>(null);
@@ -425,6 +419,18 @@ export default function GuestConversationWorkspace({
     useState("");
 
   const joinGuardRef =
+    useRef(false);
+
+  const [resuming, setResuming] =
+    useState(false);
+
+  const [resumeError, setResumeError] =
+    useState("");
+
+  const [resumeResult, setResumeResult] =
+    useState("");
+
+  const resumeGuardRef =
     useRef(false);
 
   const [messageDraft, setMessageDraft] =
@@ -595,7 +601,6 @@ export default function GuestConversationWorkspace({
     setMessages([]);
     setHasMore(false);
     setNextCursor(null);
-    setCoverageComplete(false);
 
     initialScrollRef.current = false;
 
@@ -611,11 +616,6 @@ export default function GuestConversationWorkspace({
       setHasMore(payload.hasMore);
       setNextCursor(payload.nextCursor);
 
-      setCoverageComplete(
-        payload.historicalCoverageComplete === true,
-      );
-
-      setLastSyncedAt(new Date());
       initialScrollRef.current = true;
     } catch (caught) {
       if (controller.signal.aborted) return;
@@ -784,9 +784,6 @@ export default function GuestConversationWorkspace({
   const checks =
     sharedState?.checks ?? [];
 
-  const passedChecks =
-    checks.filter((check) => check.passed).length;
-
   const validSharedAssociation =
     sharedState?.success === true &&
     sharedState.reservationId === reservationId &&
@@ -803,7 +800,17 @@ export default function GuestConversationWorkspace({
     !sharedLoading &&
     !joining &&
     !sending &&
+    !resuming &&
     sharedState?.checksPassed === true;
+
+  const canResume =
+    validSharedAssociation &&
+    sharedMode === "staff" &&
+    !sharedLoading &&
+    !joining &&
+    !sending &&
+    !resuming &&
+    !sendReviewRequired;
 
   // ===================================================
   // Automatic reservation-scoped message synchronization.
@@ -881,11 +888,6 @@ export default function GuestConversationWorkspace({
       // It identifies the boundary of previously
       // loaded pages, not the newest messages.
 
-      setCoverageComplete(
-        payload.historicalCoverageComplete === true,
-      );
-
-      setLastSyncedAt(new Date());
       setSyncError("");
     } catch (caught) {
       if (
@@ -1080,10 +1082,150 @@ export default function GuestConversationWorkspace({
     }
   }
 
+  async function resumeAutomation() {
+    if (!canResume || resumeGuardRef.current) {
+      return;
+    }
+
+    const conversationId =
+      sharedState?.conversationId;
+
+    const expectedModeVersion =
+      sharedState?.modeVersion;
+
+    if (
+      typeof conversationId !== "string" ||
+      !UUID.test(conversationId) ||
+      typeof expectedModeVersion !== "number" ||
+      !Number.isSafeInteger(expectedModeVersion) ||
+      expectedModeVersion < 1
+    ) {
+      return;
+    }
+
+    const confirmed = window.confirm(
+      "Resume automated guest messaging?\\n\\n" +
+      "Staff will stop controlling this conversation. " +
+      "Future incoming guest messages may be handled " +
+      "automatically. Existing messages will remain " +
+      "in the conversation history."
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    resumeGuardRef.current = true;
+
+    pollRequestRef.current?.abort();
+
+    setResuming(true);
+    setResumeError("");
+    setResumeResult("");
+    setJoinError("");
+    setJoinResult("");
+    setSendError("");
+    setSendSuccess("");
+
+    try {
+      const response = await fetch(
+        `/api/staff/reservations/` +
+          `${encodeURIComponent(reservationId)}` +
+          `/conversation/shared-resume`,
+        {
+          method: "POST",
+          credentials: "same-origin",
+          cache: "no-store",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            conversationId,
+            expectedModeVersion,
+          }),
+        },
+      );
+
+      const payload: unknown =
+        await response.json();
+
+      if (
+        !payload ||
+        typeof payload !== "object" ||
+        Array.isArray(payload)
+      ) {
+        throw new Error(
+          "Automation handback response could not be verified."
+        );
+      }
+
+      const result =
+        payload as Record<string, unknown>;
+
+      if (
+        !response.ok ||
+        result.success !== true
+      ) {
+        throw new Error(
+          errorDetail(
+            payload,
+            "Unable to resume automation."
+          )
+        );
+      }
+
+      if (
+        result.reservationId !== reservationId ||
+        result.conversationId !== conversationId ||
+        result.conversationMode !== "automation" ||
+        result.operationalVerificationComplete !== true ||
+        result.databaseChanged !== true ||
+        result.smsSent !== false ||
+        result.studioExecutionsChanged !== false ||
+        typeof result.modeVersion !== "number" ||
+        !Number.isSafeInteger(result.modeVersion) ||
+        result.modeVersion !== expectedModeVersion + 1
+      ) {
+        throw new Error(
+          "Automation handback could not be confirmed. " +
+          "Reload and verify the conversation state."
+        );
+      }
+
+      setSharedState((current) =>
+        current
+          ? {
+              ...current,
+              sharedMode: "automation",
+              modeVersion:
+                result.modeVersion as number,
+            }
+          : current
+      );
+
+      setResumeResult(
+        "Automation resumed for future guest messages."
+      );
+
+    } catch (caught) {
+      setResumeError(
+        caught instanceof Error
+          ? caught.message
+          : "Automation handback could not be verified."
+      );
+    } finally {
+      await loadSharedState();
+
+      resumeGuardRef.current = false;
+      setResuming(false);
+    }
+  }
+
   const canSend =
     validSharedAssociation &&
     !sharedLoading &&
     !joining &&
+    !resuming &&
     sharedMode === "staff" &&
     !sending &&
     !sendReviewRequired &&
@@ -1196,87 +1338,8 @@ export default function GuestConversationWorkspace({
     }
   }
 
-  function refreshWorkspace() {
-    setJoinError("");
-    setJoinResult("");
-
-    void loadInitial();
-    void loadSharedState();
-  }
-
   return (
     <div className="space-y-5">
-      <section className="rounded-xl border border-white/15 bg-zinc-950 p-4 sm:p-5">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <h2 className="text-lg font-bold">
-              Guest Conversation
-            </h2>
-
-            <p className="mt-1 text-sm text-zinc-400">
-              Reservation-specific SMS history
-              and shared manager communication.
-            </p>
-          </div>
-
-          <button
-            type="button"
-            onClick={refreshWorkspace}
-            disabled={
-              loading ||
-              loadingOlder ||
-              sharedLoading ||
-              joining ||
-              sending
-            }
-            className="min-h-11 rounded-lg border border-white/20 px-4 py-2 text-sm font-semibold text-white transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            {loading || sharedLoading
-              ? "Refreshing..."
-              : "Refresh"}
-          </button>
-        </div>
-
-        {validSharedAssociation &&
-          sharedMode === "staff" && (
-            <p className="mt-3 text-xs text-emerald-200">
-              Messages update automatically while
-              this conversation is open.
-              {lastSyncedAt &&
-                ` Last updated ${lastSyncedAt.toLocaleTimeString(
-                  "en-US",
-                  {
-                    hour: "numeric",
-                    minute: "2-digit",
-                    timeZone: "America/Los_Angeles",
-                  },
-                )}.`}
-            </p>
-          )}
-
-        {syncError && (
-          <p
-            role="status"
-            className="mt-3 rounded-lg border border-amber-500/25 bg-amber-950/15 p-3 text-xs leading-5 text-amber-200"
-          >
-            Automatic updates are temporarily
-            unavailable. You can use Refresh.
-          </p>
-        )}
-
-        {!coverageComplete &&
-          !loading &&
-          !error && (
-            <p className="mt-4 rounded-lg border border-amber-500/25 bg-amber-950/15 p-3 text-xs leading-5 text-amber-200">
-              Historical coverage is incomplete.
-              Only messages with a verified
-              reservation association are shown.
-              Messages from other reservations
-              are excluded.
-            </p>
-          )}
-      </section>
-
       <section
         aria-labelledby="shared-conversation-state"
         className="rounded-xl border border-white/15 bg-zinc-950 p-4 sm:p-5"
@@ -1287,13 +1350,9 @@ export default function GuestConversationWorkspace({
               id="shared-conversation-state"
               className="text-lg font-bold"
             >
-              Shared Conversation
+              Guest Conversation
             </h3>
 
-            <p className="mt-1 text-sm text-zinc-400">
-              Staff members share this reservation
-              conversation.
-            </p>
           </div>
 
           <span
@@ -1313,6 +1372,16 @@ export default function GuestConversationWorkspace({
           </span>
         </div>
 
+        {syncError && (
+          <p
+            role="status"
+            className="mt-4 rounded-lg border border-amber-500/25 bg-amber-950/15 p-3 text-xs text-amber-200"
+          >
+            Automatic message updates are temporarily
+            unavailable.
+          </p>
+        )}
+
         {sharedError && (
           <p
             role="alert"
@@ -1326,39 +1395,6 @@ export default function GuestConversationWorkspace({
           !sharedLoading &&
           sharedState && (
             <div className="mt-5 space-y-4">
-              <dl className="grid grid-cols-1 gap-4 text-sm sm:grid-cols-3">
-                <div>
-                  <dt className="text-xs text-zinc-400">
-                    Mode
-                  </dt>
-
-                  <dd className="mt-1 font-semibold text-white">
-                    {modeLabel(sharedMode)}
-                  </dd>
-                </div>
-
-                <div>
-                  <dt className="text-xs text-zinc-400">
-                    Mode Version
-                  </dt>
-
-                  <dd className="mt-1 font-semibold text-white">
-                    {sharedState.modeVersion ??
-                      "Unverified"}
-                  </dd>
-                </div>
-
-                <div>
-                  <dt className="text-xs text-zinc-400">
-                    Readiness Checks
-                  </dt>
-
-                  <dd className="mt-1 font-semibold text-white">
-                    {passedChecks}/{checks.length} passed
-                  </dd>
-                </div>
-              </dl>
-
               <p className="rounded-lg border border-white/10 bg-black/40 p-3 text-xs leading-5 text-zinc-300">
                 {sharedMode === "staff"
                   ? "Staff conversation is active. You can compose and send SMS messages below."
@@ -1419,12 +1455,78 @@ export default function GuestConversationWorkspace({
             {joining
               ? "Joining Conversation..."
               : sharedMode === "staff"
-                ? "Staff Mode Active"
+                ? (
+                    <span className="inline-flex items-center gap-2">
+                      <svg
+                        aria-hidden="true"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        className="h-4 w-4 shrink-0"
+                      >
+                        <circle cx="12" cy="12" r="10" />
+                        <path d="m8 12 2.5 2.5L16 9" />
+                      </svg>
+                      STAFF MODE ACTIVE
+                    </span>
+                  )
                 : sharedMode === "transitioning_to_staff"
                   ? "Transition Pending"
                   : "JOIN CONVERSATION"}
           </button>
+
+          {sharedMode === "staff" && (
+            <button
+              type="button"
+              disabled={!canResume}
+              aria-disabled={!canResume}
+              onClick={() => {
+                void resumeAutomation();
+              }}
+              className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-sky-500/40 bg-sky-950/20 px-5 py-3 text-sm font-bold text-sky-100 transition hover:bg-sky-900/40 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <svg
+                aria-hidden="true"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                className="h-4 w-4 shrink-0"
+              >
+                <path d="M3 11a9 9 0 0 1 15.36-6.36L21 7" />
+                <path d="M21 3v4h-4" />
+                <path d="M21 13a9 9 0 0 1-15.36 6.36L3 17" />
+                <path d="M3 21v-4h4" />
+              </svg>
+              {resuming
+                ? "Resuming Automation..."
+                : "RESUME AUTOMATION"}
+            </button>
+          )}
         </div>
+
+        {resumeResult && (
+          <p
+            role="status"
+            className="mt-4 rounded-lg border border-emerald-500/30 bg-emerald-950/20 p-3 text-sm text-emerald-200"
+          >
+            {resumeResult}
+          </p>
+        )}
+
+        {resumeError && (
+          <p
+            role="alert"
+            className="mt-4 rounded-lg border border-red-500/30 bg-red-950/20 p-3 text-sm text-red-200"
+          >
+            {resumeError}
+          </p>
+        )}
 
         {joinResult && (
           <p
@@ -1656,11 +1758,24 @@ export default function GuestConversationWorkspace({
             onClick={() => {
               void sendMessage();
             }}
-            className="min-h-11 rounded-lg bg-[#ea1b24] px-6 py-3 text-sm font-bold text-white transition hover:bg-red-700 disabled:cursor-not-allowed disabled:bg-zinc-700 disabled:text-zinc-300 disabled:opacity-70"
+            className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg bg-[#ea1b24] px-6 py-3 text-sm font-bold text-white transition hover:bg-red-700 disabled:cursor-not-allowed disabled:bg-zinc-700 disabled:text-zinc-300 disabled:opacity-70"
           >
+            <svg
+              aria-hidden="true"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              className="h-4 w-4 shrink-0"
+            >
+              <path d="m22 2-7 20-4-9-9-4Z" />
+              <path d="M22 2 11 13" />
+            </svg>
             {sending
-              ? "Sending..."
-              : "Send Message"}
+              ? "SENDING..."
+              : "SEND MESSAGE"}
           </button>
         </div>
 
