@@ -475,7 +475,7 @@ BEGIN
     UPDATE public.reservation_shared_conversations c
     SET
       last_activity_at =
-        pg_catalog.greatest(c.last_activity_at, now()),
+        GREATEST(c.last_activity_at, now()),
       updated_at = now()
     WHERE c.id = v_conv_id;
   END IF;
