@@ -453,25 +453,38 @@ export async function POST(
       },
     );
 
-    // A valid published Flow is mandatory.
+    // Verify the actual published Studio revision.
+    //
+    // The latest editor revision may be a draft
+    // while a previously published revision remains
+    // active for production messaging.
+    //
+    // Never require unpublished changes to be
+    // published merely to resume automation.
 
     let flowPublished = false;
 
     try {
-      const flow = await studio.studio.v2
+      const publishedRevision = await studio.studio.v2
         .flows(flowSid)
+        .revisions("LatestPublished")
         .fetch();
 
       flowPublished =
-        flow.sid === flowSid &&
-        flow.status === "published";
+        publishedRevision.sid === flowSid &&
+        publishedRevision.status === "published" &&
+        publishedRevision.valid === true &&
+        Number.isSafeInteger(
+          publishedRevision.revision,
+        ) &&
+        publishedRevision.revision > 0;
     } catch {
       flowPublished = false;
     }
 
     if (!flowPublished) {
       return fail(
-        "Restaurant automation is not verified as published.",
+        "Restaurant automation has no verified valid published revision.",
         503,
       );
     }
