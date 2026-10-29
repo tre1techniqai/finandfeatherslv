@@ -1,13 +1,13 @@
-
-
 import http from "node:http";
 
 const HOST = "127.0.0.1";
 const PORT = 4318;
 
 const E164 = /^\+[1-9]\d{7,14}$/;
+
 const MAX_SCENARIO_BYTES = 4096;
 const MAX_RPC_BYTES = 4096;
+const MAX_TEST_RECORDS = 10;
 
 const ALLOWED_STATUSES = new Set([
   "automation",
@@ -63,12 +63,36 @@ async function readJsonBody(req, maxBytes) {
   }
 }
 
+function isRecord(value) {
+  return (
+    value !== null &&
+    typeof value === "object" &&
+    !Array.isArray(value)
+  );
+}
+
+function validStatusList(values) {
+  return (
+    Array.isArray(values) &&
+    values.length <= MAX_TEST_RECORDS &&
+    values.every((value) =>
+      ALLOWED_STATUSES.has(value)
+    )
+  );
+}
+
+function validModeList(values) {
+  return (
+    Array.isArray(values) &&
+    values.length <= MAX_TEST_RECORDS &&
+    values.every((value) =>
+      ALLOWED_MODES.has(value)
+    )
+  );
+}
+
 function parseScenario(value) {
-  if (
-    !value ||
-    typeof value !== "object" ||
-    Array.isArray(value)
-  ) {
+  if (!isRecord(value)) {
     return null;
   }
 
@@ -77,28 +101,92 @@ function parseScenario(value) {
     restaurantPhone,
     legacyStatus,
     sharedMode,
+    legacyStatuses,
+    sharedModes,
     legacyError,
     sharedError,
   } = value;
 
   if (
-    !E164.test(guestPhone ?? "") ||
-    !E164.test(restaurantPhone ?? "") ||
+    typeof guestPhone !== "string" ||
+    typeof restaurantPhone !== "string" ||
+    !E164.test(guestPhone) ||
+    !E164.test(restaurantPhone) ||
     guestPhone === restaurantPhone
   ) {
     return null;
   }
 
+  // Accept the original single-status test format
+  // to preserve existing integration scenarios.
+  //
+  // New tests may supply legacyStatuses instead.
+
+  let resolvedLegacyStatuses;
+
+  if (legacyStatuses !== undefined) {
+    if (
+      legacyStatus !== undefined ||
+      !validStatusList(legacyStatuses)
+    ) {
+      return null;
+    }
+
+    resolvedLegacyStatuses = [...legacyStatuses];
+  } else {
+    if (
+      legacyStatus !== null &&
+      !ALLOWED_STATUSES.has(legacyStatus)
+    ) {
+      return null;
+    }
+
+    resolvedLegacyStatuses =
+      legacyStatus === null
+        ? []
+        : [legacyStatus];
+  }
+
+  // Preserve the original sharedMode format.
+  //
+  // New tests may supply sharedModes to simulate
+  // multiple reservations sharing a phone pair.
+
+  let resolvedSharedModes;
+
+  if (sharedModes !== undefined) {
+    if (
+      sharedMode !== undefined ||
+      !validModeList(sharedModes)
+    ) {
+      return null;
+    }
+
+    resolvedSharedModes = [...sharedModes];
+  } else {
+    if (
+      sharedMode !== null &&
+      !ALLOWED_MODES.has(sharedMode)
+    ) {
+      return null;
+    }
+
+    resolvedSharedModes =
+      sharedMode === null
+        ? []
+        : [sharedMode];
+  }
+
   if (
-    legacyStatus !== null &&
-    !ALLOWED_STATUSES.has(legacyStatus)
+    legacyError !== undefined &&
+    typeof legacyError !== "boolean"
   ) {
     return null;
   }
 
   if (
-    sharedMode !== null &&
-    !ALLOWED_MODES.has(sharedMode)
+    sharedError !== undefined &&
+    typeof sharedError !== "boolean"
   ) {
     return null;
   }
@@ -106,8 +194,8 @@ function parseScenario(value) {
   return {
     guestPhone,
     restaurantPhone,
-    legacyStatus,
-    sharedMode,
+    legacyStatuses: resolvedLegacyStatuses,
+    sharedModes: resolvedSharedModes,
     legacyError: legacyError === true,
     sharedError: sharedError === true,
   };
@@ -134,11 +222,7 @@ function scenarioKey(
 }
 
 function validRpcParameters(value) {
-  if (
-    !value ||
-    typeof value !== "object" ||
-    Array.isArray(value)
-  ) {
+  if (!isRecord(value)) {
     return false;
   }
 
@@ -156,6 +240,24 @@ function validRpcParameters(value) {
   );
 }
 
+function getLimit(value) {
+  if (value === null) {
+    return null;
+  }
+
+  if (!/^[1-9]\d*$/.test(value)) {
+    return -1;
+  }
+
+  const limit = Number(value);
+
+  if (!Number.isSafeInteger(limit)) {
+    return -1;
+  }
+
+  return limit;
+}
+
 const server = http.createServer(
   async (req, res) => {
     const url = new URL(
@@ -163,8 +265,13 @@ const server = http.createServer(
       `http://${HOST}:${PORT}`,
     );
 
-    // Test-only scenario configuration.
-    // No production database connection.
+    // --------------------------------------------------
+    // 1. TEST SCENARIO CONFIGURATION
+    //
+    // Local test server only.
+    // No production Supabase connection.
+    // --------------------------------------------------
+
     if (
       req.method === "POST" &&
       url.pathname === "/__test/scenario"
@@ -204,10 +311,15 @@ const server = http.createServer(
       });
     }
 
-    // Trusted shared conversation routing RPC.
+    // --------------------------------------------------
+    // 2. SHARED CONVERSATION ROUTING RPC
     //
-    // Mirrors the RETURNS TABLE(mode text)
-    // PostgreSQL function's JSON response.
+    // Mirrors the deployed RETURNS TABLE(mode text).
+    //
+    // Multiple shared conversations return multiple
+    // rows, even when they share one phone pair.
+    // --------------------------------------------------
+
     if (
       req.method === "POST" &&
       url.pathname ===
@@ -228,7 +340,8 @@ const server = http.createServer(
       if (!validRpcParameters(body.value)) {
         return respond(res, 400, {
           code: "22023",
-          message: "Invalid shared conversation routing parameters",
+          message:
+            "Invalid shared conversation routing parameters",
         });
       }
 
@@ -251,21 +364,35 @@ const server = http.createServer(
         });
       }
 
-      // Zero rows returned by the SQL function.
-      if (!scenario || scenario.sharedMode === null) {
+      if (!scenario) {
         return respond(res, 200, []);
       }
 
-      // RETURNS TABLE(mode text) produces an
-      // array of result objects through PostgREST.
-      return respond(res, 200, [
-        {
-          mode: scenario.sharedMode,
-        },
-      ]);
+      const rows = scenario.sharedModes.map(
+        (mode) => ({
+          mode,
+        }),
+      );
+
+      return respond(res, 200, rows);
     }
 
-    // Legacy ownership REST lookup remains intact.
+    // --------------------------------------------------
+    // 3. LEGACY OWNERSHIP REST LOOKUP
+    //
+    // Updated to match:
+    //
+    // .select("ownership_status")
+    // .eq("guest_phone", ...)
+    // .eq("restaurant_phone", ...)
+    // .limit(2)
+    //
+    // A regular PostgREST SELECT returns an array.
+    //
+    // The revised Next.js router must reject multiple
+    // matching legacy ownership records.
+    // --------------------------------------------------
+
     if (
       req.method === "GET" &&
       url.pathname ===
@@ -279,7 +406,10 @@ const server = http.createServer(
         url.searchParams.get("restaurant_phone"),
       );
 
-      if (!guestPhone || !restaurantPhone) {
+      if (
+        !guestPhone ||
+        !restaurantPhone
+      ) {
         return respond(res, 400, {
           code: "PGRST100",
           message: "Invalid phone filters",
@@ -293,29 +423,54 @@ const server = http.createServer(
         ),
       );
 
-      if (!scenario) {
-        return respond(res, 200, null);
-      }
-
-      if (scenario.legacyError) {
+      if (scenario?.legacyError) {
         return respond(res, 503, {
           code: "PGRST500",
           message: "Simulated database failure",
         });
       }
 
-      if (scenario.legacyStatus === null) {
-        return respond(res, 200, null);
+      const rows = scenario
+        ? scenario.legacyStatuses.map(
+            (ownership_status) => ({
+              ownership_status,
+            }),
+          )
+        : [];
+
+      // Respect the PostgREST limit parameter.
+      //
+      // The production router requests two records,
+      // sufficient to detect an ambiguous lookup.
+
+      const limit = getLimit(
+        url.searchParams.get("limit"),
+      );
+
+      if (limit === -1) {
+        return respond(res, 400, {
+          code: "PGRST100",
+          message: "Invalid limit",
+        });
       }
 
-      return respond(res, 200, {
-        ownership_status: scenario.legacyStatus,
-      });
+      const result =
+        limit === null
+          ? rows
+          : rows.slice(0, limit);
+
+      return respond(res, 200, result);
     }
 
-    // Match the intended production permission
-    // contract: no direct service-role SELECT
-    // access to the shared conversation table.
+    // --------------------------------------------------
+    // 4. SHARED TABLE ACCESS PROTECTION
+    //
+    // Preserve the existing test behavior:
+    // no direct service-role REST SELECT access.
+    //
+    // The router must use the trusted shared RPC.
+    // --------------------------------------------------
+
     if (
       url.pathname ===
       "/rest/v1/reservation_shared_conversations"
@@ -325,6 +480,10 @@ const server = http.createServer(
         message: "Permission denied",
       });
     }
+
+    // --------------------------------------------------
+    // 5. UNKNOWN MOCK REQUEST
+    // --------------------------------------------------
 
     return respond(res, 404, {
       code: "PGRST404",
@@ -340,5 +499,9 @@ server.listen(PORT, HOST, () => {
 
   console.log(
     "Test-only database. No production connection.",
+  );
+
+  console.log(
+    "Legacy multi-row and shared multi-row scenarios supported.",
   );
 });

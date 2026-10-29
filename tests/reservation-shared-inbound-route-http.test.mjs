@@ -57,6 +57,7 @@ function scenario(overrides = {}) {
     sharedError: false,
     recordingError: false,
     staffActivated: true,
+    reservationReference: "FF-102826-001",
     ...overrides,
   };
 }
@@ -335,7 +336,7 @@ test(
     );
 
     await t.test(
-      "10 - Released legacy ownership is rejected",
+      "10 - Released legacy ownership records in verified staff mode",
       async () => {
         await reset();
         await configure({
@@ -344,8 +345,15 @@ test(
 
         const response = await send();
 
-        assert.equal(response.status, 503);
-        await expectNoRecording();
+        assert.equal(response.status, 201);
+        assert.equal(response.data.success, true);
+        assert.equal(response.data.recorded, true);
+        assert.equal(response.data.conversationMode, "staff");
+
+        const current = await state();
+        assert.equal(current.recordingAttempts, 1);
+        assert.equal(current.successfulInserts, 1);
+        assert.equal(current.eventCount, 1);
       },
     );
 
@@ -567,7 +575,7 @@ test(
 
         const response = await send();
 
-        assert.equal(response.status, 503);
+        assert.equal(response.status, 409);
 
         const current = await state();
 
@@ -575,15 +583,87 @@ test(
         // the recording RPC independently refuses
         // an unactivated conversation.
 
-        assert.equal(current.recordingAttempts, 1);
+        assert.equal(current.recordingAttempts, 0);
         assert.equal(current.successfulInserts, 0);
         assert.equal(current.eventCount, 0);
       },
     );
 
+    await t.test("21A - Unknown reservation reference fails closed", async () => {
+      await reset();
+      await configure({ reservationReference: "FF-102826-999" });
+      const response = await send();
+      assert.equal(response.status, 409);
+      await expectNoRecording();
+    });
+
     // ======================================================
     // REQUEST DEADLINE / UNCERTAIN WRITE OUTCOME
     // ======================================================
+
+    await t.test("21B - Two reservations sharing a phone attribute by explicit reference", async () => {
+      await reset();
+      await configure({ extraReservation: {
+        id: "44444444-4444-4444-8444-444444444444",
+        reference: "FF-102826-002",
+      }});
+      const response = await send();
+      assert.equal(response.status, 201);
+      const current = await state();
+      assert.equal(current.successfulInserts, 1);
+      assert.equal(current.events[0].reservationId, "33333333-3333-4333-8333-333333333333");
+    });
+
+    await t.test("21C - Scoped conversation mismatch rejects before recording", async () => {
+      await reset();
+      await configure({ scopedConversationId: "55555555-5555-4555-8555-555555555555" });
+      const response = await send();
+      assert.ok([409, 503].includes(response.status), `Unexpected status ${response.status}`);
+      assert.equal(response.data.recorded, false);
+      const current = await state();
+      assert.equal(current.recordingAttempts, 1);
+      assert.equal(current.successfulInserts, 0);
+      assert.equal(current.events.length, 0);
+    });
+
+    await t.test("21D - Scoped reservation mismatch rejects before recording", async () => {
+      await reset();
+      await configure({ scopedReservationId: "55555555-5555-4555-8555-555555555555" });
+      const response = await send();
+      assert.ok([409, 503].includes(response.status), `Unexpected status ${response.status}`);
+      assert.equal(response.data.recorded, false);
+      await expectNoRecording();
+    });
+
+    await t.test("21E - Ambiguous references cannot record", async () => {
+      await reset();
+      await configure({ extraReservation: {
+        id: "44444444-4444-4444-8444-444444444444",
+        reference: "FF-102826-002",
+      }});
+      const response = await send({ value: payload({ messageSid: `SM${"e".repeat(32)}` }) });
+      assert.equal(response.status, 409);
+      assert.equal(response.data.recorded, false);
+      await expectNoRecording();
+    });
+
+    await t.test("21F - Uncorrelated YES cannot record", async () => {
+      await reset();
+      await configure();
+      const response = await send({ value: payload({ messageSid: `SM${"f".repeat(32)}` }) });
+      assert.equal(response.status, 409);
+      assert.equal(response.data.recorded, false);
+      await expectNoRecording();
+    });
+
+    await t.test("21G - Uncorrelated NO cannot record", async () => {
+      await reset();
+      await configure();
+      const response = await send({ value: payload({ messageSid: `SM${"1".repeat(32)}` }) });
+      assert.equal(response.status, 409);
+      assert.equal(response.data.recorded, false);
+      await expectNoRecording();
+    });
 
     await t.test(
       "22 - Delayed legacy lookup fails closed",

@@ -28,6 +28,18 @@ type SharedConversationRouteRow = {
   mode: SharedConversationMode;
 };
 
+type SharedLookupResult =
+  | {
+      kind: "resolved";
+      lookup: SharedConversationLookup;
+    }
+  | {
+      kind: "blocked";
+      reason:
+        | "INVALID_SHARED_LOOKUP"
+        | "AMBIGUOUS_SHARED_CONVERSATIONS";
+    };
+
 function json(
   data: Record<string, unknown>,
   status = 200,
@@ -40,7 +52,9 @@ function json(
   });
 }
 
-function errorResponse(status: number): NextResponse {
+function errorResponse(
+  status: number,
+): NextResponse {
   return json(
     {
       success: false,
@@ -84,17 +98,27 @@ function validSignature(
   }
 
   if (
-    Math.abs(Math.floor(Date.now() / 1000) - seconds) >
-    CLOCK_SKEW_SECONDS
+    Math.abs(
+      Math.floor(Date.now() / 1000) - seconds,
+    ) > CLOCK_SKEW_SECONDS
   ) {
     return false;
   }
 
-  const expected = createHmac("sha256", secret)
-    .update(`${timestamp}.${rawBody}`, "utf8")
+  const expected = createHmac(
+    "sha256",
+    secret,
+  )
+    .update(
+      `${timestamp}.${rawBody}`,
+      "utf8",
+    )
     .digest();
 
-  const received = Buffer.from(signature, "hex");
+  const received = Buffer.from(
+    signature,
+    "hex",
+  );
 
   return (
     received.length === expected.length &&
@@ -104,21 +128,24 @@ function validSignature(
 
 function handoffFenceEnabled(): boolean {
   return (
-    process.env.RESERVATION_STUDIO_HANDOFF_FENCE_ENABLED ===
+    process.env
+      .RESERVATION_STUDIO_HANDOFF_FENCE_ENABLED ===
     "true"
   );
 }
 
 function staffRoutingEnabled(): boolean {
   return (
-    process.env.RESERVATION_STUDIO_STAFF_ROUTING_ENABLED ===
+    process.env
+      .RESERVATION_STUDIO_STAFF_ROUTING_ENABLED ===
     "true"
   );
 }
 
 function sharedRoutingEnabled(): boolean {
   return (
-    process.env.RESERVATION_SHARED_SMS_ROUTING_ENABLED ===
+    process.env
+      .RESERVATION_SHARED_SMS_ROUTING_ENABLED ===
     "true"
   );
 }
@@ -147,12 +174,22 @@ function validSharedMode(
 function decisionResponse(
   decision: SharedRoutingDecision,
 ): NextResponse {
-  if (decision.reason === "LEGACY_PENDING_BLOCKED") {
-    console.info("Studio automation blocked for pending handoff.");
+  if (
+    decision.reason ===
+    "LEGACY_PENDING_BLOCKED"
+  ) {
+    console.info(
+      "Studio automation blocked for pending handoff.",
+    );
   }
 
-  if (decision.reason === "SHARED_LEGACY_CONFLICT") {
-    console.error("Shared SMS routing blocked by legacy ownership.");
+  if (
+    decision.reason ===
+    "SHARED_LEGACY_CONFLICT"
+  ) {
+    console.error(
+      "Shared SMS routing blocked by legacy ownership.",
+    );
   }
 
   if (decision.route === "block") {
@@ -160,6 +197,115 @@ function decisionResponse(
   }
 
   return routeResponse(decision.route);
+}
+
+/**
+ * Resolve shared conversation routing records.
+ *
+ * The authoritative identity of each shared SMS
+ * conversation is its reservation UUID.
+ *
+ * Incoming Studio routing requests identify only
+ * the restaurant/guest phone pair.
+ *
+ * Therefore multiple matching conversations cannot
+ * be treated as a single reservation.
+ *
+ * Routing rules:
+ *
+ * 0 records:
+ *   Use existing legacy routing.
+ *
+ * 1 record:
+ *   Use the existing shared routing policy.
+ *
+ * 2+ records, all automation:
+ *   Use legacy routing. No staff takeover is active.
+ *
+ * 2+ records, any staff/transitioning:
+ *   Block. The inbound reservation context is
+ *   ambiguous and must not be guessed.
+ *
+ * Invalid lookup:
+ *   Block.
+ *
+ * This function does not mutate records or send SMS.
+ */
+function resolveSharedLookup(
+  data: unknown,
+): SharedLookupResult {
+  if (!Array.isArray(data)) {
+    return {
+      kind: "blocked",
+      reason: "INVALID_SHARED_LOOKUP",
+    };
+  }
+
+  const modes: SharedConversationMode[] = [];
+
+  for (const item of data) {
+    if (
+      item === null ||
+      typeof item !== "object" ||
+      Array.isArray(item) ||
+      !("mode" in item)
+    ) {
+      return {
+        kind: "blocked",
+        reason: "INVALID_SHARED_LOOKUP",
+      };
+    }
+
+    const rawMode = (
+      item as SharedConversationRouteRow
+    ).mode;
+
+    if (!validSharedMode(rawMode)) {
+      return {
+        kind: "blocked",
+        reason: "INVALID_SHARED_LOOKUP",
+      };
+    }
+
+    modes.push(rawMode);
+  }
+
+  if (modes.length === 0) {
+    return {
+      kind: "resolved",
+      lookup: {
+        kind: "not_found",
+      },
+    };
+  }
+
+  if (modes.length === 1) {
+    return {
+      kind: "resolved",
+      lookup: {
+        kind: "found",
+        mode: modes[0],
+      },
+    };
+  }
+
+  if (
+    modes.every(
+      (mode) => mode === "automation",
+    )
+  ) {
+    return {
+      kind: "resolved",
+      lookup: {
+        kind: "not_found",
+      },
+    };
+  }
+
+  return {
+    kind: "blocked",
+    reason: "AMBIGUOUS_SHARED_CONVERSATIONS",
+  };
 }
 
 export async function POST(
@@ -179,11 +325,11 @@ export async function POST(
   const restaurantPhone =
     process.env.TWILIO_FROM_NUMBER;
 
-  // Exclusively for signed server-to-server
-  // Twilio Function requests.
+  // Signed server-to-server requests only.
   //
   // Never fall back to automation after a
   // configuration or verification failure.
+
   if (
     !secret ||
     Buffer.byteLength(secret, "utf8") < 32 ||
@@ -201,7 +347,8 @@ export async function POST(
 
   if (
     !/^application\/json(?:\s*;|$)/i.test(
-      request.headers.get("content-type") ?? "",
+      request.headers.get("content-type") ??
+        "",
     )
   ) {
     return errorResponse(415);
@@ -214,7 +361,9 @@ export async function POST(
     declaredLength !== null &&
     (
       !/^\d+$/.test(declaredLength) ||
-      !Number.isSafeInteger(Number(declaredLength)) ||
+      !Number.isSafeInteger(
+        Number(declaredLength),
+      ) ||
       Number(declaredLength) > MAX_BYTES
     )
   ) {
@@ -230,15 +379,22 @@ export async function POST(
   }
 
   if (
-    Buffer.byteLength(rawBody, "utf8") > MAX_BYTES
+    Buffer.byteLength(
+      rawBody,
+      "utf8",
+    ) > MAX_BYTES
   ) {
     return errorResponse(413);
   }
 
   if (
     !validSignature(
-      request.headers.get("x-ff-signature"),
-      request.headers.get("x-ff-timestamp"),
+      request.headers.get(
+        "x-ff-signature",
+      ),
+      request.headers.get(
+        "x-ff-timestamp",
+      ),
       rawBody,
       secret,
     )
@@ -296,18 +452,34 @@ export async function POST(
       },
     );
 
-    // Always read legacy ownership first.
-    // This preserves existing safety checks
-    // during the shared SMS migration.
+    // Legacy ownership remains authoritative during
+    // migration to reservation-scoped shared SMS.
+    //
+    // Read at most two matching records:
+    //   0: no legacy ownership record
+    //   1: use the existing legacy routing policy
+    //   2: ambiguous; block without choosing one
+    //
+    // Two records are sufficient to detect ambiguity.
+    // Do not use maybeSingle() here.
+
     const {
-      data: legacyData,
+      data: legacyRows,
       error: legacyError,
     } = await supabase
-      .from("reservation_conversation_ownership")
+      .from(
+        "reservation_conversation_ownership",
+      )
       .select("ownership_status")
-      .eq("guest_phone", fields.from)
-      .eq("restaurant_phone", restaurantPhone)
-      .maybeSingle();
+      .eq(
+        "guest_phone",
+        fields.from,
+      )
+      .eq(
+        "restaurant_phone",
+        restaurantPhone,
+      )
+      .limit(2);
 
     if (legacyError) {
       console.error(
@@ -320,12 +492,27 @@ export async function POST(
       return errorResponse(503);
     }
 
+    if (
+      !Array.isArray(legacyRows) ||
+      legacyRows.length > 1
+    ) {
+      console.error(
+        "Studio conversation router encountered ambiguous or invalid legacy ownership results.",
+      );
+
+      return errorResponse(503);
+    }
+
     const rawLegacyStatus =
-      legacyData?.ownership_status ?? null;
+      legacyRows.length === 0
+        ? null
+        : legacyRows[0]?.ownership_status;
 
     if (
       rawLegacyStatus !== null &&
-      !validLegacyStatus(rawLegacyStatus)
+      !validLegacyStatus(
+        rawLegacyStatus,
+      )
     ) {
       console.error(
         "Studio router encountered unknown legacy ownership status.",
@@ -336,80 +523,89 @@ export async function POST(
 
     const legacy: OwnershipLookup =
       rawLegacyStatus === null
-        ? { kind: "not_found" }
+        ? {
+            kind: "not_found",
+          }
         : {
             kind: "found",
             status: rawLegacyStatus,
           };
 
     const readiness = {
-      sharedRoutingEnabled: sharedRoutingEnabled(),
-      staffRoutingEnabled: staffRoutingEnabled(),
-      handoffFenceEnabled: handoffFenceEnabled(),
+      sharedRoutingEnabled:
+        sharedRoutingEnabled(),
+      staffRoutingEnabled:
+        staffRoutingEnabled(),
+      handoffFenceEnabled:
+        handoffFenceEnabled(),
     };
 
-    // Preserve the existing legacy-only behavior.
-    // Do not call the shared RPC when its feature flag is off.
+    // Preserve existing legacy-only behavior
+    // when shared routing is disabled.
+    //
+    // This is essential for production compatibility.
+
     if (!readiness.sharedRoutingEnabled) {
       return decisionResponse(
         decideSharedConversationRoute(
           legacy,
-          { kind: "not_found" },
+          {
+            kind: "not_found",
+          },
           readiness,
         ),
       );
     }
 
-    // The shared RPC is a narrow, read-only, trusted lookup.
+    // Shared routing is enabled.
+    //
+    // Retrieve all matching conversation modes,
+    // not just one row.
+    //
+    // The trusted database function must return
+    // zero or more mode rows for this phone pair.
+
     const {
       data: sharedData,
       error: sharedError,
-    } = await supabase
-      .rpc(
-        "get_reservation_shared_conversation_route",
-        {
-          p_restaurant_phone: restaurantPhone,
-          p_guest_phone: fields.from,
-        },
-      )
-      .maybeSingle();
+    } = await supabase.rpc(
+      "get_reservation_shared_conversation_route",
+      {
+        p_restaurant_phone:
+          restaurantPhone,
+        p_guest_phone: fields.from,
+      },
+    );
 
     if (sharedError) {
       console.error(
         "Studio shared conversation lookup failed:",
-        { code: sharedError.code },
+        {
+          code: sharedError.code,
+        },
       );
 
       return errorResponse(503);
     }
 
-    let shared: SharedConversationLookup;
+    const sharedResult =
+      resolveSharedLookup(sharedData);
 
-    if (!sharedData) {
-      shared = { kind: "not_found" };
-    } else {
-      const rawSharedMode = (
-        sharedData as SharedConversationRouteRow
-      ).mode;
+    if (
+      sharedResult.kind === "blocked"
+    ) {
+      console.error(
+        "Studio shared conversation routing blocked:",
+        sharedResult.reason,
+      );
 
-      if (!validSharedMode(rawSharedMode)) {
-        console.error(
-          "Studio router encountered unknown shared conversation mode.",
-        );
-
-        return errorResponse(503);
-      }
-
-      shared = {
-        kind: "found",
-        mode: rawSharedMode,
-      };
+      return errorResponse(503);
     }
 
     return decisionResponse(
       decideSharedConversationRoute(
         legacy,
-        shared,
+        sharedResult.lookup,
         readiness,
       ),
     );

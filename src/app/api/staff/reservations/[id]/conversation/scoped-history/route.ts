@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
+import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import twilio from "twilio";
 
 import { requireReservationStaff } from "@/lib/auth/require-reservation-staff";
@@ -14,6 +14,11 @@ const ACCOUNT_SID = /^AC[0-9a-f]{32}$/i;
 const PAGE_SIZE = 10;
 const MAX_ASSOCIATIONS_PER_SOURCE = 1000;
 const SID_LOOKUP_BATCH_SIZE = 100;
+const HISTORICAL_PHONE_LIMIT = 100;
+const STUDIO_FLOW_SID = "FW84d1aee0abeaa0e4f8f870e974dc2811";
+const EXECUTION_SID = /^FN[0-9a-f]{32}$/i;
+const MAX_EXECUTION_START_DRIFT_MS = 5_000;
+const MAX_HISTORICAL_WINDOW_MS = 30 * 60_000;
 
 type RouteContext = {
   params: Promise<{ id: string }>;
@@ -44,6 +49,7 @@ type ConversationMessage = {
   dateCreated: string | null;
   dateSent: string | null;
   errorCode: number | null;
+  attribution?: "database" | "historical";
 };
 
 const SOURCES: Source[] = [
@@ -61,6 +67,16 @@ const SOURCES: Source[] = [
     table: "reservation_alternative_offers",
     sidColumn: "inbound_message_sid",
     timestampColumn: "accepted_at",
+  },
+  // {
+  //   table: "reservation_shared_sms_operations",
+  //   sidColumn: "twilio_message_sid",
+  //   timestampColumn: "created_at",
+  // },
+  {
+    table: "reservation_guest_assistance_alerts",
+    sidColumn: "twilio_message_sid",
+    timestampColumn: "created_at",
   },
 ];
 
@@ -181,6 +197,148 @@ function batches<T>(
   return result;
 }
 
+
+/**
+ * Conservative, READ-ONLY recovery of automated reservation history.
+ *
+ * This does not register SIDs in the database or authenticate a message
+ * for routing or sending. The recovered messages are explicitly labeled
+ * historical, never "database". If any boundary is ambiguous, return none.
+ *
+ * The form message is required to contain a first/last-name identity
+ * matching this reservation AND coincide with the linked Studio execution.
+ * The final boundary must be an existing reservation-confirmation SID.
+ * Phone equality, timestamps or matching names alone are insufficient.
+ */
+async function recoverHistoricalAssociations(input: {
+  client: ReturnType<typeof twilio>;
+  admin: SupabaseClient<any, "public", "public", any, any>;
+  reservationId: string;
+  customerName: string | null;
+  executionSid: string | null;
+  guestPhone: string;
+  restaurantPhone: string;
+  existing: Map<string, Association>;
+}): Promise<Association[]> {
+  const {
+    client, admin, reservationId, customerName,
+    executionSid, guestPhone, restaurantPhone, existing,
+  } = input;
+
+  if (!customerName?.trim() || !executionSid ||
+      !EXECUTION_SID.test(executionSid)) return [];
+
+  // A final confirmation association, not simply "the most recent text",
+  // must be available before we infer a finite reservation window.
+  const { data: confirmations, error: confirmationError } = await admin
+    .from("reservation_notification_events")
+    .select("twilio_message_sid")
+    .eq("reservation_request_id", reservationId)
+    .eq("notification_type", "reservation_confirmed")
+    .not("twilio_message_sid", "is", null)
+    .limit(2);
+
+  if (confirmationError || !confirmations || confirmations.length !== 1) {
+    return [];
+  }
+  const confirmationSid = confirmations[0].twilio_message_sid;
+  if (typeof confirmationSid !== "string" ||
+      !MESSAGE_SID.test(confirmationSid) ||
+      !existing.has(confirmationSid)) return [];
+
+  let execution;
+  try {
+    execution = await client.studio.v2
+      .flows(STUDIO_FLOW_SID)
+      .executions(executionSid)
+      .fetch();
+  } catch {
+    return [];
+  }
+  if (execution.status !== "ended" || !execution.dateCreated) return [];
+  const executionStart = new Date(execution.dateCreated).getTime();
+  if (!Number.isFinite(executionStart)) return [];
+
+  // Twilio Message searches here only gather candidates. They do NOT
+  // confer reservation ownership. Fail closed on truncated phone history.
+  const [inbound, outbound] = await Promise.all([
+    client.messages.list({
+      from: guestPhone, to: restaurantPhone,
+      limit: HISTORICAL_PHONE_LIMIT,
+    }),
+    client.messages.list({
+      from: restaurantPhone, to: guestPhone,
+      limit: HISTORICAL_PHONE_LIMIT,
+    }),
+  ]);
+  if (inbound.length >= HISTORICAL_PHONE_LIMIT ||
+      outbound.length >= HISTORICAL_PHONE_LIMIT) return [];
+
+  const all = [
+    ...inbound.map((message) => ({ message, direction: "inbound" as const })),
+    ...outbound.map((message) => ({ message, direction: "outbound" as const })),
+  ].filter(({ message }) => message.dateCreated && MESSAGE_SID.test(message.sid))
+    .sort((a, b) =>
+      a.message.dateCreated!.getTime() - b.message.dateCreated!.getTime() ||
+      a.message.sid.localeCompare(b.message.sid),
+    );
+
+  const normalizedName = customerName.trim().replace(/\s+/g, " ").toLowerCase();
+  const formMatches = all.filter(({ message, direction }) => {
+    if (direction !== "inbound" || !message.dateCreated) return false;
+    if (Math.abs(message.dateCreated.getTime() - executionStart) >
+        MAX_EXECUTION_START_DRIFT_MS) return false;
+    const first = /^First Name:\s*(.+)$/im.exec(message.body ?? "")?.[1]?.trim();
+    const last = /^Last Name:\s*(.+)$/im.exec(message.body ?? "")?.[1]?.trim();
+    return Boolean(first && last &&
+      `${first} ${last}`.replace(/\s+/g, " ").toLowerCase() === normalizedName);
+  });
+  if (formMatches.length !== 1) return [];
+
+  const first = formMatches[0];
+  const final = all.find(({ message }) => message.sid === confirmationSid);
+  if (!final || !first.message.dateCreated || !final.message.dateCreated ||
+      final.direction !== "outbound") return [];
+  const firstAt = first.message.dateCreated.getTime();
+  const lastAt = final.message.dateCreated.getTime();
+  if (lastAt <= firstAt || lastAt - firstAt > MAX_HISTORICAL_WINDOW_MS) {
+    return [];
+  }
+
+  const window = all.filter(({ message }) => {
+    const timestamp = message.dateCreated!.getTime();
+    return timestamp >= firstAt && timestamp <= lastAt;
+  });
+
+  // If another reservation form begins inside this interval, the boundary
+  // is ambiguous: never make a phone-based assignment across that boundary.
+  if (window.some(({ message }) =>
+      message.sid !== first.message.sid &&
+      /^First Name:\s*.+$/im.test(message.body ?? "") &&
+      /^Last Name:\s*.+$/im.test(message.body ?? ""))) {
+    return [];
+  }
+
+  // Strict expected workflow evidence: the VIP request and answer, followed
+  // by the existing DB-associated alternative offer/selection and final SMS.
+  const hasVipQuestion = window.some(({ direction, message }) =>
+    direction === "outbound" && /VIP/i.test(message.body ?? ""));
+  const hasVipAnswer = window.some(({ direction, message }) =>
+    direction === "inbound" && /^(YES|NO)$/i.test((message.body ?? "").trim()));
+  const existingInWindow = window.filter(({ message }) => existing.has(message.sid));
+  if (!hasVipQuestion || !hasVipAnswer || existingInWindow.length < 3) {
+    return [];
+  }
+
+  return window
+    .filter(({ message }) => !existing.has(message.sid))
+    .map(({ message }) => ({
+      sid: message.sid,
+      reservationId,
+      timestamp: normalizeTimestamp(message.dateCreated?.toISOString()),
+    }));
+}
+
 export async function GET(
   request: Request,
   context: RouteContext,
@@ -218,7 +376,7 @@ export async function GET(
       error: reservationError,
     } = await supabase
       .from("reservation_requests")
-      .select("id, customer_name, customer_phone")
+      .select("id, customer_name, customer_phone, twilio_execution_sid")
       .eq("id", id)
       .maybeSingle();
 
@@ -346,9 +504,36 @@ export async function GET(
       }
     }
 
-    // Cross-check every candidate SID against all three
-    // association sources. If another reservation claims
-    // the same SID, that message is excluded.
+    // Recover only a strictly bounded historical workflow, if possible.
+    // A recovery failure does not hide existing DB-verified messages.
+    const historicalSids = new Set<string>();
+    const client = twilio(accountSid, authToken, { autoRetry: false });
+    try {
+      const recovered = await recoverHistoricalAssociations({
+        client,
+        admin,
+        reservationId: id,
+        customerName: reservation.customer_name,
+        executionSid: reservation.twilio_execution_sid,
+        guestPhone,
+        restaurantPhone,
+        existing: associations,
+      });
+      for (const association of recovered) {
+        if (!associations.has(association.sid)) {
+          associations.set(association.sid, association);
+          historicalSids.add(association.sid);
+        }
+      }
+    } catch (recoveryError) {
+      console.error("Historical reservation recovery unavailable", {
+        category: "HISTORICAL_RECOVERY_ERROR",
+        name: recoveryError instanceof Error ? recoveryError.name : "UnknownError",
+      });
+    }
+
+    // Cross-check every candidate SID against every direct reservation
+    // association source. Conflicting claims are always excluded.
     const allSids = [...associations.keys()];
     const conflictingSids = new Set<string>();
 
@@ -410,10 +595,6 @@ export async function GET(
             isOlderThanCursor(association, cursor),
         )
       : ordered;
-
-    const client = twilio(accountSid, authToken, {
-      autoRetry: false,
-    });
 
     const collected: {
       association: Association;
@@ -479,6 +660,9 @@ export async function GET(
           dateSent:
             message.dateSent?.toISOString() ?? null,
           errorCode: message.errorCode ?? null,
+          attribution: historicalSids.has(message.sid)
+            ? "historical"
+            : "database",
         },
       });
     }
@@ -503,13 +687,28 @@ export async function GET(
       guestPhone,
       messages: page
         .map((item) => item.message)
-        .reverse(),
+        .sort((a, b) => {
+          const aTime = a.dateCreated
+            ? Date.parse(a.dateCreated)
+            : 0;
+
+          const bTime = b.dateCreated
+            ? Date.parse(b.dateCreated)
+            : 0;
+
+          return (
+            aTime - bTime ||
+            a.sid.localeCompare(b.sid)
+          );
+        }),
       count: page.length,
       hasMore,
       nextCursor,
       pageSize: PAGE_SIZE,
       reservationScoped: true,
       historicalCoverageComplete: false,
+      historicalRecoveredCount: page.filter((item) =>
+        historicalSids.has(item.message.sid)).length,
       readOnly: true,
     });
   } catch (error) {

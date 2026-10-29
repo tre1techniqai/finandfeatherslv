@@ -357,7 +357,14 @@ export async function verifyInboundTwilioMessage(input) {
     };
   }
 
-  if (fixture !== "a".repeat(32)) {
+  const BODY_FIXTURES = {
+    ["a".repeat(32)]: "My reservation is FF-102826-001",
+    ["e".repeat(32)]: "FF-102826-001 and FF-102826-002",
+    ["f".repeat(32)]: "YES",
+    ["1".repeat(32)]: "NO",
+  };
+
+  if (!Object.hasOwn(BODY_FIXTURES, fixture)) {
     return {
       verified: false,
       reason: "MESSAGE_NOT_FOUND",
@@ -371,6 +378,7 @@ export async function verifyInboundTwilioMessage(input) {
       guestPhone: input.guestPhone,
       restaurantPhone: input.restaurantPhone,
       messageCreatedAt: VERIFIED_TIMESTAMP,
+      messageBody: BODY_FIXTURES[fixture],
     },
   };
 }

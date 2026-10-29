@@ -39,6 +39,7 @@ export type SharedInboundLookup =
 export type LegacyInboundOwnership =
   | "none"
   | "automation"
+  | "released"
   | "staff"
   | "pending"
   | "error";
@@ -124,7 +125,7 @@ export function decideSharedInboundRecording(
   const { shared, legacy, readiness } = input;
 
   if (
-    !["none", "automation", "staff", "pending", "error"].includes(
+    !["none", "automation", "released", "staff", "pending", "error"].includes(
       legacy,
     ) ||
     !["found", "missing", "error"].includes(
@@ -240,12 +241,17 @@ export function decideSharedInboundRecording(
     return block("STUDIO_FENCE_NOT_READY");
   }
 
-  // An existing legacy automation state is not itself
-  // proof of safe coexistence with shared staff mode.
-  // Require no outstanding legacy ownership record for
-  // this conservative first implementation.
+  // A released legacy claim is permitted only after
+  // the shared conversation has independently passed
+  // staff-mode and routing-readiness verification.
+  //
+  // Legacy automation, pending, or active staff
+  // ownership must not authorize shared recording.
 
-  if (legacy !== "none") {
+  if (
+    legacy !== "none" &&
+    legacy !== "released"
+  ) {
     return block("LEGACY_OWNERSHIP_CONFLICT");
   }
 

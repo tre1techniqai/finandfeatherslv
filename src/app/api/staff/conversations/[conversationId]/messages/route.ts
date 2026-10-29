@@ -644,9 +644,9 @@ export async function POST(
         {
           p_operation_id:
             registered.operation_id,
-          p_outcome: "uncertain",
+          p_status: "uncertain",
           p_twilio_message_sid: null,
-          p_note:
+          p_outcome_note:
             "Twilio API result unavailable; reconciliation required.",
         },
       );
@@ -684,9 +684,9 @@ export async function POST(
         {
           p_operation_id:
             registered.operation_id,
-          p_outcome: "uncertain",
+          p_status: "uncertain",
           p_twilio_message_sid: null,
-          p_note:
+          p_outcome_note:
             "Twilio response lacked a valid Message SID.",
         },
       );
@@ -715,9 +715,9 @@ export async function POST(
       {
         p_operation_id:
           registered.operation_id,
-        p_outcome: "accepted",
+        p_status: "accepted",
         p_twilio_message_sid: messageSid,
-        p_note:
+        p_outcome_note:
           "Twilio Messages.create returned a Message SID.",
       },
     );

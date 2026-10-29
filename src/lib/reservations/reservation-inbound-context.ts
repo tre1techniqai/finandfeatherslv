@@ -15,6 +15,7 @@ const UUID =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 const E164 = /^\+[1-9]\d{7,14}$/;
+const RESERVATION_REFERENCE = /^[A-Z]{2}-\d{6}-\d{3,8}$/;
 
 const INVALID_MESSAGE_CHARACTERS =
   /[\u0000-\u0008\u000b\u000c\u000e-\u001f]/;
@@ -37,6 +38,7 @@ type ReservationRow = {
   customer_phone: string;
   request_status: string;
   twilio_execution_sid: string;
+  reservation_reference: string | null;
 };
 
 /**
@@ -110,7 +112,10 @@ function isReservationRow(
     typeof row.request_status === "string" &&
     VALID_STATUSES.has(row.request_status) &&
     typeof row.twilio_execution_sid === "string" &&
-    /^FN[0-9a-f]{32}$/i.test(row.twilio_execution_sid)
+    /^FN[0-9a-f]{32}$/i.test(row.twilio_execution_sid) &&
+    (row.reservation_reference === null ||
+      (typeof row.reservation_reference === "string" &&
+        RESERVATION_REFERENCE.test(row.reservation_reference)))
   );
 }
 
@@ -192,7 +197,7 @@ export async function resolveReservationInboundContext(
     const { data, error } = await supabase
       .from("reservation_requests")
       .select(
-        "id, customer_phone, request_status, twilio_execution_sid",
+        "id, customer_phone, request_status, twilio_execution_sid, reservation_reference",
       )
       .eq("customer_phone", input.from)
       .order("created_at", {
@@ -276,9 +281,9 @@ export async function resolveReservationInboundContext(
       reservationId: row.id,
       guestPhone: row.customer_phone,
 
-      // Reservation reference generation has
-      // not yet been deployed.
-      reference: null,
+      // References are database-generated for new reservations.
+      // Legacy reservations may still have NULL references.
+      reference: row.reservation_reference,
 
       // A matching phone number does not establish
       // unique active reservation context.

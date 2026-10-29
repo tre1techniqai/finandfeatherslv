@@ -66,6 +66,30 @@ test("01 - Verified shared staff conversation is recordable", () => {
   );
 });
 
+test("Released legacy ownership permits verified shared staff recording", () => {
+  expectDecision(
+    { shared: STAFF, legacy: "released" },
+    "record",
+    "VERIFIED_SHARED_STAFF_CONVERSATION",
+  );
+});
+
+test("Released ownership cannot record during transition", () => {
+  expectDecision(
+    { shared: TRANSITIONING, legacy: "released" },
+    "block",
+    "SHARED_CONVERSATION_TRANSITIONING",
+  );
+});
+
+test("Released ownership retains automation responsibility", () => {
+  expectDecision(
+    { shared: AUTOMATION, legacy: "released" },
+    "skip",
+    "EXISTING_AUTOMATION_CONVERSATION",
+  );
+});
+
 test("02 - Existing automation conversation is skipped", () => {
   expectDecision(
     { shared: AUTOMATION },
@@ -303,6 +327,7 @@ test("21 - Complete decision matrix permits recording only in safe state", () =>
   const legacyStates = [
     "none",
     "automation",
+    "released",
     "staff",
     "pending",
     "error",
@@ -336,7 +361,7 @@ test("21 - Complete decision matrix permits recording only in safe state", () =>
         const shouldRecord =
           shared.status === "found" &&
           shared.mode === "staff" &&
-          legacy === "none" &&
+          (legacy === "none" || legacy === "released") &&
           mask === 15;
 
         assert.equal(
@@ -359,8 +384,8 @@ test("21 - Complete decision matrix permits recording only in safe state", () =>
     }
   }
 
-  assert.equal(checked, 400);
-  assert.equal(permitted, 1);
+  assert.equal(checked, 480);
+  assert.equal(permitted, 2);
 });
 
 test("22 - Every permitted recording is also eligible for staff routing", () => {
@@ -426,10 +451,6 @@ test("24 - Unknown lookup states never authorize recording", () => {
     {
       shared: { status: "found", mode: "released" },
       legacy: "none",
-    },
-    {
-      shared: STAFF,
-      legacy: "released",
     },
     {
       shared: {

@@ -43,6 +43,11 @@ const SHARED_MODES = new Set([
 const CONVERSATION_ID =
   "11111111-1111-4111-8111-111111111111";
 
+const RESERVATION_ID = "33333333-3333-4333-8333-333333333333";
+const RESERVATION_REFERENCE = "FF-102826-001";
+const EXECUTION_SID = `FN${"e".repeat(32)}`;
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
 const EVENT_ID =
   "22222222-2222-4222-8222-222222222222";
 
@@ -52,6 +57,8 @@ const inboundEvents = new Map();
 const counters = {
   legacyLookups: 0,
   sharedLookups: 0,
+  reservationLookups: 0,
+  scopedLookups: 0,
   recordingAttempts: 0,
   successfulInserts: 0,
   duplicateReplays: 0,
@@ -168,6 +175,17 @@ function validScenario(value) {
     }
   }
 
+  if (value.reservationReference !== undefined && value.reservationReference !== null && typeof value.reservationReference !== "string") return false;
+  if (value.reservationId !== undefined && !UUID.test(value.reservationId)) return false;
+  if (value.conversationId !== undefined && !UUID.test(value.conversationId)) return false;
+  if (value.extraReservation !== undefined &&
+      (!objectOnly(value.extraReservation) ||
+       !UUID.test(value.extraReservation.id ?? "") ||
+       typeof value.extraReservation.reference !== "string" ||
+       !/^[A-Z]{2}-\d{6}-\d{3,8}$/.test(value.extraReservation.reference))) return false;
+  if (value.scopedConversationId !== undefined && !UUID.test(value.scopedConversationId)) return false;
+  if (value.scopedReservationId !== undefined && !UUID.test(value.scopedReservationId)) return false;
+
   // Optional delay controls preserve compatibility with all existing
   // scenarios. Delays apply only when explicitly supplied.
   for (const field of [
@@ -198,7 +216,9 @@ function validRouteRpc(value) {
 function validRecordingRpc(value) {
   if (
     !objectOnly(value) ||
-    Object.keys(value).length !== 4 ||
+    Object.keys(value).length !== 6 ||
+    !UUID.test(value.p_reservation_id ?? "") ||
+    !UUID.test(value.p_conversation_id ?? "") ||
     !validPhonePair(
       value.p_restaurant_phone,
       value.p_guest_phone,
@@ -444,6 +464,59 @@ const server = http.createServer(
     }
 
     // ====================================================
+    // RESERVATION CANDIDATES — trusted phone-filtered lookup
+    // ====================================================
+    if (req.method === "GET" && url.pathname === "/rest/v1/reservation_requests") {
+      counters.reservationLookups++;
+      const guestPhone = phoneFilter(url.searchParams.get("customer_phone"));
+      if (!guestPhone) return rpcError(res, 400, "PGRST100", "Invalid guest phone filter");
+      const matching = [...scenarios.values()].filter(s => s.guestPhone === guestPhone);
+      if (matching.length === 0) return respond(res, 200, []);
+      const scenario = matching[0];
+      if (scenario.reservationError) return rpcError(res, 503, "PGRST500", "Reservation lookup unavailable");
+      const reservationId = scenario.reservationId ?? RESERVATION_ID;
+      const reference = scenario.reservationReference === undefined ? RESERVATION_REFERENCE : scenario.reservationReference;
+      const rows = [{
+        id: reservationId, customer_phone: guestPhone,
+        request_status: "pending", twilio_execution_sid: EXECUTION_SID,
+        reservation_reference: reference,
+      }];
+      if (scenario.extraReservation) {
+        rows.push({
+          id: scenario.extraReservation.id,
+          customer_phone: guestPhone,
+          request_status: "pending",
+          twilio_execution_sid: `FN${"f".repeat(32)}`,
+          reservation_reference: scenario.extraReservation.reference,
+        });
+      }
+      return respond(res, 200, rows);
+    }
+
+    // ====================================================
+    // RESERVATION-SCOPED READ-ONLY LOOKUP
+    // ====================================================
+    if (req.method === "POST" && url.pathname === "/rest/v1/rpc/get_reservation_shared_conversation_for_inbound") {
+      counters.scopedLookups++;
+      const body = await readJson(req);
+      if (!body.ok || !objectOnly(body.value) || Object.keys(body.value).length !== 3 ||
+          !UUID.test(body.value.p_reservation_id ?? "") ||
+          !validPhonePair(body.value.p_restaurant_phone, body.value.p_guest_phone)) {
+        return rpcError(res, 400, "22023", "Invalid scoped lookup");
+      }
+      const scenario = getScenario(body.value.p_restaurant_phone, body.value.p_guest_phone);
+      if (!scenario || body.value.p_reservation_id !== (scenario.reservationId ?? RESERVATION_ID)) return respond(res, 200, []);
+      if (scenario.scopedError) return rpcError(res, 503, "PGRST500", "Scoped lookup unavailable");
+      if (scenario.sharedMode === null) return respond(res, 200, []);
+      return respond(res, 200, [{
+        conversation_id: scenario.scopedConversationId ?? scenario.conversationId ?? CONVERSATION_ID,
+        reservation_id: scenario.scopedReservationId ?? scenario.reservationId ?? RESERVATION_ID,
+        conversation_mode: scenario.sharedMode,
+        staff_activated: scenario.staffActivated,
+      }]);
+    }
+
+    // ====================================================
     // STAFF-ONLY INBOUND RECORDING RPC
     // ====================================================
 
@@ -474,6 +547,8 @@ const server = http.createServer(
         p_guest_phone: guestPhone,
         p_twilio_message_sid: messageSid,
         p_message_created_at: createdAt,
+        p_reservation_id: reservationId,
+        p_conversation_id: conversationId,
       } = body.value;
 
       const scenario = getScenario(
@@ -504,7 +579,9 @@ const server = http.createServer(
       if (
         !scenario ||
         scenario.sharedMode !== "staff" ||
-        !scenario.staffActivated
+        !scenario.staffActivated ||
+        reservationId !== (scenario.reservationId ?? RESERVATION_ID) ||
+        conversationId !== (scenario.conversationId ?? CONVERSATION_ID)
       ) {
         return rpcError(
           res,
@@ -520,7 +597,9 @@ const server = http.createServer(
         if (
           previous.restaurantPhone !== restaurantPhone ||
           previous.guestPhone !== guestPhone ||
-          previous.messageCreatedAt !== createdAt
+          previous.messageCreatedAt !== createdAt ||
+          previous.reservationId !== reservationId ||
+          previous.conversationId !== conversationId
         ) {
           return rpcError(
             res,
@@ -551,7 +630,8 @@ const server = http.createServer(
           ).padStart(12, "0")}`;
 
       const event = {
-        conversationId: CONVERSATION_ID,
+        conversationId,
+        reservationId,
         eventId,
         restaurantPhone,
         guestPhone,
@@ -569,7 +649,7 @@ const server = http.createServer(
 
       return respond(res, 200, [
         {
-          conversation_id: CONVERSATION_ID,
+          conversation_id: conversationId,
           inbound_event_id: eventId,
           duplicate: false,
           conversation_mode: "staff",

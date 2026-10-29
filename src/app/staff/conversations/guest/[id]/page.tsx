@@ -1,3 +1,4 @@
+
 import { Suspense } from "react";
 import type { Metadata } from "next";
 import { connection } from "next/server";
@@ -34,6 +35,77 @@ function formatPhone(value: string): string {
 
 function formatInternalId(id: string): string {
   return `${id.slice(0, 8).toUpperCase()}...`;
+}
+
+// Reservation dates represent Las Vegas calendar dates,
+// not UTC instants that should be converted to local time.
+function formatReservationDate(
+  value: string | null,
+): string {
+  if (!value) return "Not specified";
+
+  const match =
+    /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+
+  if (!match) return value;
+
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+
+  const date = new Date(
+    Date.UTC(year, month - 1, day),
+  );
+
+  if (
+    Number.isNaN(date.getTime()) ||
+    date.getUTCFullYear() !== year ||
+    date.getUTCMonth() !== month - 1 ||
+    date.getUTCDate() !== day
+  ) {
+    return value;
+  }
+
+  return new Intl.DateTimeFormat("en-US", {
+    weekday: "long",
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+    timeZone: "UTC",
+  }).format(date);
+}
+
+// Reservation times are stored as local wall-clock
+// values in HH:mm:ss format. Do not convert time zones.
+function formatReservationTime(
+  value: string | null,
+): string {
+  if (!value) return "Not specified";
+
+  const match =
+    /^(\d{1,2}):(\d{2})(?::(\d{2}))?$/.exec(value);
+
+  if (!match) return value;
+
+  const hours = Number(match[1]);
+  const minutes = Number(match[2]);
+  const seconds = Number(match[3] ?? "0");
+
+  if (
+    hours < 0 ||
+    hours > 23 ||
+    minutes < 0 ||
+    minutes > 59 ||
+    seconds < 0 ||
+    seconds > 59
+  ) {
+    return value;
+  }
+
+  const hour12 = hours % 12 || 12;
+  const period = hours >= 12 ? "PM" : "AM";
+
+  return `${hour12}:${String(minutes).padStart(2, "0")} ${period}`;
 }
 
 function Loading() {
@@ -119,10 +191,10 @@ async function ProtectedGuestConversation({
   }
 
   const reservationDate =
-    reservation.reservation_date ?? "Not specified";
+    formatReservationDate(reservation.reservation_date);
 
   const reservationTime =
-    reservation.reservation_time ?? "Not specified";
+    formatReservationTime(reservation.reservation_time);
 
   const internalId = formatInternalId(reservation.id);
 

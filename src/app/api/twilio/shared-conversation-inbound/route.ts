@@ -222,9 +222,10 @@ function validRecordingResult(
   );
 }
 
+
 function legacyForInbound(
   status: LegacyStatus | null,
-): LegacyInboundOwnership | null {
+): LegacyInboundOwnership {
   switch (status) {
     case null:
       return "none";
@@ -239,11 +240,15 @@ function legacyForInbound(
       return "staff";
 
     case "released":
-      // Released legacy ownership is not equivalent
-      // to never having had a legacy conversation.
-      return null;
+      // Preserve the actual legacy status.
+      // The shared inbound eligibility policy permits
+      // released ownership only when independently
+      // verified shared staff mode and routing
+      // safeguards are satisfied.
+      return "released";
   }
 }
+
 
 export async function POST(
   request: Request,
@@ -477,13 +482,6 @@ export async function POST(
     const inboundLegacy =
       legacyForInbound(rawLegacy);
 
-    if (inboundLegacy === null) {
-      return fail(
-        "Legacy conversation coexistence is not verified.",
-        503,
-      );
-    }
-
     // ======================================================
     // 2. Read shared routing through the trusted RPC.
     // ======================================================
@@ -696,37 +694,67 @@ export async function POST(
     // this Message SID to a reservation, alter Studio state,
     // or send any follow-up from this read-only decision.
     //
-    // This lookup is intentionally nonblocking for the existing
-    // phone-level recording operation. Failures or unresolved
-    // attribution must never be interpreted as permission to
-    // assign a reservation or advance the Coordinator.
+    // Reservation attribution is mandatory for recording. Any
+    // unresolved/ambiguous reply must fail closed without writing.
 
-    if (
-      verified.message.messageBody !== null &&
-      remainingDatabaseSignal(databaseDeadlineAt) !== null
-    ) {
-      const context = await resolveReservationInboundContext(
-        supabase,
-        {
-          from: verified.message.guestPhone,
-          body: verified.message.messageBody,
-        },
-      );
-
-      if (!context.success) {
-        // No message text, phone number, or reservation ID
-        // is included in diagnostics.
-        console.warn(
-          "Reservation inbound attribution lookup unavailable.",
-          { reason: context.error },
-        );
-      }
-
-      // context.attribution is a provisional policy result,
-      // not a durable message-to-reservation association.
-      // Persisting or acting on it requires the coordinator
-      // schema, event idempotency and a fresh state check.
+    if (verified.message.messageBody === null) {
+      return fail("Verified message body unavailable for attribution.", 409);
     }
+    if (!remainingDatabaseSignal(databaseDeadlineAt)) {
+      return fail("Inbound request deadline exceeded.", 503);
+    }
+
+    const context = await resolveReservationInboundContext(supabase, {
+      from: verified.message.guestPhone,
+      body: verified.message.messageBody,
+    });
+    if (!context.success) {
+      console.warn("Reservation inbound attribution unavailable.", {
+        reason: context.error,
+      });
+      return fail("Reservation attribution unavailable.", 503);
+    }
+    if (context.attribution.decision !== "attributed") {
+      return fail("Reservation attribution unresolved.", 409);
+    }
+    const attributedReservationId = context.attribution.reservationId;
+    if (!UUID.test(attributedReservationId)) {
+      return fail("Invalid attributed reservation.", 503);
+    }
+
+    // Protected, reservation-specific lookup: no direct table grants.
+    if (!remainingDatabaseSignal(databaseDeadlineAt)) {
+      return fail("Inbound request deadline exceeded.", 503);
+    }
+    const { data: scopedRows, error: scopedError } = await supabase.rpc(
+      "get_reservation_shared_conversation_for_inbound",
+      {
+        p_reservation_id: attributedReservationId,
+        p_restaurant_phone: restaurantPhone,
+        p_guest_phone: payload.from,
+      },
+    ).retry(false);
+    if (scopedError) {
+      console.error("Reservation-scoped conversation lookup failed.", {
+        code: scopedError.code,
+      });
+      return fail("Reservation conversation lookup unavailable.", 503);
+    }
+    if (!Array.isArray(scopedRows) || scopedRows.length !== 1) {
+      return fail("Verified reservation conversation unavailable.", 409);
+    }
+    const scoped = scopedRows[0] as Record<string, unknown>;
+    if (
+      typeof scoped.conversation_id !== "string" ||
+      !UUID.test(scoped.conversation_id) ||
+      typeof scoped.reservation_id !== "string" ||
+      scoped.reservation_id.toLowerCase() !== attributedReservationId.toLowerCase() ||
+      scoped.conversation_mode !== "staff" ||
+      scoped.staff_activated !== true
+    ) {
+      return fail("Reservation conversation is not activated for staff.", 409);
+    }
+    const attributedConversationId = scoped.conversation_id;
 
     // ======================================================
     // 6. Record verified inbound metadata.
@@ -760,6 +788,8 @@ export async function POST(
           verified.message.messageSid,
         p_message_created_at:
           verified.message.messageCreatedAt,
+        p_reservation_id: attributedReservationId,
+        p_conversation_id: attributedConversationId,
       },
     )
       .retry(false);
@@ -796,7 +826,10 @@ export async function POST(
     //
     // A response check alone cannot undo a write.
 
-    if (result.conversation_mode !== "staff") {
+    if (
+      result.conversation_mode !== "staff" ||
+      result.conversation_id.toLowerCase() !== attributedConversationId.toLowerCase()
+    ) {
       console.error(
         "Shared inbound recording returned a non-staff mode.",
       );
