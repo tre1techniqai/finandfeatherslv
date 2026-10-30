@@ -543,18 +543,108 @@ async function recoverHistoricalAssociations(
       ),
   );
 
+  // --------------------------------------------------
+  // Historical ownership verification.
+  //
+  // The linked confirmation SID establishes an
+  // existing reservation-specific database anchor.
+  //
+  // The full candidate window must independently
+  // pass protected cross-table ownership verification.
+  //
+  // This remains read-only. No historical association
+  // is persisted by this function.
+  // --------------------------------------------------
+
+  if (
+    !hasVipQuestion ||
+    !hasVipAnswer
+  ) {
+    return [];
+  }
+
   const existingInWindow = window.filter(
     ({ message }) =>
       existing.has(message.sid),
   );
 
   if (
-    !hasVipQuestion ||
-    !hasVipAnswer ||
-    existingInWindow.length < 3
+    existingInWindow.length < 1 ||
+    !existingInWindow.some(
+      ({ message }) =>
+        message.sid === confirmationSid,
+    )
   ) {
     return [];
   }
+
+  // Reject malformed, duplicate, empty, or oversized
+  // candidate windows before calling the protected RPC.
+
+  const candidateSids = window.map(
+    ({ message }) => message.sid,
+  );
+
+  const uniqueCandidateSids =
+    new Set(candidateSids);
+
+  if (
+    candidateSids.length < 1 ||
+    candidateSids.length > 100 ||
+    uniqueCandidateSids.size !==
+      candidateSids.length ||
+    candidateSids.some(
+      (sid) => !MESSAGE_SID.test(sid),
+    )
+  ) {
+    return [];
+  }
+
+  const {
+    data: ownershipData,
+    error: ownershipError,
+  } = await admin.rpc(
+    "check_reservation_message_sid_conflicts",
+    {
+      p_reservation_id: reservationId,
+      p_message_sids: candidateSids,
+    },
+  );
+
+  // Fail closed:
+  // - RPC errors
+  // - Missing or multiple result rows
+  // - Incorrect checked count
+  // - Any conflicting association
+  // - Non-boolean or unexpected result values
+
+  if (
+    ownershipError ||
+    !Array.isArray(ownershipData) ||
+    ownershipData.length !== 1
+  ) {
+    return [];
+  }
+
+  const ownership = ownershipData[0];
+
+  if (
+    !ownership ||
+    typeof ownership !== "object" ||
+    ownership.checked_count !==
+      candidateSids.length ||
+    ownership.conflicting_count !== 0 ||
+    ownership.conflict_free !== true
+  ) {
+    return [];
+  }
+
+  // The ownership RPC verifies absence of conflicting
+  // durable associations. It is not an ownership claim.
+  //
+  // Existing execution, form, confirmation, timing,
+  // VIP, and competing-form safeguards above still
+  // establish the reservation-specific context.
 
   return window
     .filter(
