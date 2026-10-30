@@ -3,8 +3,8 @@
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import Image from "next/image";
 
-const RESERVATION_PHONE = "17025466394";
-const RESERVATION_PHONE_DISPLAY = "(702) 546-6394";
+const RESERVATION_PHONE = "17253082066";
+const RESERVATION_PHONE_DISPLAY = "(725) 308-2066";
 const TIME_ZONE = "America/Los_Angeles";
 const MAX_DAYS_AHEAD = 90;
 const MIN_HOURS_AHEAD = 2;
