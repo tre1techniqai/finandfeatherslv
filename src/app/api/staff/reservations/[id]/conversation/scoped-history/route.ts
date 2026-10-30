@@ -26,7 +26,7 @@ const STUDIO_FLOW_SID =
 
 const EXECUTION_SID = /^FN[0-9a-f]{32}$/i;
 
-const MAX_EXECUTION_START_DRIFT_MS = 5_000;
+const MAX_EXECUTION_EARLY_DRIFT_MS = 5_000;
 const MAX_HISTORICAL_WINDOW_MS = 30 * 60_000;
 
 type RouteContext = {
@@ -438,10 +438,10 @@ async function recoverHistoricalAssociations(
       }
 
       if (
-        Math.abs(
-          message.dateCreated.getTime() -
-            executionStart,
-        ) > MAX_EXECUTION_START_DRIFT_MS
+        message.dateCreated.getTime() <
+          executionStart - MAX_EXECUTION_EARLY_DRIFT_MS ||
+        message.dateCreated.getTime() - executionStart >
+          MAX_HISTORICAL_WINDOW_MS
       ) {
         return false;
       }
@@ -495,6 +495,8 @@ async function recoverHistoricalAssociations(
   if (
     lastAt <= firstAt ||
     lastAt - firstAt >
+      MAX_HISTORICAL_WINDOW_MS ||
+    lastAt - executionStart >
       MAX_HISTORICAL_WINDOW_MS
   ) {
     return [];
