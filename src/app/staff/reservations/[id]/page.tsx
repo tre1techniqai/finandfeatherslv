@@ -5,6 +5,7 @@ import { notFound } from "next/navigation";
 
 import { requireReservationStaff } from "@/lib/auth/require-reservation-staff";
 import ReservationWorkflowActions from "@/components/staff/reservation-workflow-actions";
+import ReservationConfirmationSummary from "@/components/staff/reservation-confirmation-summary";
 
 export const metadata = {
   title: "Reservation Details | Fin & Feathers Las Vegas",
@@ -420,25 +421,43 @@ async function ProtectedReservationDetail({
               aria-label="Reservation guest summary"
               className="mt-5 border-b border-white/10 pb-6"
             >
-              <h1 className="text-2xl font-bold tracking-tight text-white sm:text-4xl">
-                {reservation.customer_name ||
-                  "Guest name unavailable"}
-              </h1>
+              <div className="grid gap-5 md:grid-cols-2 md:items-start">
+                <div className="min-w-0">
+                  <h1 className="text-2xl font-bold tracking-tight text-white sm:text-4xl">
+                    {reservation.customer_name ||
+                      "Guest name unavailable"}
+                  </h1>
 
-              <div className="mt-4 flex flex-wrap items-center gap-3">
-                <span className="rounded-full border border-white/20 bg-white/5 px-3 py-1 text-xs font-semibold capitalize text-zinc-200">
-                  {displayStatus(reservation)}
-                </span>
+                  <div className="mt-4 flex flex-wrap items-center gap-3">
+                    <span
+                      className={`rounded-full border px-3 py-1 text-xs font-semibold capitalize ${
+                        reservation.request_status === "confirmed"
+                          ? "border-emerald-500/40 bg-emerald-950/30 text-emerald-200"
+                          : "border-white/20 bg-white/5 text-zinc-200"
+                      }`}
+                    >
+                      {displayStatus(reservation)}
+                    </span>
 
-                <span className="text-xs capitalize text-zinc-500">
-                  Signed in as{" "}
-                  {role.replace(/_/g, " ")}
-                </span>
+                    <span className="text-xs capitalize text-zinc-500">
+                      Signed in as{" "}
+                      {role.replace(/_/g, " ")}
+                    </span>
+                  </div>
+
+                  <p className="mt-4 text-sm text-zinc-400">
+                    Reservation details and staff follow-up
+                  </p>
+                </div>
+
+                {reservation.request_status === "confirmed" && (
+                  <ReservationConfirmationSummary
+                    requestStatus={reservation.request_status}
+                    notification={confirmationNotification}
+                    notificationUnavailable={Boolean(notificationError)}
+                  />
+                )}
               </div>
-
-              <p className="mt-4 text-sm text-zinc-400">
-                Reservation details and staff follow-up
-              </p>
             </section>
 
             <div className="mt-6 space-y-5">

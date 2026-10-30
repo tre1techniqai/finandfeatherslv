@@ -55,8 +55,14 @@ type PageProps = {
   >;
 };
 
-const DEMO_RESERVATION_ID =
-  "2646ba34-8c4e-42c2-96ff-81d3fe1f5459";
+function isOwnerDemoGuest(
+  customerName: string | null,
+): boolean {
+  const firstName =
+    customerName?.trim().split(/\s+/)[0] ?? "";
+
+  return firstName.toLowerCase() === "test";
+}
 
 const ALERT_LIMIT = 100;
 
@@ -226,7 +232,7 @@ function ReservationRow({
           {reservation.customer_name ||
             "Guest name unavailable"}
 
-          {reservation.id === DEMO_RESERVATION_ID && (
+          {isOwnerDemoGuest(reservation.customer_name) && (
             <span className="ml-2 align-middle text-[10px] font-semibold text-sky-300">
               OWNER DEMO
             </span>

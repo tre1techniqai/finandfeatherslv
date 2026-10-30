@@ -6,6 +6,7 @@ import Link from "next/link";
 
 import { requireReservationStaff } from "@/lib/auth/require-reservation-staff";
 import GuestConversationWorkspace from "@/components/staff/guest-conversation-workspace";
+import ReservationConfirmationSummary from "@/components/staff/reservation-confirmation-summary";
 
 export const metadata: Metadata = {
   title: "Reservation | Fin & Feathers Las Vegas",
@@ -172,8 +173,8 @@ async function ProtectedGuestConversation({
   } = await supabase
     .from("reservation_requests")
     .select(
-  "id, customer_name, customer_phone, reservation_date, reservation_time, reservation_reference, party_size, vip_preference",
-)
+      "id, customer_name, customer_phone, reservation_date, reservation_time, reservation_reference, party_size, vip_preference, request_status",
+    )
     .eq("id", id)
     .maybeSingle();
 
@@ -222,6 +223,23 @@ async function ProtectedGuestConversation({
   const reservationDetailsHref =
     `/staff/reservations/${reservation.id}`;
 
+  // Read the existing confirmation SMS status.
+  // This does not send a message or update a reservation.
+  const {
+    data: confirmationNotification,
+    error: confirmationNotificationError,
+  } =
+    reservation.request_status === "confirmed"
+      ? await supabase
+          .from("reservation_notification_events")
+          .select(
+            "notification_status, twilio_message_sid, failure_code",
+          )
+          .eq("reservation_request_id", reservation.id)
+          .eq("notification_type", "reservation_confirmed")
+          .maybeSingle()
+      : { data: null, error: null };
+
   return (
     <main className="w-full flex-1 bg-black px-3 py-6 text-white sm:px-8 sm:py-12">
       <div className="mx-auto max-w-4xl">
@@ -230,17 +248,11 @@ async function ProtectedGuestConversation({
           className="mb-6 flex flex-wrap items-center gap-x-6 gap-y-2 text-sm"
         >
           <Link
-            href="/admin/reservations"
-            className="inline-flex min-h-11 items-center text-zinc-300 underline underline-offset-4 hover:text-white"
+            href="/staff/reservations"
+            className="inline-flex min-h-11 items-center gap-2 text-zinc-300 underline underline-offset-4 transition hover:text-white"
           >
-            ← Reservations
-          </Link>
-
-          <Link
-            href={reservationDetailsHref}
-            className="inline-flex min-h-11 items-center text-zinc-300 underline underline-offset-4 hover:text-white"
-          >
-            Reservation Details
+            <span aria-hidden="true">←</span>
+            Reservation Queue
           </Link>
         </nav>
 
@@ -253,14 +265,34 @@ async function ProtectedGuestConversation({
             Reservation
           </h1>
 
-          <p className="mt-3 text-xl font-semibold">
-            {reservation.customer_name ||
-              "Guest name unavailable"}
-          </p>
+          <div className="mt-4 grid gap-5 md:grid-cols-2 md:items-start">
+            <div className="min-w-0">
+              <p className="text-xl font-semibold text-white">
+                {reservation.customer_name ||
+                  "Guest name unavailable"}
+              </p>
 
-          <p className="mt-2 text-sm text-zinc-300">
-            {formatPhone(reservation.customer_phone)}
-          </p>
+              <p className="mt-2 text-sm text-zinc-300">
+                {formatPhone(reservation.customer_phone)}
+              </p>
+
+              {reservation.request_status === "confirmed" && (
+                <span className="mt-3 inline-flex rounded-full border border-emerald-500/40 bg-emerald-950/30 px-3 py-1 text-xs font-semibold text-emerald-200">
+                  Confirmed
+                </span>
+              )}
+            </div>
+
+            {reservation.request_status === "confirmed" && (
+              <ReservationConfirmationSummary
+                requestStatus={reservation.request_status}
+                notification={confirmationNotification}
+                notificationUnavailable={Boolean(
+                  confirmationNotificationError
+                )}
+              />
+            )}
+          </div>
 
           <section
             aria-label="Reservation identification"
@@ -270,9 +302,38 @@ async function ProtectedGuestConversation({
               Reservation Reference
             </p>
 
-            <p className="mt-2 text-2xl font-bold tracking-wide text-white">
-              {reservationReference ?? "Reference unavailable"}
-            </p>
+            <div className="mt-2 flex flex-wrap items-center justify-between gap-3">
+              <p className="min-w-0 break-words text-2xl font-bold tracking-wide text-white">
+                {reservationReference ?? "Reference unavailable"}
+              </p>
+
+              <Link
+                href={reservationDetailsHref}
+                className="inline-flex min-h-11 shrink-0 items-center justify-center gap-2 rounded-lg border border-amber-400/50 bg-amber-500/10 px-5 py-3 text-sm font-bold text-amber-200 transition hover:border-amber-300 hover:bg-amber-500/20 hover:text-amber-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-300"
+              >
+                <svg
+                  aria-hidden="true"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  className="h-4 w-4 shrink-0"
+                >
+                  <rect
+                    x="5"
+                    y="4"
+                    width="14"
+                    height="17"
+                    rx="2"
+                  />
+                  <path d="M9 4.5h6M9 10h6M9 14h6M9 18h4" />
+                </svg>
+
+                RESERVATION DETAILS
+              </Link>
+            </div>
           </section>
 
           <div className="mt-4 flex flex-wrap gap-3 text-xs text-zinc-300">
@@ -306,10 +367,11 @@ async function ProtectedGuestConversation({
           className="mt-8 border-t border-white/10 pt-5"
         >
           <Link
-            href="/admin/reservations"
-            className="inline-flex min-h-11 items-center text-sm font-semibold text-zinc-300 underline underline-offset-4 hover:text-white"
+            href="/staff/reservations"
+            className="inline-flex min-h-11 items-center gap-2 text-sm font-semibold text-zinc-300 underline underline-offset-4 transition hover:text-white"
           >
-            Return to Reservations →
+            <span aria-hidden="true">←</span>
+            Return to Reservations
           </Link>
         </nav>
       </div>
