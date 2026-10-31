@@ -7,7 +7,9 @@ import {
   useState,
 } from "react";
 
-import RecoverConversationButton from "@/components/staff/recover-conversation-button";
+import RecoverConversationButton, {
+  type RecoveryStatus,
+} from "@/components/staff/recover-conversation-button";
 
 type ConversationMessage = {
   sid: string;
@@ -69,6 +71,9 @@ const UUID =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 const MESSAGE_SID = /^SM[0-9a-f]{32}$/i;
+
+const [recoveryStatus, setRecoveryStatus] =
+  useState<RecoveryStatus>(null);
 
 function messageTimestamp(
   message: ConversationMessage,
@@ -1547,6 +1552,25 @@ export default function GuestConversationWorkspace({
             {joinError}
           </p>
         )}
+
+        {recoveryStatus && (
+          <div className="mt-4 flex justify-end">
+            <p
+              role={
+                recoveryStatus.type === "error"
+                  ? "alert"
+                  : "status"
+              }
+              className={`max-w-full text-right text-xs leading-5 ${
+                recoveryStatus.type === "success"
+                  ? "text-emerald-300"
+                  : "text-red-300"
+              }`}
+            >
+              {recoveryStatus.message}
+            </p>
+          </div>
+        )}
       </section>
 
       <section
@@ -1570,6 +1594,7 @@ export default function GuestConversationWorkspace({
               reservationId={reservationId}
               disabled={loading || loadingOlder}
               onRecovered={loadInitial}
+              onStatusChange={setRecoveryStatus}
             />
           </div>
         </div>
