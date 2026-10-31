@@ -1043,6 +1043,99 @@ export async function GET(
       },
     );
 
+
+    // ==================================================
+    // RECOVERED MESSAGE SID OWNERSHIP HISTORY
+    //
+    // Read previously verified, durable historical
+    // associations from the existing ownership registry.
+    //
+    // No message bodies are stored in Supabase.
+    // Twilio remains the source of message content.
+    // ==================================================
+
+    const {
+      data: recoveredOwnership,
+      error: recoveredOwnershipError,
+    } = await admin
+      .from("reservation_message_sid_ownership")
+      .select("reservation_request_id, twilio_message_sid")
+      .eq("reservation_request_id", id)
+      .limit(MAX_ASSOCIATIONS_PER_SOURCE + 1);
+
+    if (
+      recoveredOwnershipError ||
+      !Array.isArray(recoveredOwnership) ||
+      recoveredOwnership.length > MAX_ASSOCIATIONS_PER_SOURCE
+    ) {
+      return fail(
+        "Unable to retrieve recovered message ownership.",
+        503,
+      );
+    }
+
+    for (const ownership of recoveredOwnership) {
+      const sid = ownership.twilio_message_sid;
+
+      if (
+        ownership.reservation_request_id !== id ||
+        typeof sid !== "string" ||
+        !MESSAGE_SID.test(sid)
+      ) {
+        return fail(
+          "Invalid recovered message ownership.",
+          503,
+        );
+      }
+
+      if (associations.has(sid)) {
+        continue;
+      }
+
+      let recoveredMessage;
+
+      try {
+        recoveredMessage = await client
+          .messages(sid)
+          .fetch();
+      } catch {
+        return fail(
+          "Unable to verify recovered Twilio message.",
+          503,
+        );
+      }
+
+      const verifiedInbound =
+        recoveredMessage.from === guestPhone &&
+        recoveredMessage.to === restaurantPhone &&
+        recoveredMessage.direction === "inbound";
+
+      const verifiedOutbound =
+        recoveredMessage.from === restaurantPhone &&
+        recoveredMessage.to === guestPhone &&
+        recoveredMessage.direction !== "inbound";
+
+      if (
+        recoveredMessage.sid !== sid ||
+        (!verifiedInbound && !verifiedOutbound) ||
+        !recoveredMessage.dateCreated
+      ) {
+        return fail(
+          "Recovered message identity verification failed.",
+          503,
+        );
+      }
+
+      associations.set(sid, {
+        sid,
+        reservationId: id,
+        timestamp: recoveredMessage.dateCreated.toISOString(),
+        expectedDirection: verifiedInbound
+          ? "inbound"
+          : "outbound",
+      });
+    }
+
     try {
       const recovered =
         await recoverHistoricalAssociations({
