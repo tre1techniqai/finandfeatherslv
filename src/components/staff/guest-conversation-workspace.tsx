@@ -7,6 +7,8 @@ import {
   useState,
 } from "react";
 
+import RecoverConversationButton from "@/components/staff/recover-conversation-button";
+
 type ConversationMessage = {
   sid: string;
   direction: "inbound" | "outbound";
@@ -1559,9 +1561,17 @@ export default function GuestConversationWorkspace({
             Message History
           </h3>
 
-          <span className="text-xs text-zinc-400">
-            {messages.length} loaded
-          </span>
+          <div className="flex flex-wrap items-center gap-3">
+            <span className="text-xs text-zinc-400">
+              {messages.length} loaded
+            </span>
+
+            <RecoverConversationButton
+              reservationId={reservationId}
+              disabled={loading || loadingOlder}
+              onRecovered={loadInitial}
+            />
+          </div>
         </div>
 
         {error && (
