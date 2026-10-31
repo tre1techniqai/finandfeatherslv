@@ -72,9 +72,6 @@ const UUID =
 
 const MESSAGE_SID = /^SM[0-9a-f]{32}$/i;
 
-const [recoveryStatus, setRecoveryStatus] =
-  useState<RecoveryStatus>(null);
-
 function messageTimestamp(
   message: ConversationMessage,
 ): string {
@@ -349,6 +346,9 @@ export default function GuestConversationWorkspace({
 }: Props) {
   const [messages, setMessages] =
     useState<ConversationMessage[]>([]);
+
+  const [recoveryStatus, setRecoveryStatus] =
+    useState<RecoveryStatus>(null);
 
   const [loading, setLoading] =
     useState(true);
