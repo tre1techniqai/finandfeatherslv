@@ -1116,7 +1116,7 @@ export async function GET(
         recoveredMessage.direction !== "inbound";
 
       if (
-        recoveredMessage.sid !== sid ||
+        recoveredMessage.sid.toLowerCase() !== sid.toLowerCase() ||
         (!verifiedInbound && !verifiedOutbound) ||
         !recoveredMessage.dateCreated
       ) {
