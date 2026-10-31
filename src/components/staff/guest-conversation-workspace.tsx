@@ -643,14 +643,69 @@ export default function GuestConversationWorkspace({
   useEffect(() => {
     mountedRef.current = true;
 
-    void loadInitial();
+    const controller = new AbortController();
+
+    async function initializeConversation() {
+      try {
+        const response = await fetch(
+          `/api/staff/reservations/${encodeURIComponent(
+            reservationId,
+          )}/conversation/recover`,
+          {
+            method: "POST",
+            credentials: "same-origin",
+            cache: "no-store",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: "{}",
+            signal: controller.signal,
+          },
+        );
+
+        if (!response.ok) {
+          console.warn(
+            "Automatic Studio recovery was unavailable.",
+            {
+              reservationId,
+              status: response.status,
+            },
+          );
+        }
+      } catch (caught) {
+        if (controller.signal.aborted) {
+          return;
+        }
+
+        console.warn(
+          "Automatic Studio recovery failed.",
+          {
+            reservationId,
+            error:
+              caught instanceof Error
+                ? caught.message
+                : "Unknown error",
+          },
+        );
+      } finally {
+        if (
+          !controller.signal.aborted &&
+          mountedRef.current
+        ) {
+          await loadInitial();
+        }
+      }
+    }
+
+    void initializeConversation();
 
     return () => {
+      controller.abort();
       mountedRef.current = false;
       activeRequestRef.current?.abort();
       pollRequestRef.current?.abort();
     };
-  }, [loadInitial]);
+  }, [loadInitial, reservationId]);
 
   useEffect(() => {
     if (
