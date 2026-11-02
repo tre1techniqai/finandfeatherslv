@@ -386,6 +386,19 @@ function validateReservation(
     }
   }
 
+  // Failed reservation-correction attempts must not
+  // create reservation records without validated details.
+  //
+  // Legitimate incomplete reservations remain eligible
+  // when the core reservation details were validated.
+  //
+  // Keep this rule at the API boundary so callers
+  // cannot bypass it by invoking ingestion directly.
+
+  if (!detailsValidated) {
+    return null;
+  }
+
   return {
     twilioExecutionSid:
       twilioExecutionSid.toUpperCase(),
@@ -427,6 +440,96 @@ function getSupabaseClient() {
       autoRefreshToken: false,
     },
   });
+}
+
+
+type ReservationEligibility =
+  | { allowed: true }
+  | {
+      allowed: false;
+      reason: "SAME_DATE_RESERVATION";
+    };
+
+async function checkReservationEligibility(
+  reservation: ReservationRequest,
+): Promise<ReservationEligibility> {
+  const supabase = getSupabaseClient();
+
+  // Preserve the existing execution-SID idempotency.
+  // Retries of an established execution must continue
+  // through the existing ingestion RPC.
+  const {
+    data: existingExecution,
+    error: executionError,
+  } = await supabase
+    .from("reservation_requests")
+    .select("id, customer_phone")
+    .eq(
+      "twilio_execution_sid",
+      reservation.twilioExecutionSid,
+    )
+    .maybeSingle();
+
+  if (executionError) {
+    throw new Error("Execution eligibility lookup failed.");
+  }
+
+  if (existingExecution) {
+    if (
+      existingExecution.customer_phone !==
+      reservation.customerPhone
+    ) {
+      throw new Error("Existing execution phone mismatch.");
+    }
+
+    return { allowed: true };
+  }
+
+  if (!reservation.reservationDate) {
+    throw new Error("Validated reservation date is missing.");
+  }
+
+  // A new execution cannot automatically create another
+  // reservation for a date already associated with a
+  // validated reservation belonging to this phone.
+  //
+  // Historical unvalidated correction records do not
+  // establish an existing valid booking.
+  const {
+    data: matchingReservations,
+    error: matchingError,
+  } = await supabase
+    .from("reservation_requests")
+    .select("id")
+    .eq(
+      "customer_phone",
+      reservation.customerPhone,
+    )
+    .eq(
+      "reservation_date",
+      reservation.reservationDate,
+    )
+    .eq("details_validated", true)
+    .in("request_status", [
+      "pending",
+      "incomplete",
+      "confirmed",
+      "closed",
+    ])
+    .limit(1);
+
+  if (matchingError || !Array.isArray(matchingReservations)) {
+    throw new Error("Reservation eligibility lookup failed.");
+  }
+
+  if (matchingReservations.length > 0) {
+    return {
+      allowed: false,
+      reason: "SAME_DATE_RESERVATION",
+    };
+  }
+
+  return { allowed: true };
 }
 
 async function persistReservation(
@@ -792,8 +895,51 @@ export async function POST(request: Request) {
       });
     }
 
+
     // ==================================================
-    // 1. Persist the authoritative reservation.
+    // 1. Verify reservation creation eligibility.
+    //
+    // Existing execution-SID retries remain eligible.
+    // New executions must not automatically duplicate
+    // a validated reservation for the same phone/date.
+    // ==================================================
+
+    let eligibility: ReservationEligibility;
+
+    try {
+      eligibility =
+        await checkReservationEligibility(reservation);
+    } catch {
+      return NextResponse.json(
+        {
+          error: "Reservation eligibility could not be verified.",
+        },
+        {
+          status: 503,
+          headers: {
+            "Cache-Control": "no-store",
+          },
+        },
+      );
+    }
+
+    if (!eligibility.allowed) {
+      return NextResponse.json(
+        {
+          error: "Reservation requires duplicate review.",
+          code: eligibility.reason,
+        },
+        {
+          status: 409,
+          headers: {
+            "Cache-Control": "no-store",
+          },
+        },
+      );
+    }
+
+    // ==================================================
+    // 2. Persist the authoritative reservation.
     //
     // Existing execution-SID idempotency and
     // notification safeguards remain in the
