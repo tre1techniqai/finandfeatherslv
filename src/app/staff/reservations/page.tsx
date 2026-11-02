@@ -1,4 +1,3 @@
-
 import { Suspense } from "react";
 import { connection } from "next/server";
 import Link from "next/link";
@@ -19,7 +18,8 @@ type ReservationStatus =
   | "confirmed"
   | "closed";
 
-type QueueFilter = ReservationStatus | "all";
+
+type QueueFilter = ReservationStatus | "all" | "queue";
 type SortOrder = "newest" | "oldest";
 type PageSize = 10 | 20 | 50 | 100;
 
@@ -67,6 +67,7 @@ function isOwnerDemoGuest(
 const ALERT_LIMIT = 100;
 
 const statuses: QueueFilter[] = [
+  "queue",
   "all",
   "pending",
   "incomplete",
@@ -531,10 +532,13 @@ async function ProtectedReservationQueue({
 
   const rawStatus = single(params.status);
 
-  const selectedStatus: QueueFilter =
-    statuses.includes(rawStatus as QueueFilter)
-      ? (rawStatus as QueueFilter)
-      : "all";
+  
+const selectedStatus: QueueFilter =
+  statuses.includes(rawStatus as QueueFilter)
+    ? (rawStatus as QueueFilter)
+    : search
+      ? "all"
+      : "queue";
 
   const sort: SortOrder =
     single(params.sort) === "oldest"
@@ -586,13 +590,18 @@ async function ProtectedReservationQueue({
     }
   }
 
-  if (selectedStatus === "unvalidated") {
+  
+  if (selectedStatus === "queue") {
+    query = query
+      .in("request_status", ["pending", "incomplete"])
+      .eq("details_validated", true);
+  } else if (selectedStatus === "unvalidated") {
     query = query.or(
       "request_status.eq.unvalidated,and(request_status.eq.incomplete,details_validated.eq.false)",
     );
-  } else if (selectedStatus === "incomplete") {
+  } else if (selectedStatus === "incomplete" || selectedStatus === "pending") {
     query = query
-      .eq("request_status", "incomplete")
+      .eq("request_status", selectedStatus)
       .eq("details_validated", true);
   } else if (selectedStatus !== "all") {
     query = query.eq(
@@ -600,6 +609,7 @@ async function ProtectedReservationQueue({
       selectedStatus,
     );
   }
+
 
   const { data, error, count } = await query
     .order("created_at", {
@@ -645,9 +655,9 @@ async function ProtectedReservationQueue({
       countQuery = countQuery.or(
         "request_status.eq.unvalidated,and(request_status.eq.incomplete,details_validated.eq.false)",
       );
-    } else if (status === "incomplete") {
+    } else if (status === "incomplete" || status === "pending") {
       countQuery = countQuery
-        .eq("request_status", "incomplete")
+        .eq("request_status", status)
         .eq("details_validated", true);
     } else {
       countQuery = countQuery.eq(
@@ -727,10 +737,10 @@ async function ProtectedReservationQueue({
 
   const alertGuests =
     (alertGuestData ?? []) as ReservationRequest[];
-
+  
   const filtersActive =
     !!search ||
-    selectedStatus !== "all" ||
+    selectedStatus !== "queue" ||
     sort !== "newest" ||
     size !== 10;
 
@@ -906,7 +916,10 @@ async function ProtectedReservationQueue({
                       key={status}
                       value={status}
                     >
-                      {status === "all"
+                      
+                    {status === "queue"
+                      ? "Active Queue"
+                      : status === "all"
                         ? "All statuses"
                         : status.charAt(0).toUpperCase() +
                           status.slice(1)}
