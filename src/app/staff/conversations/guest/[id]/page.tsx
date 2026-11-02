@@ -1,3 +1,4 @@
+
 import { Suspense } from "react";
 import type { Metadata } from "next";
 import { connection } from "next/server";
@@ -18,7 +19,7 @@ type PageProps = {
 };
 
 const UUID =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function formatPhone(value: string): string {
   const digits = value.replace(/\D/g, "");
@@ -144,28 +145,11 @@ async function ProtectedGuestConversation({
     notFound();
   }
 
-  const { supabase, role } =
+  // Centralized reservation staff authorization.
+  // Both manager and reservation_agent are permitted.
+  // Unknown, inactive, and unauthenticated users are denied.
+  const { supabase } =
     await requireReservationStaff();
-
-  if (role !== "manager") {
-    return (
-      <main className="flex-1 bg-black px-4 py-10 text-white">
-        <div
-          role="alert"
-          className="mx-auto max-w-4xl rounded-xl border border-red-500/30 bg-red-950/20 p-6"
-        >
-          <h1 className="text-xl font-bold">
-            Manager access required
-          </h1>
-
-          <p className="mt-3 text-sm text-zinc-300">
-            This reservation conversation is available
-            to authorized reservation managers.
-          </p>
-        </div>
-      </main>
-    );
-  }
 
   const {
     data: reservation,
