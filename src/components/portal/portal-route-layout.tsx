@@ -11,9 +11,12 @@ import { usePathname } from "next/navigation";
 import PortalShell from "@/components/portal/portal-shell";
 
 import type { PortalSection } from "@/components/portal/portal-header";
+import type { ReservationStaffRole } from "@/lib/auth/require-reservation-staff";
 
 type Props = {
   section: PortalSection;
+  staffRole?: ReservationStaffRole | null;
+  userEmail?: string | null;
   children: ReactNode;
 };
 
@@ -94,6 +97,8 @@ function getPageTitle(pathname: string): string {
 
 function PortalRouteContent({
   section,
+  staffRole = null,
+  userEmail = null,
   children,
 }: Props) {
   const pathname = usePathname();
@@ -106,6 +111,8 @@ function PortalRouteContent({
     <PortalShell
       section={section}
       title={getPageTitle(pathname)}
+      staffRole={staffRole}
+      userEmail={userEmail}
     >
       {children}
     </PortalShell>
@@ -114,11 +121,17 @@ function PortalRouteContent({
 
 export default function PortalRouteLayout({
   section,
+  staffRole = null,
+  userEmail = null,
   children,
 }: Props) {
   return (
     <Suspense fallback={<>{children}</>}>
-      <PortalRouteContent section={section}>
+      <PortalRouteContent
+        section={section}
+        staffRole={staffRole}
+        userEmail={userEmail}
+      >
         {children}
       </PortalRouteContent>
     </Suspense>
