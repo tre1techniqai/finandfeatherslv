@@ -3,6 +3,7 @@ import { connection } from "next/server";
 import Link from "next/link";
 
 import GuestAssistanceActions from "@/components/staff/guest-assistance-actions";
+import CloseReservationButton from "@/components/staff/close-reservation-button";
 import { requireReservationStaff } from "@/lib/auth/require-reservation-staff";
 
 export const metadata = {
@@ -282,6 +283,13 @@ function ReservationRow({
           )}
         </div>
 
+        <div className="flex shrink-0 items-center gap-8 sm:gap-12">
+          {(status === "pending" || status === "incomplete" || status === "unvalidated") && (
+            <CloseReservationButton
+              reservationId={reservation.id}
+              guestName={reservation.customer_name}
+            />
+          )}
         <Link
           href={`/staff/reservations/${reservation.id}`}
           aria-label={`View reservation for ${
@@ -303,6 +311,7 @@ function ReservationRow({
             <path d="m9 5 7 7-7 7" />
           </svg>
         </Link>
+        </div>
       </div>
     </article>
   );

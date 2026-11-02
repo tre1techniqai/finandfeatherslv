@@ -1,12 +1,13 @@
 import { NextResponse } from "next/server";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { isReservationStaffRole } from "@/lib/auth/require-reservation-staff";
 import { dispatchReservationConfirmation } from "@/lib/reservations/dispatch-reservation-confirmation";
 import { dispatchReservationAlternatives } from "@/lib/reservations/dispatch-reservation-alternatives";
 
 const MAX_BODY_BYTES = 8192;
 
 const UUID_PATTERN =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 const TIME_PATTERN =
   /^(0[0-9]|1[0-9]|2[0-3]):[0-5][0-9]$/;
@@ -23,6 +24,7 @@ const ALLOWED_ACTIONS = [
   "accept_alternative",
   "verify_deposit",
   "confirm_yelp_booking",
+  "close_reservation",
 ] as const;
 
 type ActionKey = (typeof ALLOWED_ACTIONS)[number];
@@ -123,6 +125,7 @@ function validatePayload(
   switch (action) {
     case "approve_availability":
     case "decline_availability":
+    case "close_reservation":
       return Object.keys(payload).length === 0;
 
     case "propose_alternatives": {
@@ -329,13 +332,16 @@ export async function POST(
     .maybeSingle();
 
   if (
-    roleError ||
-    !staffRole ||
-    !staffRole.is_active ||
-    staffRole.role !== "manager"
-  ) {
-    return jsonError("Manager access required.", 403);
-  }
+      roleError ||
+      !staffRole ||
+      staffRole.is_active !== true ||
+      !isReservationStaffRole(staffRole.role)
+    ) {
+      return jsonError(
+        "Active reservation staff access required.",
+        403,
+      );
+    }
 
   const contentType =
     request.headers.get("content-type") ?? "";
@@ -380,16 +386,15 @@ export async function POST(
     );
   }
 
-  // Send the previously saved alternative times.
-  // The authenticated manager has already been verified above.
-  // The dispatcher performs independent reservation checks and
-  // uses database claims to prevent duplicate SMS requests.
+  // The authenticated reservation staff member has already
+  // been verified above. The dispatcher performs independent
+  // reservation checks and prevents duplicate SMS requests.
   if (validatedAction === "send_alternatives") {
     return dispatchReservationAlternatives(supabase, id);
   }
 
-  // The database function independently checks manager authorization
-  // and enforces reservation state transitions.
+  // The database function independently enforces authorization
+  // and validates reservation workflow state transitions.
   const { data, error } = await supabase.rpc(
     "apply_reservation_staff_action",
     {
@@ -401,7 +406,7 @@ export async function POST(
 
   if (error) {
     if (error.code === "42501") {
-      return jsonError("Manager access required.", 403);
+      return jsonError("Reservation staff access required.", 403);
     }
 
     if (error.code === "P0002") {
