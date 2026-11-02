@@ -3,9 +3,10 @@ import { NextResponse } from "next/server";
 import twilio from "twilio";
 import { createClient } from "@supabase/supabase-js";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { isReservationStaffRole } from "@/lib/auth/require-reservation-staff";
 
 const UUID =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{12}$/i;
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 const E164 = /^\+[1-9]\d{7,14}$/;
 const ACCOUNT_SID = /^AC[0-9a-f]{32}$/i;
@@ -249,12 +250,14 @@ export async function POST(
       error: claimsError,
     } = await supabase.auth.getClaims();
 
-    const managerId = claimsData?.claims?.sub;
+
+    const staffUserId = claimsData?.claims?.sub;
+
 
     if (
       claimsError ||
-      typeof managerId !== "string" ||
-      !UUID.test(managerId)
+      typeof staffUserId !== "string" ||
+      !UUID.test(staffUserId)
     ) {
       return fail("Authentication required.", 401);
     }
@@ -265,18 +268,20 @@ export async function POST(
     } = await supabase
       .from("staff_roles")
       .select("role, is_active")
-      .eq("user_id", managerId)
+      .eq("user_id", staffUserId)
       .eq("is_active", true)
       .maybeSingle();
+
 
     if (
       roleError ||
       !role ||
-      role.role !== "manager" ||
-      role.is_active !== true
+      role.is_active !== true ||
+      !isReservationStaffRole(role.role)
     ) {
-      return fail("Manager access required.", 403);
+      return fail("Reservation staff access required.", 403);
     }
+
 
     const restaurantPhone =
       process.env.TWILIO_FROM_NUMBER;
@@ -372,7 +377,7 @@ export async function POST(
     if (
       ownership.ownership_status !== "handoff_pending" ||
       ownership.linked_reservation_id !== id ||
-      ownership.claimed_by !== managerId
+      ownership.claimed_by !== staffUserId
     ) {
       return fail(
         "This conversation is not pending takeover by your account.",
@@ -551,7 +556,7 @@ export async function POST(
     );
 
     // The RPC locks the ownership row and rechecks
-    // the exact reservation and current manager.
+    // the exact reservation and authenticated staff member.
     //
     // Twilio scanning and this database transaction
     // are separate operations. The checks above reduce
@@ -564,14 +569,14 @@ export async function POST(
       {
         p_reservation_id: id,
         p_restaurant_phone: restaurantPhone,
-        p_manager_id: managerId,
+        p_manager_id: staffUserId,
       },
     );
 
     if (completionError) {
       if (completionError.code === "42501") {
         return fail(
-          "Manager authorization failed.",
+          "Reservation staff authorization failed.",
           403,
         );
       }
@@ -615,7 +620,7 @@ export async function POST(
 
     if (
       completed.ownership_status !== "staff" ||
-      completed.claimed_by !== managerId ||
+      completed.claimed_by !== staffUserId ||
       completed.ownership_id !== ownership.ownership_id
     ) {
       return fail(

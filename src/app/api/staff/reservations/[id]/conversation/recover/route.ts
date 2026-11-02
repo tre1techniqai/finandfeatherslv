@@ -1,11 +1,13 @@
+
 import { NextResponse } from "next/server";
 
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { isReservationStaffRole } from "@/lib/auth/require-reservation-staff";
 import { validSharedActivationOrigin } from "@/lib/reservations/shared-activation-origin";
 import { recordStudioMessageHistory } from "@/lib/reservations/record-studio-message-history";
 
 const UUID =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 const EXECUTION_SID = /^FN[0-9a-f]{32}$/i;
 
@@ -61,7 +63,7 @@ export async function POST(
       );
     }
 
-    // Manager authentication.
+    // Authenticate the current staff user.
 
     const supabase =
       await createSupabaseServerClient();
@@ -71,13 +73,13 @@ export async function POST(
       error: claimsError,
     } = await supabase.auth.getClaims();
 
-    const managerId =
+    const staffUserId =
       claimsData?.claims?.sub;
 
     if (
       claimsError ||
-      typeof managerId !== "string" ||
-      !UUID.test(managerId)
+      typeof staffUserId !== "string" ||
+      !UUID.test(staffUserId)
     ) {
       return fail(
         "Authentication required.",
@@ -85,24 +87,27 @@ export async function POST(
       );
     }
 
+    // Only active managers and reservation agents
+    // may perform reservation conversation recovery.
+
     const {
       data: staffRole,
       error: roleError,
     } = await supabase
       .from("staff_roles")
       .select("role, is_active")
-      .eq("user_id", managerId)
+      .eq("user_id", staffUserId)
       .eq("is_active", true)
       .maybeSingle();
 
     if (
       roleError ||
       !staffRole ||
-      staffRole.role !== "manager" ||
-      staffRole.is_active !== true
+      staffRole.is_active !== true ||
+      !isReservationStaffRole(staffRole.role)
     ) {
       return fail(
-        "Manager access required.",
+        "Reservation staff access required.",
         403,
       );
     }

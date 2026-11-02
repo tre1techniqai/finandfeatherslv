@@ -1,7 +1,9 @@
 import { NextResponse } from "next/server";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { isReservationStaffRole } from "@/lib/auth/require-reservation-staff";
 
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 const E164 = /^\+[1-9]\d{7,14}$/;
 const MAX_BYTES = 1024;
 
@@ -121,10 +123,16 @@ export async function POST(request: Request, context: RouteContext) {
       .eq("user_id", userId)
       .eq("is_active", true)
       .maybeSingle();
-    if (roleError || !staffRole || staffRole.role !== "manager" ||
-        staffRole.is_active !== true) {
-      return fail("Manager access required.", 403);
+
+    if (
+      roleError ||
+      !staffRole ||
+      staffRole.is_active !== true ||
+      !isReservationStaffRole(staffRole.role)
+    ) {
+      return fail("Reservation staff access required.", 403);
     }
+
 
     const parsed = await parseAction(request);
     if (!parsed.ok) return fail(parsed.message, parsed.status);
@@ -134,7 +142,9 @@ export async function POST(request: Request, context: RouteContext) {
       return fail("Restaurant SMS number is not configured.", 503);
     }
 
-    // Use the user's own authenticated session so auth.uid() is the manager.
+
+    // Use the staff member's authenticated session so auth.uid()
+    // identifies the staff member making the handoff request.
     const functionName = parsed.action === "request"
       ? "request_reservation_conversation_handoff"
       : "cancel_reservation_conversation_handoff";
@@ -144,11 +154,13 @@ export async function POST(request: Request, context: RouteContext) {
     });
 
     if (error) {
-      if (error.code === "42501") return fail("Manager access required.", 403);
+      if (error.code === "42501") {
+        return fail("Reservation staff access required.", 403);
+      }
       if (error.code === "22023" || error.code === "23505") {
         return fail(
           parsed.action === "request"
-            ? "Conversation cannot be requested right now. It may already be assigned to another manager."
+            ? "Conversation cannot be requested right now. It may already be assigned to another staff member."
             : "There is no pending handoff for this reservation owned by your account.",
           409,
         );

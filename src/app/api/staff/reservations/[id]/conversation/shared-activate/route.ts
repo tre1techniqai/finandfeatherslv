@@ -3,6 +3,7 @@ import { createClient } from "@supabase/supabase-js";
 import twilio from "twilio";
 
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { isReservationStaffRole } from "@/lib/auth/require-reservation-staff";
 import { validSharedActivationOrigin } from "@/lib/reservations/shared-activation-origin";
 
 import {
@@ -12,7 +13,7 @@ import {
 } from "@/lib/reservations/shared-studio-execution-reconciliation";
 
 const UUID =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 const FLOW_SID = /^FW[0-9a-f]{32}$/i;
 const ACCOUNT_SID = /^AC[0-9a-f]{32}$/i;
@@ -380,11 +381,11 @@ export async function POST(
     if (
       roleError ||
       !role ||
-      role.role !== "manager" ||
-      role.is_active !== true
+      role.is_active !== true ||
+      !isReservationStaffRole(role.role)
     ) {
       return denied(
-        "Manager access required.",
+        "Active reservation staff access required.",
         403,
       );
     }

@@ -1,9 +1,10 @@
 
 import { NextResponse } from "next/server";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { isReservationStaffRole } from "@/lib/auth/require-reservation-staff";
 
 const UUID =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 const E164 = /^\+[1-9]\d{7,14}$/;
 const MAX_BODY_BYTES = 256;
@@ -192,10 +193,10 @@ export async function POST(
   // Never gate this endpoint on staff takeover or
   // SMS enablement flags.
   //
-  // The authenticated manager must still own the
-  // exact reservation conversation.
+  // The authenticated staff member must still own
+  // the exact reservation conversation.
   //
-  // The database now also protects release while
+  // The database also protects release while
   // registered, submitting, or uncertain staff SMS
   // operations remain in the current ownership session.
 
@@ -231,13 +232,15 @@ export async function POST(
       error: claimsError,
     } = await supabase.auth.getClaims();
 
-    const managerId =
+
+    const staffUserId =
       claimsData?.claims?.sub;
+
 
     if (
       claimsError ||
-      typeof managerId !== "string" ||
-      !UUID.test(managerId)
+      typeof staffUserId !== "string" ||
+      !UUID.test(staffUserId)
     ) {
       return fail(
         "Authentication required.",
@@ -251,21 +254,23 @@ export async function POST(
     } = await supabase
       .from("staff_roles")
       .select("role, is_active")
-      .eq("user_id", managerId)
+      .eq("user_id", staffUserId)
       .eq("is_active", true)
       .maybeSingle();
+
 
     if (
       roleError ||
       !role ||
-      role.role !== "manager" ||
-      role.is_active !== true
+      role.is_active !== true ||
+      !isReservationStaffRole(role.role)
     ) {
       return fail(
-        "Manager access required.",
+        "Reservation staff access required.",
         403,
       );
     }
+
 
     const restaurantPhone =
       process.env.TWILIO_FROM_NUMBER;
@@ -318,7 +323,7 @@ export async function POST(
     }
 
     // The ownership table has RLS enabled.
-    // Use the existing manager-authorized RPC.
+    // Use the existing reservation-staff-authorized RPC.
     const {
       data: ownershipData,
       error: ownershipError,
@@ -333,7 +338,7 @@ export async function POST(
     if (ownershipError) {
       if (ownershipError.code === "42501") {
         return fail(
-          "Manager authorization failed.",
+          "Reservation staff authorization failed.",
           403,
         );
       }
@@ -368,7 +373,7 @@ export async function POST(
     if (
       ownership.ownership_status !== "staff" ||
       ownership.linked_reservation_id !== id ||
-      ownership.claimed_by !== managerId
+      ownership.claimed_by !== staffUserId
     ) {
       return fail(
         "This conversation is not owned by your account.",

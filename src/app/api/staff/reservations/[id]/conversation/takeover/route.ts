@@ -1,8 +1,10 @@
 import { NextResponse } from "next/server";
 import twilio from "twilio";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { isReservationStaffRole } from "@/lib/auth/require-reservation-staff";
 
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 const E164 = /^\+[1-9]\d{7,14}$/;
 const ACCOUNT_SID = /^AC[0-9a-f]{32}$/i;
 const FLOW_SID = /^FW[0-9a-f]{32}$/i;
@@ -98,26 +100,33 @@ export async function POST(
     const { data: claims, error: claimsError } =
       await supabase.auth.getClaims();
 
-    const managerId = claims?.claims?.sub;
 
-    if (claimsError || !managerId) {
+    const staffUserId = claims?.claims?.sub;
+
+    if (claimsError || !staffUserId) {
       return error("Authentication required.", 401);
     }
+
+
 
     const { data: role, error: roleError } = await supabase
       .from("staff_roles")
       .select("role, is_active")
-      .eq("user_id", managerId)
+      .eq("user_id", staffUserId)
       .eq("is_active", true)
       .maybeSingle();
 
-    if (
-      roleError ||
-      role?.role !== "manager" ||
-      role.is_active !== true
-    ) {
-      return error("Manager access required.", 403);
-    }
+
+
+      if (
+        roleError ||
+        !role ||
+        role.is_active !== true ||
+        !isReservationStaffRole(role.role)
+      ) {
+        return error("Reservation staff access required.", 403);
+      }
+
 
     if (!(await validEmptyBody(request))) {
       return error("Expected an empty JSON object.", 400);
@@ -187,18 +196,20 @@ export async function POST(
 
     const claim = rows[0];
 
+
     if (
       claim?.ownership_status !== "handoff_pending" ||
-      claim?.claimed_by !== managerId ||
+      claim?.claimed_by !== staffUserId ||
       claim?.linked_reservation_id !== id ||
       typeof claim?.ownership_id !== "string" ||
       !UUID.test(claim.ownership_id)
     ) {
       return error(
-        "A pending handoff for this manager and reservation is required.",
+        "A pending handoff for this staff member and reservation is required.",
         409,
       );
     }
+
 
     const client = twilio(accountSid, authToken);
 

@@ -2,9 +2,10 @@
 import { NextResponse } from "next/server";
 import twilio from "twilio";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { isReservationStaffRole } from "@/lib/auth/require-reservation-staff";
 
 const UUID_PATTERN =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 const E164_PATTERN = /^\+[1-9]\d{7,14}$/;
 const ACCOUNT_SID_PATTERN = /^AC[0-9a-f]{32}$/i;
@@ -72,7 +73,7 @@ export async function GET(
       return jsonError("Please sign in to continue.", 401);
     }
 
-    // Preserve existing manager-only portal access.
+    // Require an authenticated, active reservation staff member.
     const { data: staffRole, error: roleError } =
       await supabase
         .from("staff_roles")
@@ -85,9 +86,12 @@ export async function GET(
       roleError ||
       !staffRole ||
       staffRole.is_active !== true ||
-      staffRole.role !== "manager"
+      !isReservationStaffRole(staffRole.role)
     ) {
-      return jsonError("Staff access required.", 403);
+      return jsonError(
+        "Reservation staff access required.",
+        403,
+      );
     }
 
     // Obtain the phone number from the protected

@@ -3,6 +3,7 @@ import { createClient } from "@supabase/supabase-js";
 import twilio from "twilio";
 
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { isReservationStaffRole } from "@/lib/auth/require-reservation-staff";
 import {
   reconcileSharedStudioExecutions,
   SHARED_STUDIO_EXECUTION_SCAN_LIMIT,
@@ -14,7 +15,7 @@ import {
 } from "@/lib/reservations/shared-staff-handoff-plan";
 
 const UUID =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 const E164 = /^\+[1-9]\d{7,14}$/;
 const ACCOUNT_SID = /^AC[0-9a-f]{32}$/i;
@@ -181,7 +182,7 @@ export async function GET(
     }
 
     // --------------------------------------------------
-    // 1. Authenticate the active manager.
+    // 1. Authenticate the active reservation staff member.
     // --------------------------------------------------
 
     const supabase =
@@ -192,12 +193,12 @@ export async function GET(
       error: claimsError,
     } = await supabase.auth.getClaims();
 
-    const managerId =
+    const staffUserId =
       claimsData?.claims?.sub;
 
     if (
       claimsError ||
-      !validUuid(managerId)
+      !validUuid(staffUserId)
     ) {
       return fail(
         "Authentication required.",
@@ -211,18 +212,18 @@ export async function GET(
     } = await supabase
       .from("staff_roles")
       .select("role, is_active")
-      .eq("user_id", managerId)
+      .eq("user_id", staffUserId)
       .eq("is_active", true)
       .maybeSingle();
 
     if (
       roleError ||
       !role ||
-      role.role !== "manager" ||
-      role.is_active !== true
+      role.is_active !== true ||
+      !isReservationStaffRole(role.role)
     ) {
       return fail(
-        "Manager access required.",
+        "Active reservation staff access required.",
         403,
       );
     }

@@ -2,9 +2,11 @@ import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import twilio from "twilio";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { isReservationStaffRole } from "@/lib/auth/require-reservation-staff";
 
 const UUID =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 const E164 = /^\+[1-9]\d{7,14}$/;
 const ACCOUNT_SID = /^AC[0-9a-f]{32}$/i;
 const MESSAGE_SID = /^SM[0-9a-f]{32}$/i;
@@ -188,8 +190,14 @@ export async function POST(request: Request, context: RouteContext): Promise<Res
       .eq("user_id", userId)
       .eq("is_active", true)
       .maybeSingle();
-    if (roleError || role?.is_active !== true || role.role !== "manager") {
-      return fail("Manager access required.", 403);
+
+    if (
+      roleError ||
+      !role ||
+      role.is_active !== true ||
+      !isReservationStaffRole(role.role)
+    ) {
+      return fail("Reservation staff access required.", 403);
     }
 
     const parsed = await readMessage(request);
@@ -231,8 +239,9 @@ export async function POST(request: Request, context: RouteContext): Promise<Res
       return fail("Verified staff ownership is required before sending SMS.", 409);
     }
 
-    // Authenticated manager RPC: row-locks current ownership and registers
-    // exactly one request per clientRequestId within the current claim session.
+    // Authenticated reservation staff RPC: row-locks current ownership
+    // and registers exactly one request per clientRequestId
+    // within the current claim session.
     const { data: registeredData, error: registeredError } = await supabase.rpc(
       "authorize_reservation_staff_sms",
       {

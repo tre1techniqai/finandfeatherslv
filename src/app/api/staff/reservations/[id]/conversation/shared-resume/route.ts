@@ -3,6 +3,7 @@ import { createClient } from "@supabase/supabase-js";
 import twilio from "twilio";
 
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { isReservationStaffRole } from "@/lib/auth/require-reservation-staff";
 import { validSharedActivationOrigin } from "@/lib/reservations/shared-activation-origin";
 
 import {
@@ -11,7 +12,7 @@ import {
 } from "@/lib/reservations/shared-studio-execution-reconciliation";
 
 const UUID =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 const E164 = /^\+[1-9]\d{7,14}$/;
 const FLOW_SID = /^FW[0-9a-f]{32}$/i;
@@ -246,12 +247,12 @@ export async function POST(
       error: claimsError,
     } = await supabase.auth.getClaims();
 
-    const managerId = claimsData?.claims?.sub;
+    const staffUserId = claimsData?.claims?.sub;
 
     if (
       claimsError ||
-      typeof managerId !== "string" ||
-      !UUID.test(managerId)
+      typeof staffUserId !== "string" ||
+      !UUID.test(staffUserId)
     ) {
       return fail("Authentication required.", 401);
     }
@@ -262,16 +263,20 @@ export async function POST(
     } = await supabase
       .from("staff_roles")
       .select("role, is_active")
-      .eq("user_id", managerId)
+      .eq("user_id", staffUserId)
       .eq("is_active", true)
       .maybeSingle();
 
     if (
       roleError ||
-      role?.role !== "manager" ||
-      role.is_active !== true
+      !role ||
+      role.is_active !== true ||
+      !isReservationStaffRole(role.role)
     ) {
-      return fail("Manager access required.", 403);
+      return fail(
+        "Active reservation staff access required.",
+        403,
+      );
     }
 
     const payload = await parseRequest(request);

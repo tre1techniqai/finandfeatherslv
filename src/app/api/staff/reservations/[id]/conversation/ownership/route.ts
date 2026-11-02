@@ -2,6 +2,7 @@
 import { NextResponse } from "next/server";
 import twilio from "twilio";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { isReservationStaffRole } from "@/lib/auth/require-reservation-staff";
 
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -207,17 +208,19 @@ export async function GET(
       .eq("is_active", true)
       .maybeSingle();
 
+
     if (
       roleError ||
       !staffRole ||
       staffRole.is_active !== true ||
-      staffRole.role !== "manager"
+      !isReservationStaffRole(staffRole.role)
     ) {
       return jsonError(
-        "Staff access required.",
+        "Reservation staff access required.",
         403,
       );
     }
+
 
     const {
       data: reservation,
@@ -274,7 +277,8 @@ export async function GET(
       );
     }
 
-    // Query through the manager-authorized
+
+    // Query through the reservation-staff-authorized
     // SECURITY DEFINER function.
     // Do not read the RLS-protected table directly.
     const {
@@ -291,10 +295,11 @@ export async function GET(
     if (handoffError) {
       if (handoffError.code === "42501") {
         return jsonError(
-          "Manager access required.",
+          "Reservation staff access required.",
           403,
         );
       }
+
 
       if (handoffError.code === "22023") {
         return jsonError(
@@ -351,9 +356,10 @@ export async function GET(
     const handoffRow =
       storedHandoff as HandoffRow | null;
 
+
     // Ownership is associated with a guest/restaurant
     // phone pair. Authorization must match this
-    // exact reservation and this exact manager.
+    // exact reservation and authenticated staff member.
     const ownsLinkedReservation =
       handoffRow !== null &&
       handoffRow.linked_reservation_id === id &&
@@ -370,23 +376,25 @@ export async function GET(
       handoffRow?.ownership_status ===
         "handoff_pending";
 
+
     // RELEASE IS A RECOVERY OPERATION.
     //
     // Do not require takeover or messaging flags.
     // Existing staff ownership is sufficient to make
-    // the release option available to its manager.
+    // the release option available to its owner.
     //
     // The release POST endpoint and database RPC
-    // independently enforce manager authorization
+    // independently enforce reservation staff authorization
     // and exact reservation ownership.
     const canRelease =
       ownsLinkedReservation &&
       handoffRow?.ownership_status === "staff";
 
+
     // UI eligibility only.
     //
     // The SMS send endpoint must independently verify
-    // manager authorization, exact staff ownership,
+    // reservation staff authorization, exact staff ownership,
     // and database-backed SMS operation coordination.
     //
     // This value does not authorize SMS by itself.
