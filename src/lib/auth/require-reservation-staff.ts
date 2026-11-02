@@ -3,7 +3,18 @@ import { redirect } from "next/navigation";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { safeStaffReturnPath } from "@/lib/auth/safe-staff-return-path";
 
-export type ReservationStaffRole = "manager";
+export type ReservationStaffRole =
+  | "manager"
+  | "reservation_agent";
+
+export function isReservationStaffRole(
+  role: unknown,
+): role is ReservationStaffRole {
+  return (
+    role === "manager" ||
+    role === "reservation_agent"
+  );
+}
 
 export async function requireReservationStaff(returnPath?: string) {
   const safeReturnPath = safeStaffReturnPath(returnPath);
@@ -34,8 +45,8 @@ export async function requireReservationStaff(returnPath?: string) {
   if (
     roleError ||
     !staffRole ||
-    !staffRole.is_active ||
-    staffRole.role !== "manager"
+    staffRole.is_active !== true ||
+    !isReservationStaffRole(staffRole.role)
   ) {
     redirect("/staff/login?error=unauthorized");
   }
@@ -43,6 +54,6 @@ export async function requireReservationStaff(returnPath?: string) {
   return {
     supabase,
     userId,
-    role: staffRole.role as ReservationStaffRole,
+    role: staffRole.role,
   };
 }

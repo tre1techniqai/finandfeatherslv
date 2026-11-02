@@ -1,5 +1,5 @@
 
-const DEFAULT_STAFF_RETURN_PATH = "/staff/reservations";
+const DEFAULT_STAFF_RETURN_PATH = "/staff";
 
 const UUID_PATTERN =
   "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}";
@@ -15,6 +15,7 @@ const STAFF_GUEST_CONVERSATION_PATTERN = new RegExp(
 );
 
 const STAFF_INDEX_PATHS = new Set([
+  "/staff",
   "/staff/reservations",
   "/staff/conversations",
 ]);
