@@ -6,6 +6,11 @@ import { notFound } from "next/navigation";
 import { requireReservationStaff } from "@/lib/auth/require-reservation-staff";
 import ReservationWorkflowActions from "@/components/staff/reservation-workflow-actions";
 import ReservationConfirmationSummary from "@/components/staff/reservation-confirmation-summary";
+import {
+  ReservationStaffNotesProvider,
+  ReservationNotesIndicator,
+  ReservationStaffNotesPanel,
+} from "@/components/staff/reservation-staff-notes";
 
 export const metadata = {
   title: "Reservation Details | Fin & Feathers Las Vegas",
@@ -412,7 +417,7 @@ async function ProtectedReservationDetail({
         ) : !reservation ? (
           notFound()
         ) : (
-          <>
+          <ReservationStaffNotesProvider reservationId={reservation.id}>
             {/*
               Guest-specific context remains here.
               This is not the universal portal header.
@@ -489,6 +494,7 @@ async function ProtectedReservationDetail({
                     reservation.vip_preference,
                   )}
                 />
+                <ReservationNotesIndicator />
               </Section>
 
               {getGuestFollowUpReason(
@@ -611,64 +617,6 @@ async function ProtectedReservationDetail({
                 />
               </Section>
 
-              <Section title="Deposit Information">
-                <Detail
-                  label="Required Deposit"
-                  value={formatDeposit(
-                    reservation.deposit_amount,
-                  )}
-                />
-
-                <Detail
-                  label="Deposit Status"
-                  value={reservation.deposit_status.replace(
-                    /_/g,
-                    " ",
-                  )}
-                />
-              </Section>
-
-              <section className="rounded-xl border border-white/10 bg-zinc-950/90 p-5 sm:p-6">
-                <h2 className="text-lg font-bold text-white">
-                  Staff Notes
-                </h2>
-
-                <p className="mt-4 whitespace-pre-wrap break-words text-sm leading-6 text-zinc-300">
-                  {reservation.staff_notes ||
-                    "No staff notes recorded."}
-                </p>
-              </section>
-
-              <Section title="Activity">
-                <Detail
-                  label="Received"
-                  value={formatTimestamp(
-                    reservation.created_at,
-                  )}
-                />
-
-                <Detail
-                  label="Last Updated"
-                  value={formatTimestamp(
-                    reservation.updated_at,
-                  )}
-                />
-
-                <Detail
-                  label="Confirmed At"
-                  value={formatTimestamp(
-                    reservation.confirmed_at,
-                  )}
-                />
-
-                <Detail
-                  label="Closed At"
-                  value={formatTimestamp(
-                    reservation.closed_at,
-                  )}
-                />
-              </Section>
-
               {workflowError ? (
                 <section
                   role="alert"
@@ -733,6 +681,56 @@ async function ProtectedReservationDetail({
                   />
                 </>
               )}
+
+              <ReservationStaffNotesPanel legacyNotes={reservation.staff_notes} />
+
+              <Section title="Deposit Information">
+                <Detail
+                  label="Required Deposit"
+                  value={formatDeposit(
+                    reservation.deposit_amount,
+                  )}
+                />
+
+                <Detail
+                  label="Deposit Status"
+                  value={reservation.deposit_status.replace(
+                    /_/g,
+                    " ",
+                  )}
+                />
+              </Section>
+
+              <Section title="Activity">
+                <Detail
+                  label="Received"
+                  value={formatTimestamp(
+                    reservation.created_at,
+                  )}
+                />
+
+                <Detail
+                  label="Last Updated"
+                  value={formatTimestamp(
+                    reservation.updated_at,
+                  )}
+                />
+
+                <Detail
+                  label="Confirmed At"
+                  value={formatTimestamp(
+                    reservation.confirmed_at,
+                  )}
+                />
+
+                <Detail
+                  label="Closed At"
+                  value={formatTimestamp(
+                    reservation.closed_at,
+                  )}
+                />
+              </Section>
+
             </div>
 
             {/*
@@ -750,7 +748,7 @@ async function ProtectedReservationDetail({
                 ← Return to Reservation Queue
               </Link>
             </nav>
-          </>
+          </ReservationStaffNotesProvider>
         )}
       </div>
     </main>
