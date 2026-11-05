@@ -1,8 +1,10 @@
+
 "use strict";
 
 // Twilio Studio Run Function, PROTECTED visibility.
 // Processes alternative-time replies before reservation intake.
-// Also identifies genuine guest assistance requests.
+// Classifies reservation submissions, guest assistance requests,
+// and unrelated SMS without creating reservation records.
 //
 // Does not send SMS, create alerts, or transfer conversation ownership.
 
@@ -63,13 +65,16 @@ function isOrphanedNumericReply(body) {
   return /^[1-3]$/.test(body);
 }
 
-// Intentionally conservative:
-// An arbitrary SMS must not automatically become a staff alert.
-//
-// Questions and explicit assistance requests qualify.
-// Structured reservation submissions remain in reservation intake.
-//
-// This is deterministic routing, not AI classification.
+function isCancellationRequest(body) {
+  const normalized = body.replace(/\s+/g, " ").trim();
+
+  return /^(?:(?:hi|hello|hey)[,!.]?\s+)?(?:(?:please|i want to|i need to|i would like to|can you|could you)\s+)?(?:cancel|cancellation|canceling|cancelling)\b(?:\s+(?:my|the|a|our))?\s+(?:reservation|booking|table)\b/i.test(
+    normalized
+  );
+}
+
+// Deterministic classification only.
+// This does not establish reservation identity or SMS ownership.
 function isGuestAssistanceRequest(body) {
   if (!body || body.length > MAX_BODY) return false;
 
@@ -77,12 +82,25 @@ function isGuestAssistanceRequest(body) {
   if (isOrphanedNumericReply(body)) return false;
   if (hasReservationFields(body)) return false;
 
+  if (isCancellationRequest(body)) return true;
+
   const normalized = body.replace(/\s+/g, " ").trim();
 
   if (normalized.includes("?")) return true;
 
   return /^(?:(?:hi|hello|hey)[,!.]?\s+)?(?:can you|could you|would you|will you|do you|does your|is there|are there|what|when|where|why|how|who|which|please help|i need help|i have a question|i wanted to ask|i would like to ask|i want to know|i need to speak|i would like to speak|please contact me|please call me|call me|can someone|could someone)\b/i.test(
     normalized
+  );
+}
+
+// Classification only; no reservation attribution or email persistence.
+function isDepositEmailCandidate(body) {
+  if (typeof body !== "string" || body.length > MAX_BODY) {
+    return false;
+  }
+
+  return /^[a-z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)+\s+[a-z]{2}-\d{6}-\d{3,8}$/i.test(
+    body.trim()
   );
 }
 
@@ -101,12 +119,22 @@ function classifyWithoutActiveOffer(body) {
     };
   }
 
-  // Preserve the existing reservation intake, including
-  // incomplete structured submissions needing validation.
+  // Structured and partially structured form submissions
+  // may enter reservation parsing and correction.
+  //
+  // Parsing and subsequent eligibility checks must succeed
+  // before any new reservation record may be created.
   if (isStructuredReservation(body) || hasReservationFields(body)) {
     return {
       route: "reservation",
       outcome: "no_active_offer"
+    };
+  }
+
+  if (isDepositEmailCandidate(body)) {
+    return {
+      route: "handled",
+      outcome: "DEPOSIT_EMAIL_CANDIDATE"
     };
   }
 
@@ -117,11 +145,14 @@ function classifyWithoutActiveOffer(body) {
     };
   }
 
-  // Preserve the existing intake behavior for messages that
-  // are not confidently classified as assistance requests.
+  // An unrelated SMS is not a reservation submission.
+  // Do not send it to the reservation correction workflow.
+  //
+  // Phone-level history is handled separately from this
+  // classification result.
   return {
-    route: "reservation",
-    outcome: "no_active_offer"
+    route: "handled",
+    outcome: "GENERAL_MESSAGE"
   };
 }
 
@@ -246,7 +277,8 @@ exports.handler = async function (context, event, callback) {
   }
 
   if (outcome === "recently_accepted") {
-    // A complete new reservation must still enter intake.
+    // A new structured reservation must still enter
+    // reservation parsing and eligibility checks.
     if (isStructuredReservation(body) || hasReservationFields(body)) {
       return returnResult(callback, {
         route: "reservation",
@@ -254,12 +286,26 @@ exports.handler = async function (context, event, callback) {
       });
     }
 
-    // A follow-up question after an accepted alternative
-    // is an appropriate guest assistance request.
+    if (isDepositEmailCandidate(body)) {
+      return returnResult(callback, {
+        route: "handled",
+        outcome: "DEPOSIT_EMAIL_CANDIDATE",
+        previousOutcome: outcome
+      });
+    }
+
     if (isGuestAssistanceRequest(body)) {
       return returnResult(callback, {
         route: "assistance",
         outcome: "GUEST_ASSISTANCE_REQUIRED",
+        previousOutcome: outcome
+      });
+    }
+
+    if (isMessagingControlCommand(body)) {
+      return returnResult(callback, {
+        route: "handled",
+        outcome: "MESSAGING_CONTROL_COMMAND",
         previousOutcome: outcome
       });
     }
