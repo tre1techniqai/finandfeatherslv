@@ -656,6 +656,7 @@ async function ProtectedReservationDetail({
                   <ReservationWorkflowActions
                     key={`${reservation.id}:${workflow?.workflow_status ?? "awaiting_review"}:${reservation.deposit_status}`}
                     reservationId={reservation.id}
+                    staffRole={role}
                     requestedDate={
                       reservation.reservation_date
                     }

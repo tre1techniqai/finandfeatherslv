@@ -171,16 +171,30 @@ function validatePayload(
         payload.payment_independently_verified === true
       );
 
-    case "confirm_yelp_booking":
-      // The database retrieves the guest phone number as the Yelp lookup
-      // reference. Large-party confirmation requires staff acknowledgment
-      // that the deposit payment link has been emailed, not that it was paid.
-      // The database independently checks whether the acknowledgment is needed.
+    case "confirm_yelp_booking": {
+      // No-deposit reservations retain the existing empty payload.
+      // Deposit-required reservations retain their existing acknowledgment,
+      // unless an active manager supplies a valid waiver request.
+      const keys = Object.keys(payload);
+
+      if (keys.length === 0) return true;
+
+      if (keys.length === 1) {
+        return payload.deposit_link_sent === true;
+      }
+
       return (
-        Object.keys(payload).length === 0 ||
-        (Object.keys(payload).length === 1 &&
-          payload.deposit_link_sent === true)
+        keys.length === 2 &&
+        Object.prototype.hasOwnProperty.call(payload, "deposit_waived") &&
+        Object.prototype.hasOwnProperty.call(payload, "waiver_reason") &&
+        payload.deposit_waived === true &&
+        typeof payload.waiver_reason === "string" &&
+        payload.waiver_reason.length >= 10 &&
+        payload.waiver_reason.length <= 500 &&
+        payload.waiver_reason.trim() === payload.waiver_reason &&
+        !UNSUPPORTED_CONTROLS.test(payload.waiver_reason)
       );
+    }
 
     default:
       return false;
@@ -383,6 +397,20 @@ export async function POST(
     return jsonError(
       "Invalid reservation action details.",
       400,
+    );
+  }
+
+  // Waiver approval is manager-only, even if a reservation agent
+  // crafts the request manually. The database RPC independently
+  // enforces the same requirement inside its reservation row lock.
+  if (
+    validatedAction === "confirm_yelp_booking" &&
+    validatedPayload.deposit_waived === true &&
+    staffRole.role !== "manager"
+  ) {
+    return jsonError(
+      "Manager approval required to waive a deposit.",
+      403,
     );
   }
 

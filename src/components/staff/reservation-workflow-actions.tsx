@@ -37,6 +37,7 @@ type Props = {
   detailsValidated: boolean;
   depositAmount: number | null;
   depositStatus: string;
+  staffRole?: "manager" | "reservation_agent";
   workflow: WorkflowData | null;
   confirmationNotification?: ConfirmationNotification | null;
 };
@@ -135,6 +136,7 @@ export default function ReservationWorkflowActions({
   detailsValidated,
   depositAmount,
   depositStatus,
+  staffRole = "reservation_agent",
   workflow,
   confirmationNotification = null,
 }: Props) {
@@ -161,6 +163,8 @@ export default function ReservationWorkflowActions({
   const [offerAccepted, setOfferAccepted] = useState(false);
 
   const [depositLinkSent, setDepositLinkSent] = useState(false);
+  const [depositWaived, setDepositWaived] = useState(false);
+  const [waiverReason, setWaiverReason] = useState("");
   const [yelpBookingVerified, setYelpBookingVerified] =
     useState(false);
 
@@ -186,6 +190,16 @@ export default function ReservationWorkflowActions({
     status === "alternative_accepted";
 
   const depositRequired = depositAmount !== null;
+  const canWaiveDeposit =
+    staffRole === "manager" &&
+    depositRequired &&
+    depositStatus === "pending";
+  const waiverReasonValue = waiverReason.trim();
+  const validWaiverReason =
+    waiverReasonValue.length >= 10 &&
+    waiverReasonValue.length <= 500 &&
+    !/[\u0000-\u001F\u007F-\u009F]/u.test(waiverReasonValue);
+  const waiverSelected = canWaiveDeposit && depositWaived;
 
   const actionPending = busy !== null;
   const availableAlternatives = workflow?.proposed_times ?? [];
@@ -730,11 +744,55 @@ export default function ReservationWorkflowActions({
                     Email the payment link through the POS. Sending the link does not mean
                     the deposit has been paid. Current deposit status: {formatStatus(depositStatus)}.
                   </p>
-                  <label className="mt-4 flex items-start gap-3 text-sm text-white">
+                  {canWaiveDeposit && (
+                    <div className="mt-4 rounded-lg border border-amber-500/30 bg-amber-950/10 p-3">
+                      <label className="flex cursor-pointer items-center justify-between gap-4 text-sm font-semibold text-white">
+                        <span>
+                          Manager-Approved Deposit Waiver
+                          <span className="mt-1 block text-xs font-normal text-zinc-400">
+                            Waiving the deposit is not payment verification.
+                          </span>
+                        </span>
+                        <span className="flex shrink-0 items-center gap-2">
+                          <span className="text-xs text-zinc-300">
+                            {waiverSelected ? "ON" : "OFF"}
+                          </span>
+                          <input
+                            type="checkbox"
+                            role="switch"
+                            aria-label="Manager-approved deposit waiver"
+                            checked={depositWaived}
+                            onChange={(event) => setDepositWaived(event.target.checked)}
+                            disabled={actionPending}
+                            className="h-5 w-5 accent-emerald-500"
+                          />
+                        </span>
+                      </label>
+                      {waiverSelected && (
+                        <label className="mt-4 block text-xs font-semibold text-white">
+                          Waiver reason (required, 10–500 characters)
+                          <textarea
+                            value={waiverReason}
+                            onChange={(event) => setWaiverReason(event.target.value)}
+                            maxLength={500}
+                            rows={3}
+                            disabled={actionPending}
+                            placeholder="Explain why management approved the deposit waiver."
+                            className={`${fieldClass} mt-2 min-h-24`}
+                          />
+                          <span className="mt-1 block text-xs font-normal text-zinc-400">
+                            {waiverReasonValue.length}/500 characters
+                          </span>
+                        </label>
+                      )}
+                    </div>
+                  )}
+                  <label className={`mt-4 flex items-start gap-3 text-sm ${waiverSelected ? "cursor-not-allowed text-zinc-500" : "text-white"}`}>
                     <input
                       type="checkbox"
-                      checked={depositLinkSent}
+                      checked={!waiverSelected && depositLinkSent}
                       onChange={(event) => setDepositLinkSent(event.target.checked)}
+                      disabled={waiverSelected || actionPending}
                       className="mt-1"
                     />
                     I confirm that the deposit payment link has been emailed to the guest.
@@ -760,11 +818,16 @@ export default function ReservationWorkflowActions({
                 disabled={
                   actionPending ||
                   !yelpBookingVerified ||
-                  (depositRequired && !depositLinkSent)
+                  (depositRequired &&
+                    !(waiverSelected ? validWaiverReason : depositLinkSent))
                 }
                 onClick={() =>
                   performAction("confirm_yelp_booking", {
-                    ...(depositRequired ? { deposit_link_sent: true } : {}),
+                    ...(depositRequired
+                      ? waiverSelected
+                        ? { deposit_waived: true, waiver_reason: waiverReasonValue }
+                        : { deposit_link_sent: true }
+                      : {}),
                   })
                 }
                 className={`${buttonClass} mt-4 w-full bg-[#ea1b24] text-white hover:bg-red-700`}
