@@ -47,6 +47,7 @@ type ActionName =
   | "decline_availability"
   | "propose_alternatives"
   | "send_alternatives"
+  | "waive_deposit"
   | "confirm_yelp_booking";
 
 type ApiResult = Record<string, unknown>;
@@ -80,6 +81,7 @@ function formatTime(value: string | null) {
   if (!value) return "Not provided";
 
   const match = /^(\d{2}):(\d{2})/.exec(value);
+
   if (!match) return value;
 
   const hours = Number(match[1]);
@@ -93,6 +95,7 @@ function formatDate(value: string | null) {
   if (!value) return "Not provided";
 
   const date = new Date(`${value}T12:00:00Z`);
+
   if (Number.isNaN(date.getTime())) return value;
 
   return new Intl.DateTimeFormat("en-US", {
@@ -110,13 +113,14 @@ function formatStatus(value: string) {
 function formatWorkflowStatus(value: WorkflowStatus) {
   const labels: Record<WorkflowStatus, string> = {
     awaiting_review: "Needs Review",
-    available: "Time Available",
+    available: "Tentatively Available",
     unavailable: "Another Time Needed",
     alternatives_proposed: "Time Options Ready",
     alternatives_communicated: "Waiting on Guest",
     alternative_accepted: "Guest Picked a Time",
     confirmed: "Confirmed",
   };
+
   return labels[value];
 }
 
@@ -147,6 +151,7 @@ export default function ReservationWorkflowActions({
   const [busy, setBusy] = useState<ActionName | null>(null);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+
   const [changingAvailability, setChangingAvailability] =
     useState(false);
 
@@ -156,8 +161,7 @@ export default function ReservationWorkflowActions({
     "",
   ]);
 
-  // Disable further send attempts after an uncertain outcome.
-  // The database claim also independently prevents duplicate sends.
+  // Block repeat sends after an uncertain alternatives outcome.
   const [sendNeedsReview, setSendNeedsReview] = useState(false);
 
   const [offerAccepted, setOfferAccepted] = useState(false);
@@ -165,6 +169,7 @@ export default function ReservationWorkflowActions({
   const [depositLinkSent, setDepositLinkSent] = useState(false);
   const [depositWaived, setDepositWaived] = useState(false);
   const [waiverReason, setWaiverReason] = useState("");
+
   const [yelpBookingVerified, setYelpBookingVerified] =
     useState(false);
 
@@ -190,21 +195,27 @@ export default function ReservationWorkflowActions({
     status === "alternative_accepted";
 
   const depositRequired = depositAmount !== null;
+
   const canWaiveDeposit =
     staffRole === "manager" &&
     depositRequired &&
     depositStatus === "pending";
+
   const waiverReasonValue = waiverReason.trim();
+
   const validWaiverReason =
     waiverReasonValue.length >= 10 &&
     waiverReasonValue.length <= 500 &&
     !/[\u0000-\u001F\u007F-\u009F]/u.test(waiverReasonValue);
+
   const waiverSelected = canWaiveDeposit && depositWaived;
+  const alreadyWaived = depositStatus === "waived";
 
   const actionPending = busy !== null;
   const availableAlternatives = workflow?.proposed_times ?? [];
 
   const selectedTimes = alternativeTimes.filter(Boolean);
+
   const distinctTimes =
     new Set(selectedTimes).size === selectedTimes.length;
 
@@ -263,15 +274,23 @@ export default function ReservationWorkflowActions({
 
         const accepted = notification?.accepted === true;
 
-        // The confirmed-state card below provides the single success message.
         setNotificationResult({ accepted });
       } else {
         const messages: Record<string, string> = {
-          approve_availability: "Requested time marked available.",
-          decline_availability: "Requested time marked unavailable.",
-          propose_alternatives: "Time options saved.",
-          send_alternatives: "Time options sent.",
+          approve_availability: depositRequired
+            ? "Tentative YES recorded. The requested time is available, but the reservation is not confirmed. Complete the deposit or waiver requirements and Yelp booking before final confirmation. No guest SMS was sent by this action."
+            : "Requested time marked available. No guest SMS was sent by this action.",
+          waive_deposit:
+            "Deposit waiver saved. Guest notification is not yet enabled in this draft.",
+          decline_availability: depositRequired
+            ? "Tentative NO recorded. The requested time is unavailable. Offer the guest another time."
+            : "Requested time marked unavailable.",
+          propose_alternatives:
+            "Time options saved.",
+          send_alternatives:
+            "Time options sent.",
         };
+
         setSuccess(messages[action] ?? "Changes saved.");
       }
 
@@ -324,8 +343,6 @@ export default function ReservationWorkflowActions({
         timesSaved = true;
       }
 
-      // Once a request may have reached the dispatcher, block further
-      // attempts in this component until the outcome is reviewed.
       setSendNeedsReview(true);
 
       const result = await callAction("send_alternatives");
@@ -337,7 +354,6 @@ export default function ReservationWorkflowActions({
       }
 
       setOfferAccepted(true);
-      // The refreshed workflow status shows that the options were sent.
 
       router.refresh();
     } catch (caught) {
@@ -354,8 +370,6 @@ export default function ReservationWorkflowActions({
           : "We couldn't save the time options. " + message,
       );
 
-      // Saving alone failed: no dispatch was attempted.
-      // The manager may correct their selection and try again.
       router.refresh();
     } finally {
       setBusy(null);
@@ -369,6 +383,7 @@ export default function ReservationWorkflowActions({
           <h2 className="text-lg font-bold text-white">
             Reservation Actions
           </h2>
+
           <p className="mt-2 text-sm text-zinc-400">
             Review and manage guest reservations
           </p>
@@ -384,6 +399,7 @@ export default function ReservationWorkflowActions({
           <p className="text-xs text-zinc-500">
             Requested date
           </p>
+
           <p className="mt-1 text-sm font-semibold text-white">
             {formatDate(requestedDate)}
           </p>
@@ -393,6 +409,7 @@ export default function ReservationWorkflowActions({
           <p className="text-xs text-zinc-500">
             Requested time
           </p>
+
           <p className="mt-1 text-sm font-semibold text-white">
             {formatTime(requestedTime)}
           </p>
@@ -403,6 +420,7 @@ export default function ReservationWorkflowActions({
             <p className="text-xs text-zinc-500">
               Guest’s selected time
             </p>
+
             <p className="mt-1 text-sm font-semibold text-white">
               {formatTime(workflow.accepted_time)}
               {" — "}
@@ -416,6 +434,7 @@ export default function ReservationWorkflowActions({
             <p className="text-xs text-zinc-500">
               Yelp booking reference
             </p>
+
             <p className="mt-1 break-words text-sm font-semibold text-white">
               {workflow.yelp_confirmation_number}
             </p>
@@ -443,32 +462,52 @@ export default function ReservationWorkflowActions({
 
       {!eligible && !isConfirmed && (
         <p className="mt-5 text-sm leading-6 text-amber-200">
-          {isConfirmed
-            ? null
-            : isClosed
-              ? "This reservation is closed."
-              : "Please verify the guest’s details before proceeding."}
+          {isClosed
+            ? "This reservation is closed."
+            : "Please verify the guest’s details before proceeding."}
         </p>
       )}
 
       {eligible && (
         <div className="mt-6 space-y-6">
           {(status === "awaiting_review" ||
-            ((status === "available" || status === "unavailable") &&
+            ((status === "available" ||
+              status === "unavailable") &&
               changingAvailability)) && (
             <div className="border-b border-white/10 pb-6">
               <h3 className="text-base font-semibold text-white">
-                Is the requested time available?
+                {depositRequired
+                  ? "Step 1 — Tentative Availability Decision"
+                  : "Is the requested time available?"}
               </h3>
 
               <p className="mt-2 text-sm text-zinc-400">
-                Check the guest’s requested date and time.
+                {depositRequired
+                  ? "Check whether the requested date and time can accommodate this large party. A tentative decision does not confirm the reservation or waive its deposit."
+                  : "Check the guest’s requested date and time."}
               </p>
+
+              {depositRequired && (
+                <div className="mt-4 rounded-lg border border-amber-500/30 bg-amber-950/10 p-4">
+                  <p className="text-sm font-semibold text-amber-200">
+                    LARGE PARTY — DEPOSIT REQUIRED
+                  </p>
+                  <p className="mt-2 text-sm leading-6 text-zinc-300">
+                    Required deposit: ${depositAmount?.toFixed(2)}.
+                    Record tentative availability first. After a tentative YES,
+                    complete the deposit requirements or obtain a manager-approved
+                    waiver, then finalize the booking in Yelp.
+                  </p>
+                </div>
+              )}
 
               {changingAvailability && (
                 <p className="mt-3 text-sm leading-6 text-amber-200">
-                  Current choice: {status === "available" ? "Available" : "Unavailable"}.
-                  Choose another option to update it.
+                  Current choice:{" "}
+                  {status === "available"
+                    ? "Tentatively Available"
+                    : "Unavailable"}
+                  . Choose another option to update it.
                 </p>
               )}
 
@@ -483,7 +522,9 @@ export default function ReservationWorkflowActions({
                   }
                   className={`${buttonClass} border border-emerald-500/40 bg-emerald-950/30 text-emerald-200 hover:bg-emerald-900/40`}
                 >
-                  Yes, We Have Room
+                  {depositRequired
+                    ? "Tentative YES — Time Available"
+                    : "Yes, We Have Room"}
                 </button>
 
                 <button
@@ -496,7 +537,9 @@ export default function ReservationWorkflowActions({
                   }
                   className={`${buttonClass} border border-red-500/40 bg-red-950/30 text-red-200 hover:bg-red-900/40`}
                 >
-                  No, Offer Another Time
+                  {depositRequired
+                    ? "Tentative NO — Offer Another Time"
+                    : "No, Offer Another Time"}
                 </button>
               </div>
 
@@ -517,18 +560,33 @@ export default function ReservationWorkflowActions({
             status === "unavailable") &&
             !changingAvailability && (
               <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/10 pb-6">
-                <p className="text-sm font-medium text-white">
-                  Requested time: {" "}
-                  {status === "available"
-                    ? "Available"
-                    : "Not Available"}
-                </p>
+                <div>
+                  <p className="text-sm font-medium text-white">
+                    {depositRequired
+                      ? "Tentative availability decision: "
+                      : "Requested time: "}
+                    {status === "available"
+                      ? depositRequired
+                        ? "Available — not confirmed"
+                        : "Available"
+                      : "Not Available"}
+                  </p>
+
+                  {depositRequired && status === "available" && (
+                    <p className="mt-2 text-xs leading-5 text-amber-200">
+                      This large-party reservation is not yet confirmed.
+                      Complete the deposit or manager-waiver requirements
+                      and Yelp booking before final confirmation.
+                    </p>
+                  )}
+                </div>
 
                 <button
                   type="button"
                   disabled={actionPending}
                   onClick={() => setChangingAvailability(true)}
-                  className={`${buttonClass} border border-white/20 bg-white/5 text-zinc-200 hover:bg-white/10`}                >
+                  className={`${buttonClass} border border-white/20 bg-white/5 text-zinc-200 hover:bg-white/10`}
+                >
                   Change Choice
                 </button>
               </div>
@@ -613,7 +671,8 @@ export default function ReservationWorkflowActions({
                 </button>
 
                 <p className="mt-3 text-xs leading-5 text-zinc-500">
-                  The guest will receive a text with these times and can reply with their choice.
+                  The guest will receive a text with these times
+                  and can reply with their choice.
                 </p>
               </div>
             )}
@@ -631,7 +690,10 @@ export default function ReservationWorkflowActions({
 
               <div className="mt-4 space-y-2">
                 {availableAlternatives.map((time, index) => (
-                  <p key={`${time}-${index}`} className="text-sm text-white">
+                  <p
+                    key={`${time}-${index}`}
+                    className="text-sm text-white"
+                  >
                     {index + 1}. {formatTime(time)}
                   </p>
                 ))}
@@ -654,7 +716,8 @@ export default function ReservationWorkflowActions({
               </button>
 
               <p className="mt-3 text-xs leading-5 text-zinc-500">
-                Send only once. If the text status is unclear, check it before trying again.
+                Send only once. If the text status is unclear,
+                check it before trying again.
               </p>
             </div>
           )}
@@ -666,7 +729,8 @@ export default function ReservationWorkflowActions({
               </h3>
 
               <p className="mt-2 text-sm leading-6 text-zinc-300">
-                The guest can reply with the number of their preferred time.
+                The guest can reply with the number of their
+                preferred time.
               </p>
 
               <div className="mt-4 space-y-2">
@@ -681,14 +745,16 @@ export default function ReservationWorkflowActions({
               </div>
 
               <p className="mt-4 text-sm text-amber-200">
-                We're waiting for the guest to choose a time. Refresh to check for their reply.
+                We're waiting for the guest to choose a time.
+                Refresh to check for their reply.
               </p>
 
               <button
                 type="button"
                 disabled={actionPending}
                 onClick={() => router.refresh()}
-                className={`${buttonClass} mt-4 border border-white/20 bg-white/5 text-white hover:bg-white/10`}              >
+                className={`${buttonClass} mt-4 border border-white/20 bg-white/5 text-white hover:bg-white/10`}
+              >
                 Check for Guest Reply
               </button>
             </div>
@@ -714,14 +780,131 @@ export default function ReservationWorkflowActions({
             </div>
           )}
 
+          {canConfirm &&
+            !changingAvailability &&
+            depositRequired && (
+              <div className="border-b border-white/10 pb-6">
+                <h3 className="text-base font-semibold text-white">
+                  Step 2 — Large-Party Deposit Decision
+                </h3>
+
+                <p className="mt-2 text-sm text-zinc-400">
+                  Tentative availability is recorded. Deposit
+                  instructions will be sent separately once the
+                  messaging integration is activated.
+                </p>
+
+                {alreadyWaived ? (
+                  <p className="mt-4 rounded-lg border border-emerald-500/30 bg-emerald-950/20 p-3 text-sm font-semibold text-emerald-200">
+                    Deposit waived by management. No deposit
+                    payment is required.
+                  </p>
+                ) : canWaiveDeposit ? (
+                  <div className="mt-4 rounded-lg border border-amber-500/30 bg-amber-950/10 p-4">
+                    <label className="flex cursor-pointer items-center justify-between gap-4 text-sm font-semibold text-white">
+                      <span>
+                        Manager-Approved Deposit Waiver
+
+                        <span className="mt-1 block text-xs font-normal text-zinc-400">
+                          Manager only. A recorded reason is
+                          required before approval.
+                        </span>
+                      </span>
+
+                      <span className="flex items-center gap-2">
+                        <span className="text-xs text-zinc-300">
+                          {waiverSelected ? "ON" : "OFF"}
+                        </span>
+
+                        <input
+                          type="checkbox"
+                          role="switch"
+                          aria-label="Manager-approved deposit waiver"
+                          checked={depositWaived}
+                          disabled={actionPending}
+                          onChange={(event) =>
+                            setDepositWaived(event.target.checked)
+                          }
+                          className="h-5 w-5 accent-emerald-500"
+                        />
+                      </span>
+                    </label>
+
+                    {waiverSelected && (
+                      <>
+                        <label className="mt-4 block text-xs font-semibold text-white">
+                          Waiver reason (10–500 characters)
+
+                          <textarea
+                            value={waiverReason}
+                            onChange={(event) =>
+                              setWaiverReason(event.target.value)
+                            }
+                            rows={3}
+                            maxLength={500}
+                            disabled={actionPending}
+                            className={`${fieldClass} mt-2 min-h-24`}
+                            placeholder="Explain the courtesy waiver approval."
+                          />
+
+                          <span className="mt-1 block text-xs font-normal text-zinc-400">
+                            {waiverReasonValue.length}/500
+                            characters
+                          </span>
+                        </label>
+
+                        <button
+                          type="button"
+                          disabled={
+                            actionPending || !validWaiverReason
+                          }
+                          onClick={() => {
+                            if (
+                              !window.confirm(
+                                `Approve a $${depositAmount?.toFixed(2)} deposit waiver for this reservation? This decision will be audited.`,
+                              )
+                            ) {
+                              return;
+                            }
+
+                            void performAction("waive_deposit", {
+                              waiver_reason: waiverReasonValue,
+                            });
+                          }}
+                          className={`${buttonClass} mt-4 w-full border border-amber-400/40 bg-amber-800/30 text-amber-100 hover:bg-amber-800/50`}
+                        >
+                          Confirm Deposit Waiver
+                        </button>
+                      </>
+                    )}
+                  </div>
+                ) : (
+                  <p className="mt-4 text-sm text-zinc-400">
+                    Deposit required. Only an authorized manager
+                    can waive it.
+                  </p>
+                )}
+
+                <p className="mt-3 text-xs text-amber-200">
+                  This draft does not dispatch availability or
+                  deposit-decision SMS. The guest communication
+                  stage must be completed before activation.
+                </p>
+              </div>
+            )}
+
           {canConfirm && !changingAvailability && (
             <div>
               <h3 className="text-base font-semibold text-white">
-                Confirm Reservation
+                {depositRequired
+                  ? "Step 3 — Final Reservation Confirmation"
+                  : "Confirm Reservation"}
               </h3>
 
               <p className="mt-2 text-sm leading-6 text-zinc-400">
-                Book the table in Yelp before confirming it here.
+                {depositRequired
+                  ? "Tentative availability has been recorded. Complete the deposit requirements or manager-approved waiver, book the table in Yelp, and only then confirm the reservation."
+                  : "Book the table in Yelp before confirming it here."}
               </p>
 
               <p className="mt-3 text-sm text-white">
@@ -740,62 +923,47 @@ export default function ReservationWorkflowActions({
                   <p className="text-sm text-zinc-300">
                     Required deposit: ${depositAmount?.toFixed(2)}
                   </p>
+
                   <p className="mt-2 text-xs leading-5 text-zinc-400">
-                    Email the payment link through the POS. Sending the link does not mean
-                    the deposit has been paid. Current deposit status: {formatStatus(depositStatus)}.
+                    Current deposit status:{" "}
+                    {formatStatus(depositStatus)}.
                   </p>
-                  {canWaiveDeposit && (
-                    <div className="mt-4 rounded-lg border border-amber-500/30 bg-amber-950/10 p-3">
-                      <label className="flex cursor-pointer items-center justify-between gap-4 text-sm font-semibold text-white">
-                        <span>
-                          Manager-Approved Deposit Waiver
-                          <span className="mt-1 block text-xs font-normal text-zinc-400">
-                            Waiving the deposit is not payment verification.
-                          </span>
-                        </span>
-                        <span className="flex shrink-0 items-center gap-2">
-                          <span className="text-xs text-zinc-300">
-                            {waiverSelected ? "ON" : "OFF"}
-                          </span>
-                          <input
-                            type="checkbox"
-                            role="switch"
-                            aria-label="Manager-approved deposit waiver"
-                            checked={depositWaived}
-                            onChange={(event) => setDepositWaived(event.target.checked)}
-                            disabled={actionPending}
-                            className="h-5 w-5 accent-emerald-500"
-                          />
-                        </span>
-                      </label>
-                      {waiverSelected && (
-                        <label className="mt-4 block text-xs font-semibold text-white">
-                          Waiver reason (required, 10–500 characters)
-                          <textarea
-                            value={waiverReason}
-                            onChange={(event) => setWaiverReason(event.target.value)}
-                            maxLength={500}
-                            rows={3}
-                            disabled={actionPending}
-                            placeholder="Explain why management approved the deposit waiver."
-                            className={`${fieldClass} mt-2 min-h-24`}
-                          />
-                          <span className="mt-1 block text-xs font-normal text-zinc-400">
-                            {waiverReasonValue.length}/500 characters
-                          </span>
-                        </label>
-                      )}
-                    </div>
+
+                  {alreadyWaived ? (
+                    <p className="mt-3 text-sm font-semibold text-emerald-200">
+                      Deposit waived by management. No payment
+                      link is required.
+                    </p>
+                  ) : (
+                    <p className="mt-3 text-xs leading-5 text-zinc-400">
+                      Email the payment link through the POS
+                      before final confirmation. Sending the
+                      link does not mean payment has been
+                      verified.
+                    </p>
                   )}
-                  <label className={`mt-4 flex items-start gap-3 text-sm ${waiverSelected ? "cursor-not-allowed text-zinc-500" : "text-white"}`}>
+
+                  <label
+                    className={`mt-4 flex items-start gap-3 text-sm ${
+                      alreadyWaived
+                        ? "cursor-not-allowed text-zinc-500"
+                        : "text-white"
+                    }`}
+                  >
                     <input
                       type="checkbox"
-                      checked={!waiverSelected && depositLinkSent}
-                      onChange={(event) => setDepositLinkSent(event.target.checked)}
-                      disabled={waiverSelected || actionPending}
+                      checked={
+                        !alreadyWaived && depositLinkSent
+                      }
+                      onChange={(event) =>
+                        setDepositLinkSent(event.target.checked)
+                      }
+                      disabled={alreadyWaived || actionPending}
                       className="mt-1"
                     />
-                    I confirm that the deposit payment link has been emailed to the guest.
+
+                    I confirm that the deposit payment link has
+                    been emailed to the guest.
                   </label>
                 </div>
               )}
@@ -809,6 +977,7 @@ export default function ReservationWorkflowActions({
                   }
                   className="mt-1"
                 />
+
                 I confirm this reservation has been booked in
                 Yelp for the correct date, time, and party size.
               </label>
@@ -819,13 +988,14 @@ export default function ReservationWorkflowActions({
                   actionPending ||
                   !yelpBookingVerified ||
                   (depositRequired &&
-                    !(waiverSelected ? validWaiverReason : depositLinkSent))
+                    !alreadyWaived &&
+                    !depositLinkSent)
                 }
                 onClick={() =>
                   performAction("confirm_yelp_booking", {
                     ...(depositRequired
-                      ? waiverSelected
-                        ? { deposit_waived: true, waiver_reason: waiverReasonValue }
+                      ? alreadyWaived
+                        ? {}
                         : { deposit_link_sent: true }
                       : {}),
                   })
@@ -849,19 +1019,18 @@ export default function ReservationWorkflowActions({
             const savedStatus =
               confirmationNotification?.notification_status;
 
-            const state = savedStatus === "delivered"
-              ? "delivered"
-              : notificationResult
-              ? notificationResult.accepted
-                ? "sent"
-                : "attention"
-              : savedStatus === "delivered"
+            const state =
+              savedStatus === "delivered"
                 ? "delivered"
-                : savedStatus === "sent"
-                  ? "sent"
-                  : savedStatus === "pending"
-                    ? "pending"
-                    : "attention";
+                : notificationResult
+                  ? notificationResult.accepted
+                    ? "sent"
+                    : "attention"
+                  : savedStatus === "sent"
+                    ? "sent"
+                    : savedStatus === "pending"
+                      ? "pending"
+                      : "attention";
 
             const message =
               state === "delivered"
@@ -883,12 +1052,19 @@ export default function ReservationWorkflowActions({
                       : "border-emerald-500/30 bg-emerald-950/20 text-emerald-200"
                 }`}
               >
-                <p className="font-semibold">✓ RESERVATION CONFIRMED</p>
+                <p className="font-semibold">
+                  ✓ RESERVATION CONFIRMED
+                </p>
+
                 <p className="mt-1">
-                  Reservation for {formatTime(workflow?.accepted_time ?? requestedTime)}
+                  Reservation for{" "}
+                  {formatTime(
+                    workflow?.accepted_time ?? requestedTime,
+                  )}
                   {" on "}
                   {formatDate(requestedDate)}.
                 </p>
+
                 <p className="mt-2">{message}</p>
               </div>
             );
