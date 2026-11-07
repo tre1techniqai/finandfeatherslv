@@ -894,34 +894,51 @@ export default function ReservationWorkflowActions({
                   </p>
                 ) : canWaiveDeposit ? (
                   <div className="mt-4 rounded-lg border border-amber-500/30 bg-amber-950/10 p-4">
-                    <label className="flex cursor-pointer items-center justify-between gap-4 text-sm font-semibold text-white">
-                      <span>
-                        Manager-Approved Deposit Waiver
+                    <div className="flex items-center justify-between gap-4">
+                      <div className="min-w-0">
+                        <p className="text-sm font-semibold text-white">
+                          Manager-Approved Deposit Waiver
+                        </p>
 
-                        <span className="mt-1 block text-xs font-normal text-zinc-400">
-                          Manager only. A recorded reason is
-                          required before approval.
-                        </span>
-                      </span>
+                        <p className="mt-1 text-xs leading-5 text-zinc-400">
+                          Optional. Leave OFF for the standard deposit process.
+                          Manager approval and a recorded reason are required
+                          to waive the deposit.
+                        </p>
+                      </div>
 
-                      <span className="flex items-center gap-2">
-                        <span className="text-xs text-zinc-300">
-                          {waiverSelected ? "ON" : "OFF"}
-                        </span>
-
-                        <input
-                          type="checkbox"
-                          role="switch"
-                          aria-label="Manager-approved deposit waiver"
-                          checked={depositWaived}
-                          disabled={actionPending}
-                          onChange={(event) =>
-                            setDepositWaived(event.target.checked)
-                          }
-                          className="h-5 w-5 accent-emerald-500"
+                      <button
+                        type="button"
+                        role="switch"
+                        aria-checked={depositWaived}
+                        aria-label="Manager-approved deposit waiver"
+                        disabled={actionPending}
+                        onClick={() => {
+                          setDepositWaived((current) => !current);
+                        }}
+                        className={`relative inline-flex h-9 w-[88px] shrink-0 items-center rounded-full border px-2 transition-colors duration-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white disabled:cursor-not-allowed disabled:opacity-50 ${
+                          depositWaived
+                            ? "border-emerald-400 bg-emerald-700"
+                            : "border-zinc-500 bg-zinc-700"
+                        }`}
+                      >
+                        <span
+                          aria-hidden="true"
+                          className={`absolute top-1 h-6 w-6 rounded-full bg-white shadow-sm transition-all duration-200 ${
+                            depositWaived ? "left-[56px]" : "left-1"
+                          }`}
                         />
-                      </span>
-                    </label>
+
+                        <span
+                          aria-hidden="true"
+                          className={`w-full text-[11px] font-bold tracking-wide text-white ${
+                            depositWaived ? "pr-7 text-left" : "pl-7 text-right"
+                          }`}
+                        >
+                          {depositWaived ? "ON" : "OFF"}
+                        </span>
+                      </button>
+                    </div>
 
                     {waiverSelected && (
                       <>
@@ -1104,9 +1121,14 @@ export default function ReservationWorkflowActions({
                       checked={
                         !alreadyWaived && depositLinkSent
                       }
-                      onChange={(event) =>
-                        setDepositLinkSent(event.target.checked)
-                      }
+                      onChange={(event) => {
+                        const checked = event.target.checked;
+                        setDepositLinkSent(checked);
+
+                        if (!checked) {
+                          setYelpBookingVerified(false);
+                        }
+                      }}
                       disabled={alreadyWaived || actionPending}
                       className="mt-1"
                     />
@@ -1117,10 +1139,22 @@ export default function ReservationWorkflowActions({
                 </div>
               )}
 
-              <label className="mt-4 flex items-start gap-3 text-sm text-zinc-300">
+              <label
+                className={`mt-4 flex items-start gap-3 text-sm ${
+                  depositRequired && !alreadyWaived && !depositLinkSent
+                    ? "cursor-not-allowed text-zinc-500"
+                    : "text-zinc-300"
+                }`}
+              >
                 <input
                   type="checkbox"
                   checked={yelpBookingVerified}
+                  disabled={
+                    actionPending ||
+                    (depositRequired &&
+                      !alreadyWaived &&
+                      !depositLinkSent)
+                  }
                   onChange={(event) =>
                     setYelpBookingVerified(event.target.checked)
                   }
