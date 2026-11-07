@@ -29,6 +29,13 @@ type ConfirmationNotification = {
   failure_code: string | null;
 };
 
+type DepositDecisionNotification = {
+  notification_status: string;
+  twilio_message_sid: string | null;
+  failure_code: string | null;
+  deposit_decision: string | null;
+};
+
 type Props = {
   reservationId: string;
   requestedDate: string | null;
@@ -40,6 +47,8 @@ type Props = {
   staffRole?: "manager" | "reservation_agent";
   workflow: WorkflowData | null;
   confirmationNotification?: ConfirmationNotification | null;
+  depositDecisionNotification?: DepositDecisionNotification | null;
+  depositDecisionNotificationUnavailable?: boolean;
 };
 
 type ActionName =
@@ -47,6 +56,7 @@ type ActionName =
   | "decline_availability"
   | "propose_alternatives"
   | "send_alternatives"
+  | "send_deposit_decision"
   | "waive_deposit"
   | "confirm_yelp_booking";
 
@@ -143,6 +153,8 @@ export default function ReservationWorkflowActions({
   staffRole = "reservation_agent",
   workflow,
   confirmationNotification = null,
+  depositDecisionNotification = null,
+  depositDecisionNotificationUnavailable = false,
 }: Props) {
   const router = useRouter();
 
@@ -163,6 +175,14 @@ export default function ReservationWorkflowActions({
 
   // Block repeat sends after an uncertain alternatives outcome.
   const [sendNeedsReview, setSendNeedsReview] = useState(false);
+
+  // Prevent repeated deposit SMS attempts after any initiated request.
+  // Server-side notification claims also enforce deduplication across sessions.
+  const [depositDecisionNeedsReview, setDepositDecisionNeedsReview] =
+    useState(false);
+  const [depositDecisionOutcome, setDepositDecisionOutcome] = useState<
+    "accepted" | "needs_attention" | null
+  >(null);
 
   const [offerAccepted, setOfferAccepted] = useState(false);
 
@@ -210,6 +230,18 @@ export default function ReservationWorkflowActions({
 
   const waiverSelected = canWaiveDeposit && depositWaived;
   const alreadyWaived = depositStatus === "waived";
+
+  // A persisted notification means the send lifecycle has already begun.
+  // Even "unknown" and "pending" require investigation, not a resend.
+  const depositDecisionPreviouslyAttempted =
+    depositDecisionNotification !== null;
+  const depositDecisionSendBlocked =
+    depositDecisionNotificationUnavailable ||
+    depositDecisionPreviouslyAttempted ||
+    depositDecisionNeedsReview;
+
+  const depositDecisionSavedStatus =
+    depositDecisionNotification?.notification_status ?? null;
 
   const actionPending = busy !== null;
   const availableAlternatives = workflow?.proposed_times ?? [];
@@ -281,7 +313,7 @@ export default function ReservationWorkflowActions({
             ? "Tentative YES recorded. The requested time is available, but the reservation is not confirmed. Complete the deposit or waiver requirements and Yelp booking before final confirmation. No guest SMS was sent by this action."
             : "Requested time marked available. No guest SMS was sent by this action.",
           waive_deposit:
-            "Deposit waiver saved. Guest notification is not yet enabled in this draft.",
+            "Deposit waiver saved. Use Send Deposit Waiver Notice to notify the guest; the reservation remains unconfirmed.",
           decline_availability: depositRequired
             ? "Tentative NO recorded. The requested time is unavailable. Offer the guest another time."
             : "Requested time marked unavailable.",
@@ -303,6 +335,65 @@ export default function ReservationWorkflowActions({
       );
     } finally {
       setBusy(null);
+    }
+  }
+
+  async function sendDepositDecision() {
+    if (
+      actionPending ||
+      !eligible ||
+      !depositRequired ||
+      !canConfirm ||
+      changingAvailability ||
+      depositDecisionSendBlocked ||
+      !["pending", "waived"].includes(depositStatus)
+    ) {
+      return;
+    }
+
+    if (
+      !window.confirm(
+        "Send the large-party deposit decision to the guest by SMS? " +
+          "This is not a final reservation confirmation. " +
+          "Do not repeat this action if the delivery status is uncertain.",
+      )
+    ) {
+      return;
+    }
+
+    // Lock immediately, before the first network request, even if it fails.
+    setDepositDecisionNeedsReview(true);
+    setBusy("send_deposit_decision");
+    setError("");
+    setSuccess("");
+    setDepositDecisionOutcome("needs_attention");
+
+    try {
+      const result = await callAction("send_deposit_decision");
+
+      if (result.accepted === true) {
+        setDepositDecisionOutcome("accepted");
+        setSuccess(
+          "Twilio accepted the deposit-decision SMS. " +
+            "Handset delivery has not yet been verified. " +
+            "The reservation remains unconfirmed.",
+        );
+      } else {
+        setError(
+          "Deposit-decision SMS acceptance could not be verified. " +
+            "Review notification history and Twilio before considering another attempt.",
+        );
+      }
+    } catch (caught) {
+      setError(
+        (caught instanceof Error
+          ? caught.message + " "
+          : "Deposit-decision SMS outcome is unknown. ") +
+          "Do not resend automatically. Review notification history and Twilio.",
+      );
+    } finally {
+      setBusy(null);
+      router.refresh();
     }
   }
 
@@ -789,9 +880,11 @@ export default function ReservationWorkflowActions({
                 </h3>
 
                 <p className="mt-2 text-sm text-zinc-400">
-                  Tentative availability is recorded. Deposit
-                  instructions will be sent separately once the
-                  messaging integration is activated.
+                  Tentative availability has been recorded. Use the
+                  button below to send the guest the deposit instructions
+                  or approved waiver notice. When a deposit is required,
+                  the guest is asked to reply with their email address
+                  only. This message is not a final reservation confirmation.
                 </p>
 
                 {alreadyWaived ? (
@@ -885,11 +978,67 @@ export default function ReservationWorkflowActions({
                   </p>
                 )}
 
-                <p className="mt-3 text-xs text-amber-200">
-                  This draft does not dispatch availability or
-                  deposit-decision SMS. The guest communication
-                  stage must be completed before activation.
-                </p>
+                <div className="mt-4 space-y-3">
+                  <button
+                    type="button"
+                    disabled={
+                      actionPending ||
+                      depositDecisionSendBlocked ||
+                      !["pending", "waived"].includes(depositStatus)
+                    }
+                    onClick={() => void sendDepositDecision()}
+                    className={`${buttonClass} w-full bg-[#ea1b24] text-white hover:bg-red-700`}
+                  >
+                    {busy === "send_deposit_decision"
+                      ? "Submitting deposit decision..."
+                      : depositDecisionSendBlocked
+                        ? "Deposit Decision — Check Notification Status"
+                        : alreadyWaived
+                          ? "Send Deposit Waiver Notice"
+                          : "Send Deposit Instructions"}
+                  </button>
+
+                  {depositDecisionNotificationUnavailable ? (
+                    <p role="alert" className="text-xs leading-5 text-amber-200">
+                      Deposit notification history is unavailable. SMS sending is
+                      blocked until the reservation-specific record can be checked.
+                    </p>
+                  ) : depositDecisionPreviouslyAttempted ? (
+                    <div role="status" className="space-y-1 text-xs leading-5 text-amber-200">
+                      <p className="font-semibold">
+                        Deposit SMS record: {formatStatus(depositDecisionSavedStatus ?? "unknown")}
+                      </p>
+                      <p>
+                        {depositDecisionSavedStatus === "delivered"
+                          ? "Twilio delivery was recorded; the reservation is not yet confirmed."
+                          : depositDecisionSavedStatus === "sent"
+                            ? "Twilio accepted this SMS; handset delivery is not confirmed."
+                            : "An SMS notification record already exists. Review its status before any manual reconciliation."}
+                      </p>
+                      {depositDecisionNotification?.failure_code && (
+                        <p>Recorded issue: {depositDecisionNotification.failure_code}</p>
+                      )}
+                      <p>Automatic repeat sending is blocked.</p>
+                    </div>
+                  ) : depositDecisionOutcome === "accepted" ? (
+                    <p className="text-xs leading-5 text-emerald-200">
+                      Twilio accepted the message. This is not proof of
+                      delivery or final booking confirmation.
+                    </p>
+                  ) : depositDecisionNeedsReview ? (
+                    <p className="text-xs leading-5 text-amber-200">
+                      A send was attempted in this view. Review notification
+                      history and Twilio; do not resend automatically.
+                    </p>
+                  ) : (
+                    <p className="text-xs leading-5 text-amber-200">
+                      No deposit-decision notification is recorded. Sending
+                      still requires the server-side feature flag and the
+                      dispatcher’s eligibility checks. This is not a final
+                      reservation confirmation.
+                    </p>
+                  )}
+                </div>
               </div>
             )}
 

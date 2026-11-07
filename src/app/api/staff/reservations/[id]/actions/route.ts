@@ -3,6 +3,7 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { isReservationStaffRole } from "@/lib/auth/require-reservation-staff";
 import { dispatchReservationConfirmation } from "@/lib/reservations/dispatch-reservation-confirmation";
 import { dispatchReservationAlternatives } from "@/lib/reservations/dispatch-reservation-alternatives";
+import { dispatchReservationDepositDecision } from "@/lib/reservations/dispatch-reservation-deposit-decision";
 
 const MAX_BODY_BYTES = 8192;
 
@@ -20,9 +21,11 @@ const ALLOWED_ACTIONS = [
   "decline_availability",
   "propose_alternatives",
   "send_alternatives",
+  "send_deposit_decision",
   "record_alternative_offer",
   "accept_alternative",
   "verify_deposit",
+  "waive_deposit",
   "confirm_yelp_booking",
   "close_reservation",
 ] as const;
@@ -145,16 +148,17 @@ function validatePayload(
       return new Set(payload.times).size === payload.times.length;
     }
 
-        case "send_alternatives":
-          return Object.keys(payload).length === 0;
+    case "send_alternatives":
+    case "send_deposit_decision":
+      return Object.keys(payload).length === 0;
 
-        case "record_alternative_offer":
-          return (
-            Object.keys(payload).length === 3 &&
-            payload.offer_communicated === true &&
-            isValidChannel(payload.offer_channel) &&
-            isValidEvidence(payload.offer_evidence)
-          );
+    case "record_alternative_offer":
+      return (
+        Object.keys(payload).length === 3 &&
+        payload.offer_communicated === true &&
+        isValidChannel(payload.offer_channel) &&
+        isValidEvidence(payload.offer_evidence)
+      );
 
     case "accept_alternative":
       return (
@@ -171,10 +175,17 @@ function validatePayload(
         payload.payment_independently_verified === true
       );
 
+    case "waive_deposit":
+      return (
+        Object.keys(payload).length === 1 &&
+        typeof payload.waiver_reason === "string" &&
+        payload.waiver_reason.trim() === payload.waiver_reason &&
+        payload.waiver_reason.length >= 10 &&
+        payload.waiver_reason.length <= 500 &&
+        !UNSUPPORTED_CONTROLS.test(payload.waiver_reason)
+      );
+
     case "confirm_yelp_booking": {
-      // No-deposit reservations retain the existing empty payload.
-      // Deposit-required reservations retain their existing acknowledgment,
-      // unless an active manager supplies a valid waiver request.
       const keys = Object.keys(payload);
 
       if (keys.length === 0) return true;
@@ -185,8 +196,14 @@ function validatePayload(
 
       return (
         keys.length === 2 &&
-        Object.prototype.hasOwnProperty.call(payload, "deposit_waived") &&
-        Object.prototype.hasOwnProperty.call(payload, "waiver_reason") &&
+        Object.prototype.hasOwnProperty.call(
+          payload,
+          "deposit_waived",
+        ) &&
+        Object.prototype.hasOwnProperty.call(
+          payload,
+          "waiver_reason",
+        ) &&
         payload.deposit_waived === true &&
         typeof payload.waiver_reason === "string" &&
         payload.waiver_reason.length >= 10 &&
@@ -346,16 +363,16 @@ export async function POST(
     .maybeSingle();
 
   if (
-      roleError ||
-      !staffRole ||
-      staffRole.is_active !== true ||
-      !isReservationStaffRole(staffRole.role)
-    ) {
-      return jsonError(
-        "Active reservation staff access required.",
-        403,
-      );
-    }
+    roleError ||
+    !staffRole ||
+    staffRole.is_active !== true ||
+    !isReservationStaffRole(staffRole.role)
+  ) {
+    return jsonError(
+      "Active reservation staff access required.",
+      403,
+    );
+  }
 
   const contentType =
     request.headers.get("content-type") ?? "";
@@ -400,12 +417,12 @@ export async function POST(
     );
   }
 
-  // Waiver approval is manager-only, even if a reservation agent
-  // crafts the request manually. The database RPC independently
-  // enforces the same requirement inside its reservation row lock.
+  // Manager-only authorization is enforced independently here
+  // and in the database RPC.
   if (
-    validatedAction === "confirm_yelp_booking" &&
-    validatedPayload.deposit_waived === true &&
+    (validatedAction === "waive_deposit" ||
+      (validatedAction === "confirm_yelp_booking" &&
+        validatedPayload.deposit_waived === true)) &&
     staffRole.role !== "manager"
   ) {
     return jsonError(
@@ -414,15 +431,17 @@ export async function POST(
     );
   }
 
-  // The authenticated reservation staff member has already
-  // been verified above. The dispatcher performs independent
-  // reservation checks and prevents duplicate SMS requests.
   if (validatedAction === "send_alternatives") {
     return dispatchReservationAlternatives(supabase, id);
   }
 
-  // The database function independently enforces authorization
-  // and validates reservation workflow state transitions.
+  // Send the separate deposit-decision SMS only on explicit staff action.
+  // The dispatcher enforces its own feature flag, eligibility checks,
+  // notification claim lifecycle, and no-automatic-resend policy.
+  if (validatedAction === "send_deposit_decision") {
+    return dispatchReservationDepositDecision(supabase, id);
+  }
+
   const { data, error } = await supabase.rpc(
     "apply_reservation_staff_action",
     {
@@ -434,7 +453,10 @@ export async function POST(
 
   if (error) {
     if (error.code === "42501") {
-      return jsonError("Reservation staff access required.", 403);
+      return jsonError(
+        "Reservation staff access required.",
+        403,
+      );
     }
 
     if (error.code === "P0002") {
@@ -477,8 +499,8 @@ export async function POST(
     );
   }
 
-  // Record the reservation confirmation first; SMS delivery must never undo
-  // a confirmed reservation. All other actions retain their existing behavior.
+  // Non-confirmation actions save the reservation state.
+  // Final Yelp confirmation retains its existing SMS dispatch.
   if (validatedAction !== "confirm_yelp_booking") {
     return NextResponse.json(
       { success: true, reservation: result },
@@ -486,12 +508,13 @@ export async function POST(
     );
   }
 
-  // Dispatch within this authenticated server request, not via a second
-  // browser action or a fire-and-forget task. The shared dispatcher checks
-  // the confirmed state and atomically claims the queued notification.
   try {
-    const dispatchResponse = await dispatchReservationConfirmation(supabase, id);
-    const rawDispatchResult: unknown = await dispatchResponse.json();
+    const dispatchResponse =
+      await dispatchReservationConfirmation(supabase, id);
+
+    const rawDispatchResult: unknown =
+      await dispatchResponse.json();
+
     const dispatchResult =
       rawDispatchResult !== null &&
       typeof rawDispatchResult === "object" &&
@@ -505,14 +528,17 @@ export async function POST(
       dispatchResult.accepted === true;
 
     if (!accepted) {
-      console.error("Automatic guest confirmation not verified:", {
-        reservationId: id,
-        httpStatus: dispatchResponse.status,
-        failureCode:
-          typeof dispatchResult.failureCode === "string"
-            ? dispatchResult.failureCode
-            : "DISPATCH_NOT_VERIFIED",
-      });
+      console.error(
+        "Automatic guest confirmation not verified:",
+        {
+          reservationId: id,
+          httpStatus: dispatchResponse.status,
+          failureCode:
+            typeof dispatchResult.failureCode === "string"
+              ? dispatchResult.failureCode
+              : "DISPATCH_NOT_VERIFIED",
+        },
+      );
     }
 
     return NextResponse.json(
@@ -524,11 +550,13 @@ export async function POST(
           accepted,
           status: accepted ? "sent" : "needs_attention",
           messageSid:
-            accepted && typeof dispatchResult.messageSid === "string"
+            accepted &&
+            typeof dispatchResult.messageSid === "string"
               ? dispatchResult.messageSid
               : null,
           failureCode:
-            !accepted && typeof dispatchResult.failureCode === "string"
+            !accepted &&
+            typeof dispatchResult.failureCode === "string"
               ? dispatchResult.failureCode
               : null,
           message: accepted
@@ -539,10 +567,16 @@ export async function POST(
       { headers: { "Cache-Control": "no-store" } },
     );
   } catch (error) {
-    console.error("Automatic confirmation dispatch failed unexpectedly:", {
-      reservationId: id,
-      errorName: error instanceof Error ? error.name : "UnknownError",
-    });
+    console.error(
+      "Automatic confirmation dispatch failed unexpectedly:",
+      {
+        reservationId: id,
+        errorName:
+          error instanceof Error
+            ? error.name
+            : "UnknownError",
+      },
+    );
 
     return NextResponse.json(
       {
@@ -554,7 +588,8 @@ export async function POST(
           status: "needs_attention",
           messageSid: null,
           failureCode: "DISPATCH_EXCEPTION",
-          message: "Reservation confirmed, but SMS status could not be verified. Check notification status before any retry.",
+          message:
+            "Reservation confirmed, but SMS status could not be verified. Check notification status before any retry.",
         },
       },
       { headers: { "Cache-Control": "no-store" } },
