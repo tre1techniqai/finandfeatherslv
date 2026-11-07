@@ -428,6 +428,29 @@ async function ProtectedReservationDetail({
   const depositDecisionNotificationUnavailable =
     Boolean(depositNotificationError) || Boolean(error) || Boolean(workflowError);
 
+  const {
+    data: waiverNotificationData,
+    error: waiverNotificationError,
+  } =
+    error || !reservation || workflowError
+      ? { data: null, error: null }
+      : await supabase
+          .from("reservation_notification_events")
+          .select(
+            "notification_status, twilio_message_sid, failure_code, deposit_decision",
+          )
+          .eq("event_key", `reservation_deposit_waiver:${id}`)
+          .maybeSingle();
+
+  const waiverNotification = waiverNotificationError
+    ? null
+    : (waiverNotificationData as DepositDecisionNotification | null);
+
+  const waiverNotificationUnavailable =
+    Boolean(waiverNotificationError) ||
+    Boolean(error) ||
+    Boolean(workflowError);
+
   return (
     <main className="w-full flex-1 bg-black px-3 py-6 text-white sm:px-8 sm:py-12">
       <div className="mx-auto max-w-5xl">
@@ -774,6 +797,10 @@ async function ProtectedReservationDetail({
                     depositDecisionNotification={depositDecisionNotification}
                     depositDecisionNotificationUnavailable={
                       depositDecisionNotificationUnavailable
+                    }
+                    waiverNotification={waiverNotification}
+                    waiverNotificationUnavailable={
+                      waiverNotificationUnavailable
                     }
                   />
                 </>

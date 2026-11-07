@@ -159,6 +159,9 @@ function buildMessage(
     ),
     "",
     `Reply ${replyOptions} to select a time.`,
+    "",
+    "In case of cancellations, we welcome walk-ins.",
+    "",
     "Your reservation is NOT confirmed until our staff completes the booking and sends your final confirmation.",
   ].join("\n");
 
@@ -271,7 +274,8 @@ async function twilioSend(
 }
 
 /**
- * Called only after the HTTP route authorizes an active manager.
+ * Called only after the HTTP route authorizes an active
+ * reservation staff member (manager or reservation_agent).
  *
  * Uses an atomic database claim to prevent duplicate SMS sends.
  * An uncertain send result must never be retried automatically.
@@ -392,7 +396,7 @@ export async function dispatchReservationAlternatives(
   if (prepareError) {
     if (prepareError.code === "42501") {
       return jsonError(
-        "Manager access required.",
+        "Active reservation staff access required.",
         403,
       );
     }

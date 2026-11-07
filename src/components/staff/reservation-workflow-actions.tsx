@@ -49,6 +49,8 @@ type Props = {
   confirmationNotification?: ConfirmationNotification | null;
   depositDecisionNotification?: DepositDecisionNotification | null;
   depositDecisionNotificationUnavailable?: boolean;
+  waiverNotification?: DepositDecisionNotification | null;
+  waiverNotificationUnavailable?: boolean;
 };
 
 type ActionName =
@@ -155,6 +157,8 @@ export default function ReservationWorkflowActions({
   confirmationNotification = null,
   depositDecisionNotification = null,
   depositDecisionNotificationUnavailable = false,
+  waiverNotification = null,
+  waiverNotificationUnavailable = false,
 }: Props) {
   const router = useRouter();
 
@@ -192,6 +196,11 @@ export default function ReservationWorkflowActions({
 
   const [yelpBookingVerified, setYelpBookingVerified] =
     useState(false);
+
+  const [
+    waiverNotificationOutcome,
+    setWaiverNotificationOutcome,
+  ] = useState<"accepted" | "needs_attention" | null>(null);
 
   const [notificationResult, setNotificationResult] = useState<{
     accepted: boolean;
@@ -293,13 +302,29 @@ export default function ReservationWorkflowActions({
     setError("");
     setSuccess("");
     setNotificationResult(null);
+    setWaiverNotificationOutcome(null);
 
     try {
       const result = await callAction(action, payload);
 
       setChangingAvailability(false);
 
-      if (action === "confirm_yelp_booking") {
+      if (action === "waive_deposit") {
+        const notification = isObject(result.notification)
+          ? result.notification
+          : null;
+
+        const accepted = notification?.accepted === true;
+
+        setWaiverNotificationOutcome(
+          accepted ? "accepted" : "needs_attention",
+        );
+
+        setSuccess(
+          "Deposit waiver approved and saved. " +
+            "The reservation remains unconfirmed.",
+        );
+      } else if (action === "confirm_yelp_booking") {
         const notification = isObject(result.notification)
           ? result.notification
           : null;
@@ -312,8 +337,6 @@ export default function ReservationWorkflowActions({
           approve_availability: depositRequired
             ? "Tentative YES recorded. The requested time is available, but the reservation is not confirmed. Complete the deposit or waiver requirements and Yelp booking before final confirmation. No guest SMS was sent by this action."
             : "Requested time marked available. No guest SMS was sent by this action.",
-          waive_deposit:
-            "Deposit waiver saved. Use Send Deposit Waiver Notice to notify the guest; the reservation remains unconfirmed.",
           decline_availability: depositRequired
             ? "Tentative NO recorded. The requested time is unavailable. Offer the guest another time."
             : "Requested time marked unavailable.",
@@ -971,7 +994,7 @@ export default function ReservationWorkflowActions({
                           onClick={() => {
                             if (
                               !window.confirm(
-                                `Approve a $${depositAmount?.toFixed(2)} deposit waiver for this reservation? This decision will be audited.`,
+                                `Approve a $${depositAmount?.toFixed(2)} deposit waiver for this reservation? This decision will be audited and a courtesy SMS will be initiated automatically.`,
                               )
                             ) {
                               return;
@@ -996,24 +1019,98 @@ export default function ReservationWorkflowActions({
                 )}
 
                 <div className="mt-4 space-y-3">
+                  {!alreadyWaived && (
                   <button
                     type="button"
                     disabled={
                       actionPending ||
                       depositDecisionSendBlocked ||
-                      !["pending", "waived"].includes(depositStatus)
+                      depositStatus !== "pending"
                     }
                     onClick={() => void sendDepositDecision()}
                     className={`${buttonClass} w-full bg-[#ea1b24] text-white hover:bg-red-700`}
                   >
                     {busy === "send_deposit_decision"
-                      ? "Submitting deposit decision..."
+                      ? "Submitting deposit instructions..."
                       : depositDecisionSendBlocked
-                        ? "Deposit Decision — Check Notification Status"
-                        : alreadyWaived
-                          ? "Send Deposit Waiver Notice"
-                          : "Send Deposit Instructions"}
+                        ? "Deposit Instructions — Check Notification Status"
+                        : "Send Deposit Instructions"}
                   </button>
+                  )}
+
+                  {waiverNotificationOutcome === "accepted" && (
+                    <p
+                      role="status"
+                      className="text-xs leading-5 text-emerald-200"
+                    >
+                      Courtesy-waiver SMS accepted by Twilio.
+                      Handset delivery is not yet verified.
+                      Final Yelp confirmation is still required.
+                    </p>
+                  )}
+
+                  {waiverNotificationOutcome === "needs_attention" && (
+                    <p
+                      role="alert"
+                      className="text-xs leading-5 text-amber-200"
+                    >
+                      Deposit waiver approved, but courtesy SMS
+                      acceptance could not be verified. Review
+                      Twilio and notification history. Do not
+                      resend automatically.
+                    </p>
+                  )}
+
+                  {alreadyWaived && (
+                    <div className="rounded-lg border border-white/10 bg-white/5 p-3">
+                      <p className="text-xs font-semibold text-white">
+                        Courtesy-Waiver SMS
+                      </p>
+
+                      {waiverNotificationUnavailable ? (
+                        <p role="alert" className="mt-2 text-xs leading-5 text-amber-200">
+                          Courtesy-waiver notification history could
+                          not be loaded. Review Supabase and Twilio.
+                          Do not resend automatically.
+                        </p>
+                      ) : waiverNotification ? (
+                        <div className="mt-2 space-y-1 text-xs leading-5">
+                          <p
+                            className={
+                              waiverNotification.notification_status === "sent" ||
+                              waiverNotification.notification_status === "delivered"
+                                ? "text-emerald-200"
+                                : "text-amber-200"
+                            }
+                          >
+                            Status:{" "}
+                            {formatStatus(waiverNotification.notification_status)}
+                          </p>
+
+                          {waiverNotification.failure_code && (
+                            <p className="text-amber-200">
+                              Recorded issue:{" "}
+                              {waiverNotification.failure_code}
+                            </p>
+                          )}
+
+                          <p className="text-zinc-300">
+                            {waiverNotification.notification_status === "delivered"
+                              ? "Twilio recorded delivery of the courtesy message."
+                              : waiverNotification.notification_status === "sent"
+                                ? "Twilio accepted the courtesy message. Handset delivery is not yet verified."
+                                : "The courtesy-message outcome requires review. Do not resend automatically."}
+                          </p>
+                        </div>
+                      ) : (
+                        <p role="alert" className="mt-2 text-xs leading-5 text-amber-200">
+                          No courtesy-waiver notification record was
+                          found. Verify the automatic notification
+                          workflow before taking further action.
+                        </p>
+                      )}
+                    </div>
+                  )}
 
                   {depositDecisionNotificationUnavailable ? (
                     <p role="alert" className="text-xs leading-5 text-amber-200">
@@ -1049,10 +1146,9 @@ export default function ReservationWorkflowActions({
                     </p>
                   ) : (
                     <p className="text-xs leading-5 text-amber-200">
-                      No deposit-decision notification is recorded. Sending
-                      still requires the server-side feature flag and the
-                      dispatcher’s eligibility checks. This is not a final
-                      reservation confirmation.
+                      {alreadyWaived
+                        ? "No earlier deposit-instructions SMS is recorded. The courtesy-waiver notification is tracked separately above."
+                        : "No deposit-instructions notification is recorded. Sending requires the server-side feature flag and dispatcher eligibility checks. This is not a final reservation confirmation."}
                     </p>
                   )}
                 </div>
@@ -1095,18 +1191,26 @@ export default function ReservationWorkflowActions({
                     {formatStatus(depositStatus)}.
                   </p>
 
-                  {alreadyWaived ? (
-                    <p className="mt-3 text-sm font-semibold text-emerald-200">
-                      Deposit waived by management. No payment
-                      link is required.
-                    </p>
-                  ) : (
-                    <p className="mt-3 text-xs leading-5 text-zinc-400">
-                      Email the payment link through the POS
-                      before final confirmation. Sending the
-                      link does not mean payment has been
-                      verified.
-                    </p>
+                  {!alreadyWaived && (
+                    <label className="mt-4 flex items-start gap-3 text-sm text-white">
+                      <input
+                        type="checkbox"
+                        checked={depositLinkSent}
+                        onChange={(event) => {
+                          const checked = event.target.checked;
+                          setDepositLinkSent(checked);
+
+                          if (!checked) {
+                            setYelpBookingVerified(false);
+                          }
+                        }}
+                        disabled={actionPending}
+                        className="mt-1"
+                      />
+
+                      I confirm that the deposit payment link has
+                      been emailed to the guest.
+                    </label>
                   )}
 
                   <label

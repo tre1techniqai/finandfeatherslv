@@ -1166,6 +1166,7 @@ function validClaim(
 export async function dispatchReservationDepositDecision(
   supabase: SupabaseClient,
   reservationId: string,
+  notificationKind: "decision" | "waiver" = "decision",
 ): Promise<NextResponse> {
   if (
     process.env.RESERVATION_DEPOSIT_DECISION_SEND_ENABLED !==
@@ -1258,6 +1259,28 @@ export async function dispatchReservationDepositDecision(
     );
   }
 
+  if (
+    notificationKind === "waiver" &&
+    decision !== "waived"
+  ) {
+    return fail(
+      "An approved deposit waiver is required.",
+      409,
+    );
+  }
+
+  // Courtesy waivers use only their dedicated event identity.
+  // Never send a waiver through the legacy manual decision path.
+  if (
+    notificationKind === "decision" &&
+    decision === "waived"
+  ) {
+    return fail(
+      "Approved deposit waivers use automatic courtesy notification.",
+      409,
+    );
+  }
+
   let originalBody: string;
 
   try {
@@ -1275,7 +1298,9 @@ export async function dispatchReservationDepositDecision(
   }
 
   const eventKey =
-    `reservation_deposit_decision:${reservationId}`;
+    notificationKind === "waiver"
+      ? `reservation_deposit_waiver:${reservationId}`
+      : `reservation_deposit_decision:${reservationId}`;
 
   try {
     if (
@@ -1302,7 +1327,9 @@ export async function dispatchReservationDepositDecision(
     data: preparedData,
     error: preparedError,
   } = await supabase.rpc(
-    "prepare_reservation_deposit_decision",
+    notificationKind === "waiver"
+      ? "prepare_reservation_deposit_waiver"
+      : "prepare_reservation_deposit_decision",
     {
       p_reservation_id:
         reservationId,
@@ -1440,7 +1467,9 @@ export async function dispatchReservationDepositDecision(
     data: claimData,
     error: claimError,
   } = await admin.rpc(
-    "claim_reservation_deposit_decision",
+    notificationKind === "waiver"
+      ? "claim_reservation_deposit_waiver"
+      : "claim_reservation_deposit_decision",
     {
       p_reservation_id:
         reservationId,

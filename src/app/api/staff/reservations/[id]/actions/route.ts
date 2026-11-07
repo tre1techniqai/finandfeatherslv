@@ -499,7 +499,105 @@ export async function POST(
     );
   }
 
-  // Non-confirmation actions save the reservation state.
+  // An approved waiver is saved before notification dispatch.
+  // SMS failure must never be reported as waiver-approval failure.
+  if (validatedAction === "waive_deposit") {
+    try {
+      const dispatchResponse =
+        await dispatchReservationDepositDecision(
+          supabase,
+          id,
+          "waiver",
+        );
+
+      const rawDispatchResult: unknown =
+        await dispatchResponse.json();
+
+      const dispatchResult =
+        rawDispatchResult !== null &&
+        typeof rawDispatchResult === "object" &&
+        !Array.isArray(rawDispatchResult)
+          ? (rawDispatchResult as Record<string, unknown>)
+          : {};
+
+      const accepted =
+        dispatchResponse.ok &&
+        dispatchResult.success === true &&
+        dispatchResult.accepted === true;
+
+      if (!accepted) {
+        console.error(
+          "Automatic courtesy-waiver SMS not verified:",
+          {
+            reservationId: id,
+            httpStatus: dispatchResponse.status,
+            failureCode:
+              typeof dispatchResult.failureCode === "string"
+                ? dispatchResult.failureCode
+                : "WAIVER_NOTIFICATION_NOT_VERIFIED",
+          },
+        );
+      }
+
+      return NextResponse.json(
+        {
+          success: true,
+          reservation: result,
+          notification: {
+            attempted: true,
+            accepted,
+            status: accepted ? "sent" : "needs_attention",
+            messageSid:
+              accepted &&
+              typeof dispatchResult.messageSid === "string"
+                ? dispatchResult.messageSid
+                : null,
+            failureCode:
+              !accepted &&
+              typeof dispatchResult.failureCode === "string"
+                ? dispatchResult.failureCode
+                : !accepted
+                  ? "WAIVER_NOTIFICATION_NOT_VERIFIED"
+                  : null,
+            message: accepted
+              ? "Deposit waiver approved. Twilio accepted the courtesy SMS. Handset delivery is not yet verified."
+              : "Deposit waiver approved, but courtesy SMS acceptance was not verified. Review Twilio and notification history; do not resend automatically.",
+          },
+        },
+        { headers: { "Cache-Control": "no-store" } },
+      );
+    } catch (error) {
+      console.error(
+        "Automatic courtesy-waiver dispatch failed:",
+        {
+          reservationId: id,
+          errorName:
+            error instanceof Error
+              ? error.name
+              : "UNKNOWN_ERROR",
+        },
+      );
+
+      return NextResponse.json(
+        {
+          success: true,
+          reservation: result,
+          notification: {
+            attempted: true,
+            accepted: false,
+            status: "needs_attention",
+            messageSid: null,
+            failureCode: "WAIVER_DISPATCH_EXCEPTION",
+            message:
+              "Deposit waiver approved, but the courtesy SMS outcome requires review. Do not resend automatically.",
+          },
+        },
+        { headers: { "Cache-Control": "no-store" } },
+      );
+    }
+  }
+
+  // Other non-confirmation actions retain existing behavior.
   // Final Yelp confirmation retains its existing SMS dispatch.
   if (validatedAction !== "confirm_yelp_booking") {
     return NextResponse.json(
