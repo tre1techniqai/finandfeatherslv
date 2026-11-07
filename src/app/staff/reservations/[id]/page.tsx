@@ -771,10 +771,6 @@ async function ProtectedReservationDetail({
                     confirmationNotification={
                       confirmationNotification
                     }
-                    depositDecisionNotification={depositDecisionNotification}
-                    depositDecisionNotificationUnavailable={
-                      depositDecisionNotificationUnavailable
-                    }
                   />
                 </>
               )}
