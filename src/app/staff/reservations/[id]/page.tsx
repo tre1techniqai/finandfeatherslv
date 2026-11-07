@@ -5,6 +5,7 @@ import { notFound } from "next/navigation";
 
 import { requireReservationStaff } from "@/lib/auth/require-reservation-staff";
 import ReservationWorkflowActions from "@/components/staff/reservation-workflow-actions";
+import ReservationDateTimeEditor from "@/components/staff/reservation-datetime-editor";
 import ReservationConfirmationSummary from "@/components/staff/reservation-confirmation-summary";
 import {
   ReservationStaffNotesProvider,
@@ -62,6 +63,13 @@ type ConfirmationNotification = {
   notification_status: string;
   twilio_message_sid: string | null;
   failure_code: string | null;
+};
+
+type DepositDecisionNotification = {
+  notification_status: string;
+  twilio_message_sid: string | null;
+  failure_code: string | null;
+  deposit_decision: string | null;
 };
 
 type PageProps = {
@@ -351,6 +359,25 @@ async function ProtectedReservationDetail({
   const workflow =
     workflowData as ReservationWorkflow | null;
 
+  // The alternative-offer table is manager-readable under RLS.
+  // Failure to verify that no offer exists must block editing.
+  const preparedOfferLookup =
+    role === "manager" && !error && reservation
+      ? await supabase
+          .from("reservation_alternative_offers")
+          .select("reservation_request_id")
+          .eq("reservation_request_id", id)
+          .limit(1)
+      : null;
+
+  const preparedOfferLookupFailed =
+    role === "manager" &&
+    Boolean(preparedOfferLookup?.error);
+
+  const hasPreparedOffer =
+    preparedOfferLookupFailed ||
+    Boolean(preparedOfferLookup?.data?.length);
+
   // An unavailable notification status must
   // never enable confirmation SMS sending.
   const {
@@ -375,6 +402,31 @@ async function ProtectedReservationDetail({
     notificationError
       ? null
       : (notificationData as ConfirmationNotification | null);
+
+  // Query by the immutable event key, not by guest phone number.
+  // Any failure is passed to the client so SMS sending fails closed.
+  const {
+    data: depositNotificationData,
+    error: depositNotificationError,
+  } =
+    error || !reservation || workflowError
+      ? { data: null, error: null }
+      : await supabase
+          .from("reservation_notification_events")
+          .select(
+            "notification_status, twilio_message_sid, failure_code, deposit_decision",
+          )
+          .eq(
+            "event_key",
+            `reservation_deposit_decision:${id}`,
+          )
+          .maybeSingle();
+
+  const depositDecisionNotification = depositNotificationError
+    ? null
+    : (depositNotificationData as DepositDecisionNotification | null);
+  const depositDecisionNotificationUnavailable =
+    Boolean(depositNotificationError) || Boolean(error) || Boolean(workflowError);
 
   return (
     <main className="w-full flex-1 bg-black px-3 py-6 text-white sm:px-8 sm:py-12">
@@ -617,6 +669,46 @@ async function ProtectedReservationDetail({
                 />
               </Section>
 
+              {role === "manager" && (
+                <>
+                  {preparedOfferLookupFailed && (
+                    <section
+                      role="alert"
+                      className="rounded-xl border border-amber-500/30 bg-amber-950/20 p-4 text-sm text-amber-200"
+                    >
+                      Alternative-offer protection could not be verified.
+                      Reservation date/time editing remains unavailable.
+                    </section>
+                  )}
+
+                  <ReservationDateTimeEditor
+                    reservationId={reservation.id}
+                    reservationDate={reservation.reservation_date}
+                    reservationTime={reservation.reservation_time}
+                    requestStatus={reservation.request_status}
+                    workflowStatus={
+                      workflowError
+                        ? null
+                        : workflow?.workflow_status ?? null
+                    }
+                    acceptedTime={
+                      workflowError
+                        ? null
+                        : workflow?.accepted_time ?? null
+                    }
+                    hasPreparedOffer={
+                      hasPreparedOffer || Boolean(workflowError)
+                    }
+                    enabled={
+                      process.env.RESERVATION_DATETIME_AMENDMENTS_ENABLED ===
+                        "true" &&
+                      !preparedOfferLookupFailed &&
+                      !workflowError
+                    }
+                  />
+                </>
+              )}
+
               {workflowError ? (
                 <section
                   role="alert"
@@ -678,6 +770,10 @@ async function ProtectedReservationDetail({
                     workflow={workflow}
                     confirmationNotification={
                       confirmationNotification
+                    }
+                    depositDecisionNotification={depositDecisionNotification}
+                    depositDecisionNotificationUnavailable={
+                      depositDecisionNotificationUnavailable
                     }
                   />
                 </>
