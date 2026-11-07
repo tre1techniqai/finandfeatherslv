@@ -1,4 +1,3 @@
-import { createHmac } from "node:crypto";
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
@@ -57,13 +56,26 @@ type FinishedDecision = {
   twilio_message_sid: string | null;
 };
 
-type TwilioResult = {
-  success?: boolean;
-  accepted?: boolean;
-  eventKey?: string;
-  messageSid?: string;
-  messageStatus?: string;
-  error?: string;
+type StudioConfig = {
+  accountSid: string;
+  authToken: string;
+  flowSid: string;
+  restaurantPhone: string;
+};
+
+type StudioExecution = {
+  sid: string;
+  flow_sid: string;
+  status: string;
+};
+
+type StudioMessage = {
+  sid: string;
+  account_sid: string;
+  from: string;
+  to: string;
+  body: string;
+  status: string;
 };
 
 type OwnershipRow = {
@@ -72,15 +84,26 @@ type OwnershipRow = {
 };
 
 type OwnershipResult =
-  | { status: "registered"; outcome: "recorded" | "duplicate" }
-  | { status: "needs_attention"; reason: string };
+  | {
+      status: "registered";
+      outcome: "recorded" | "duplicate";
+    }
+  | {
+      status: "needs_attention";
+      reason: string;
+    };
 
 const UUID =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 const MESSAGE_SID = /^SM[0-9a-f]{32}$/i;
+const EXECUTION_SID = /^FN[0-9a-f]{32}$/i;
+const FLOW_SID = /^FW[0-9a-f]{32}$/i;
+const ACCOUNT_SID = /^AC[0-9a-f]{32}$/i;
+
 const E164 = /^\+[1-9]\d{7,14}$/;
 const REFERENCE = /^[A-Z]{2}-\d{6}-\d{3,8}$/;
+
 const MAX_MESSAGE_LENGTH = 1000;
 
 const RESERVATION_SELECT = [
@@ -116,7 +139,9 @@ function respond(
 ): NextResponse {
   return NextResponse.json(body, {
     status,
-    headers: { "Cache-Control": "no-store" },
+    headers: {
+      "Cache-Control": "no-store",
+    },
   });
 }
 
@@ -124,12 +149,22 @@ function fail(
   error: string,
   status: number,
 ): NextResponse {
-  return respond({ success: false, error }, status);
+  return respond(
+    {
+      success: false,
+      error,
+    },
+    status,
+  );
 }
 
-function firstRow<T>(value: unknown): T | null {
+function firstRow<T>(
+  value: unknown,
+): T | null {
   const row = Array.isArray(value)
-    ? value.length === 1 ? value[0] : null
+    ? value.length === 1
+      ? value[0]
+      : null
     : value;
 
   if (
@@ -146,24 +181,51 @@ function firstRow<T>(value: unknown): T | null {
 function expectedDeposit(
   partySize: number,
 ): number | null {
-  if (partySize >= 9 && partySize <= 10) return 55;
-  if (partySize >= 11 && partySize <= 14) return 80;
-  if (partySize >= 15 && partySize <= 20) return 110;
+  if (
+    partySize >= 9 &&
+    partySize <= 10
+  ) {
+    return 55;
+  }
+
+  if (
+    partySize >= 11 &&
+    partySize <= 14
+  ) {
+    return 80;
+  }
+
+  if (
+    partySize >= 15 &&
+    partySize <= 20
+  ) {
+    return 110;
+  }
+
   return null;
 }
 
-function partyRange(partySize: number): string {
-  if (partySize <= 10) return "9-10";
-  if (partySize <= 14) return "11-14";
-  return "15-20";
+function partyRange(
+  partySize: number,
+): string {
+  if (partySize <= 10) return "9–10";
+  if (partySize <= 14) return "11–14";
+
+  return "15–20";
 }
 
-function formatDate(value: string): string {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+function formatDate(
+  value: string,
+): string {
+  if (
+    !/^\d{4}-\d{2}-\d{2}$/.test(value)
+  ) {
     throw new Error("INVALID_DATE");
   }
 
-  const date = new Date(`${value}T12:00:00Z`);
+  const date = new Date(
+    `${value}T12:00:00Z`,
+  );
 
   if (
     !Number.isFinite(date.getTime()) ||
@@ -172,27 +234,38 @@ function formatDate(value: string): string {
     throw new Error("INVALID_DATE");
   }
 
-  return new Intl.DateTimeFormat("en-US", {
-    weekday: "long",
-    month: "long",
-    day: "numeric",
-    year: "numeric",
-    timeZone: "UTC",
-  }).format(date);
+  return new Intl.DateTimeFormat(
+    "en-US",
+    {
+      month: "long",
+      day: "numeric",
+      year: "numeric",
+      timeZone: "UTC",
+    },
+  ).format(date);
 }
 
-function formatTime(value: string): string {
+function formatTime(
+  value: string,
+): string {
   const match =
-    /^(\d{2}):(\d{2})(?::00)?$/.exec(value);
+    /^(\d{2}):(\d{2})(?::00)?$/.exec(
+      value,
+    );
 
-  if (!match) throw new Error("INVALID_TIME");
+  if (!match) {
+    throw new Error("INVALID_TIME");
+  }
 
   const hours = Number(match[1]);
   const minutes = Number(match[2]);
 
   if (
     hours > 23 ||
-    (minutes !== 0 && minutes !== 30)
+    (
+      minutes !== 0 &&
+      minutes !== 30
+    )
   ) {
     throw new Error("INVALID_TIME");
   }
@@ -210,29 +283,44 @@ function validateReservation(
     !reservation ||
     !UUID.test(reservation.id) ||
     !reservation.details_validated ||
-    !["pending", "incomplete"].includes(
+    ![
+      "pending",
+      "incomplete",
+    ].includes(
       reservation.request_status,
     ) ||
     !reservation.customer_name?.trim() ||
-    !E164.test(reservation.customer_phone) ||
+    !E164.test(
+      reservation.customer_phone,
+    ) ||
     !reservation.reservation_date ||
     !reservation.reservation_time ||
     !reservation.reservation_reference ||
-    !REFERENCE.test(reservation.reservation_reference) ||
+    !REFERENCE.test(
+      reservation.reservation_reference,
+    ) ||
     !reservation.party_size ||
     reservation.party_size < 9 ||
     reservation.party_size > 20 ||
     reservation.deposit_amount !==
-      expectedDeposit(reservation.party_size)
+      expectedDeposit(
+        reservation.party_size,
+      )
   ) {
     return null;
   }
 
-  if (reservation.deposit_status === "pending") {
+  if (
+    reservation.deposit_status ===
+    "pending"
+  ) {
     return "required";
   }
 
-  if (reservation.deposit_status === "waived") {
+  if (
+    reservation.deposit_status ===
+    "waived"
+  ) {
     return "waived";
   }
 
@@ -244,7 +332,10 @@ function validWorkflow(
 ): boolean {
   return (
     !!workflow &&
-    ["available", "alternative_accepted"].includes(
+    [
+      "available",
+      "alternative_accepted",
+    ].includes(
       workflow.workflow_status,
     ) &&
     (
@@ -260,29 +351,41 @@ function buildMessage(
   workflow: Workflow,
   decision: Decision,
 ): string {
-  const name = reservation.customer_name?.trim();
-  const date = reservation.reservation_date;
+  const name =
+    reservation.customer_name?.trim();
+
+  const date =
+    reservation.reservation_date;
+
   const time =
     workflow.accepted_time ??
     reservation.reservation_time;
-  const size = reservation.party_size;
-  const amount = reservation.deposit_amount;
-  const reference = reservation.reservation_reference;
+
+  const size =
+    reservation.party_size;
+
+  const amount =
+    reservation.deposit_amount;
+
+  const reference =
+    reservation.reservation_reference;
 
   if (
-    !name || !date || !time ||
-    !size || amount === null
+    !name ||
+    !date ||
+    !time ||
+    !size ||
+    amount === null
   ) {
-    throw new Error("INCOMPLETE_RESERVATION");
+    throw new Error(
+      "INCOMPLETE_RESERVATION",
+    );
   }
 
-  const firstName = name.split(/\s+/)[0];
-
   const availability =
-    `Hi ${firstName}! Your reservation request ` +
-    `at Fin & Feathers Las Vegas for ` +
-    `${formatDate(date)} at ${formatTime(time)}, ` +
-    `for ${size} guests, is available!`;
+    "GOOD NEWS! Your requested reservation for " +
+    `${formatDate(date)} at ${formatTime(time)} ` +
+    "is tentatively available!";
 
   let message: string;
 
@@ -292,14 +395,27 @@ function buildMessage(
       "",
       availability,
       "",
-      `Normally, parties of ${partyRange(size)} guests ` +
-        `require a $${amount} deposit. ` +
-        "As a courtesy, we have waived the deposit " +
-        "for you. No deposit payment is necessary.",
+      `For your party of ${partyRange(size)} guests, ` +
+        `the normally required $${amount} deposit ` +
+        "has been waived by management. " +
+        "No deposit payment is necessary.",
+      "",
+      "Your reservation is NOT confirmed until " +
+        "our team completes the booking and " +
+        "sends your confirmation.",
     ].join("\n");
   } else {
-    if (!reference || !REFERENCE.test(reference)) {
-      throw new Error("INVALID_RESERVATION_REFERENCE");
+    // Preserve internal reference validation.
+    // The guest only needs to reply with
+    // their email address.
+
+    if (
+      !reference ||
+      !REFERENCE.test(reference)
+    ) {
+      throw new Error(
+        "INVALID_RESERVATION_REFERENCE",
+      );
     }
 
     message = [
@@ -307,15 +423,17 @@ function buildMessage(
       "",
       availability,
       "",
-      `A $${amount} deposit is required for your party size.`,
+      `For your party of ${partyRange(size)} guests, ` +
+        `a $${amount} deposit is required. ` +
+        "The deposit is non-refundable and " +
+        "will be credited toward your final bill.",
       "",
-      `Reservation Reference: ${reference}`,
+      "Please reply with your email address " +
+        "so we can send you a secure payment link.",
       "",
-      "Please reply with your email address AND " +
-        "the reservation reference shown above " +
-        "so our team can send your secure payment link.",
-      "",
-      `Example: guest@example.com ${reference}`,
+      "Your reservation is NOT confirmed until " +
+        "our team completes the booking and " +
+        "sends your confirmation.",
     ].join("\n");
   }
 
@@ -323,7 +441,9 @@ function buildMessage(
     !message.trim() ||
     message.length > MAX_MESSAGE_LENGTH
   ) {
-    throw new Error("INVALID_MESSAGE_LENGTH");
+    throw new Error(
+      "INVALID_MESSAGE_LENGTH",
+    );
   }
 
   return message;
@@ -337,14 +457,21 @@ function equalReservation(
     a.id === b.id &&
     a.customer_name === b.customer_name &&
     a.customer_phone === b.customer_phone &&
-    a.reservation_reference === b.reservation_reference &&
-    a.reservation_date === b.reservation_date &&
-    a.reservation_time === b.reservation_time &&
+    a.reservation_reference ===
+      b.reservation_reference &&
+    a.reservation_date ===
+      b.reservation_date &&
+    a.reservation_time ===
+      b.reservation_time &&
     a.party_size === b.party_size &&
-    a.deposit_amount === b.deposit_amount &&
-    a.deposit_status === b.deposit_status &&
-    a.request_status === b.request_status &&
-    a.details_validated === b.details_validated
+    a.deposit_amount ===
+      b.deposit_amount &&
+    a.deposit_status ===
+      b.deposit_status &&
+    a.request_status ===
+      b.request_status &&
+    a.details_validated ===
+      b.details_validated
   );
 }
 
@@ -353,8 +480,10 @@ function equalWorkflow(
   b: Workflow,
 ): boolean {
   return (
-    a.workflow_status === b.workflow_status &&
-    a.accepted_time === b.accepted_time
+    a.workflow_status ===
+      b.workflow_status &&
+    a.accepted_time ===
+      b.accepted_time
   );
 }
 
@@ -362,13 +491,20 @@ async function loadReservation(
   supabase: SupabaseClient,
   id: string,
 ): Promise<Reservation | null> {
-  const { data, error } = await supabase
+  const {
+    data,
+    error,
+  } = await supabase
     .from("reservation_requests")
     .select(RESERVATION_SELECT)
     .eq("id", id)
     .maybeSingle();
 
-  if (error) throw new Error("RESERVATION_LOOKUP_FAILED");
+  if (error) {
+    throw new Error(
+      "RESERVATION_LOOKUP_FAILED",
+    );
+  }
 
   return data as Reservation | null;
 }
@@ -377,13 +513,25 @@ async function loadWorkflow(
   supabase: SupabaseClient,
   id: string,
 ): Promise<Workflow | null> {
-  const { data, error } = await supabase
-    .from("reservation_staff_workflows")
+  const {
+    data,
+    error,
+  } = await supabase
+    .from(
+      "reservation_staff_workflows",
+    )
     .select(WORKFLOW_SELECT)
-    .eq("reservation_request_id", id)
+    .eq(
+      "reservation_request_id",
+      id,
+    )
     .maybeSingle();
 
-  if (error) throw new Error("WORKFLOW_LOOKUP_FAILED");
+  if (error) {
+    throw new Error(
+      "WORKFLOW_LOOKUP_FAILED",
+    );
+  }
 
   return data as Workflow | null;
 }
@@ -392,131 +540,421 @@ async function loadNotification(
   supabase: SupabaseClient,
   eventKey: string,
 ): Promise<NotificationEvent | null> {
-  const { data, error } = await supabase
-    .from("reservation_notification_events")
+  const {
+    data,
+    error,
+  } = await supabase
+    .from(
+      "reservation_notification_events",
+    )
     .select(NOTIFICATION_SELECT)
     .eq("event_key", eventKey)
     .maybeSingle();
 
-  if (error) throw new Error("NOTIFICATION_LOOKUP_FAILED");
+  if (error) {
+    throw new Error(
+      "NOTIFICATION_LOOKUP_FAILED",
+    );
+  }
 
   return data as NotificationEvent | null;
 }
 
-function notificationConfig(): {
-  secret: string;
-  functionUrl: string;
-} | null {
-  const secret =
-    process.env.RESERVATION_CONFIRMATION_SECRET;
-  const rawUrl =
-    process.env.RESERVATION_DEPOSIT_DECISION_FUNCTION_URL;
+// ====================================================
+// TWILIO STUDIO CONFIGURATION
+// ====================================================
+
+function studioConfig():
+  StudioConfig | null {
+  const accountSid =
+    process.env.TWILIO_ACCOUNT_SID ?? "";
+
+  const authToken =
+    process.env.TWILIO_AUTH_TOKEN ?? "";
+
+  const flowSid =
+    process.env.RESERVATION_STUDIO_FLOW_SID ?? "";
+
+  const restaurantPhone =
+    process.env.TWILIO_FROM_NUMBER ?? "";
 
   if (
-    !secret ||
-    !/^[a-f0-9]{64}$/i.test(secret) ||
-    !rawUrl
+    !ACCOUNT_SID.test(accountSid) ||
+    !authToken ||
+    !FLOW_SID.test(flowSid) ||
+    !E164.test(restaurantPhone)
   ) {
     return null;
   }
 
-  try {
-    const url = new URL(rawUrl);
-
-    if (
-      url.protocol !== "https:" ||
-      url.username ||
-      url.password ||
-      url.search ||
-      url.hash ||
-      !url.pathname.endsWith(
-        "/send-reservation-deposit-decision",
-      )
-    ) {
-      return null;
-    }
-
-    return {
-      secret,
-      functionUrl: url.toString(),
-    };
-  } catch {
-    return null;
-  }
+  return {
+    accountSid,
+    authToken,
+    flowSid,
+    restaurantPhone,
+  };
 }
 
-async function sendToTwilio(
-  config: { secret: string; functionUrl: string },
+function studioAuth(
+  config: StudioConfig,
+): string {
+  const encoded = Buffer.from(
+    `${config.accountSid}:${config.authToken}`,
+    "utf8",
+  ).toString("base64");
+
+  return `Basic ${encoded}`;
+}
+
+// ====================================================
+// START STUDIO EXECUTION
+// ====================================================
+//
+// Studio sends the SMS through the
+// send_staff_tentative_yes widget.
+//
+// The API starts the execution exactly once.
+// It does not send through Twilio Messages API.
+// ====================================================
+
+async function startDepositStudioExecution(
+  config: StudioConfig,
   eventKey: string,
-  to: string,
-  body: string,
-): Promise<TwilioResult> {
-  const timestamp = String(
-    Math.floor(Date.now() / 1000),
-  );
+  reservationId: string,
+  depositDecision: Decision,
+  guestPhone: string,
+  guestMessage: string,
+): Promise<StudioExecution> {
+  const url =
+    "https://studio.twilio.com/v2/Flows/" +
+    `${config.flowSid}/Executions`;
 
-  const signedPayload = JSON.stringify({
-    eventKey,
-    to,
-    body,
+  const body = new URLSearchParams({
+    To: guestPhone,
+    From: config.restaurantPhone,
+    Parameters: JSON.stringify({
+      requestType:
+        "staff_tentative_yes",
+      guestMessage,
+      eventKey,
+      reservationId,
+      depositDecision,
+    }),
   });
 
-  const signature = createHmac(
-    "sha256",
-    Buffer.from(config.secret, "hex"),
-  )
-    .update(`${timestamp}.${signedPayload}`)
-    .digest("hex");
-
-  const form = new URLSearchParams({
-    timestamp,
-    signature,
-    eventKey,
-    to,
-    body,
-  });
+  // Execution creation is not idempotent.
+  // Never automatically retry an ambiguous POST.
 
   const response = await fetch(
-    config.functionUrl,
+    url,
     {
       method: "POST",
       headers: {
+        Authorization:
+          studioAuth(config),
         "Content-Type":
           "application/x-www-form-urlencoded",
       },
-      body: form.toString(),
+      body: body.toString(),
       cache: "no-store",
-      signal: AbortSignal.timeout(15000),
+      signal:
+        AbortSignal.timeout(15000),
+    },
+  );
+
+  if (response.status !== 201) {
+    throw new Error(
+      `STUDIO_EXECUTION_HTTP_${response.status}`,
+    );
+  }
+
+  const json: unknown =
+    await response.json();
+
+  if (
+    !json ||
+    typeof json !== "object" ||
+    Array.isArray(json)
+  ) {
+    throw new Error(
+      "INVALID_STUDIO_EXECUTION_RESPONSE",
+    );
+  }
+
+  const record =
+    json as Record<string, unknown>;
+
+  if (
+    typeof record.sid !== "string" ||
+    !EXECUTION_SID.test(
+      record.sid,
+    ) ||
+    record.flow_sid !==
+      config.flowSid ||
+    (
+      record.status !== "active" &&
+      record.status !== "ended"
+    )
+  ) {
+    throw new Error(
+      "STUDIO_EXECUTION_IDENTITY_MISMATCH",
+    );
+  }
+
+  return {
+    sid: record.sid,
+    flow_sid:
+      record.flow_sid as string,
+    status:
+      record.status as string,
+  };
+}
+
+// ====================================================
+// READ ACTUAL SMS SID FROM STUDIO CONTEXT
+// ====================================================
+//
+// Studio Execution SID: FN...
+// Twilio SMS Message SID: SM...
+//
+// Only the SM SID may be recorded as the
+// accepted outbound reservation message.
+// ====================================================
+
+async function readStudioMessageSid(
+  config: StudioConfig,
+  executionSid: string,
+): Promise<string | null> {
+  const url =
+    "https://studio.twilio.com/v2/Flows/" +
+    `${config.flowSid}/Executions/` +
+    `${executionSid}/Context`;
+
+  const response = await fetch(
+    url,
+    {
+      headers: {
+        Authorization:
+          studioAuth(config),
+      },
+      cache: "no-store",
+      signal:
+        AbortSignal.timeout(5000),
     },
   );
 
   if (!response.ok) {
-    throw new Error("TWILIO_FUNCTION_HTTP_ERROR");
+    return null;
   }
 
-  const data: unknown = await response.json();
+  const json: unknown =
+    await response.json();
 
   if (
-    !data ||
-    typeof data !== "object" ||
-    Array.isArray(data)
+    !json ||
+    typeof json !== "object" ||
+    Array.isArray(json)
   ) {
-    throw new Error("TWILIO_INVALID_RESPONSE");
+    return null;
   }
 
-  return data as TwilioResult;
+  const context =
+    (json as {
+      context?: unknown;
+    }).context;
+
+  if (
+    !context ||
+    typeof context !== "object" ||
+    Array.isArray(context)
+  ) {
+    return null;
+  }
+
+  const widgets =
+    (context as {
+      widgets?: unknown;
+    }).widgets;
+
+  if (
+    !widgets ||
+    typeof widgets !== "object" ||
+    Array.isArray(widgets)
+  ) {
+    return null;
+  }
+
+  const widget =
+    (
+      widgets as
+        Record<string, unknown>
+    ).send_staff_tentative_yes;
+
+  if (
+    !widget ||
+    typeof widget !== "object" ||
+    Array.isArray(widget)
+  ) {
+    return null;
+  }
+
+  const outbound =
+    (widget as {
+      outbound?: unknown;
+    }).outbound;
+
+  if (
+    !outbound ||
+    typeof outbound !== "object" ||
+    Array.isArray(outbound)
+  ) {
+    return null;
+  }
+
+  const sid =
+    (outbound as {
+      Sid?: unknown;
+    }).Sid;
+
+  if (
+    typeof sid !== "string" ||
+    !MESSAGE_SID.test(sid)
+  ) {
+    return null;
+  }
+
+  return sid;
 }
 
-/**
- * Construct a trusted, service-role-only client.
- *
- * This client is never shared with the browser and is used
- * exclusively for the privileged claim/finish and outbound
- * Message SID ownership operations.
- *
- * Construct it BEFORE preparing a notification so a missing
- * key cannot leave a new, unclaimed notification behind.
- */
+// ====================================================
+// VERIFY THE ACTUAL TWILIO MESSAGE
+// ====================================================
+
+async function verifyStudioMessage(
+  config: StudioConfig,
+  messageSid: string,
+  expectedTo: string,
+  expectedBody: string,
+): Promise<boolean> {
+  const url =
+    "https://api.twilio.com/2010-04-01/" +
+    `Accounts/${config.accountSid}/` +
+    `Messages/${messageSid}.json`;
+
+  const response = await fetch(
+    url,
+    {
+      headers: {
+        Authorization:
+          studioAuth(config),
+      },
+      cache: "no-store",
+      signal:
+        AbortSignal.timeout(5000),
+    },
+  );
+
+  if (!response.ok) {
+    return false;
+  }
+
+  const json: unknown =
+    await response.json();
+
+  if (
+    !json ||
+    typeof json !== "object" ||
+    Array.isArray(json)
+  ) {
+    return false;
+  }
+
+  const message =
+    json as Partial<StudioMessage>;
+
+  return (
+    message.sid?.toLowerCase() ===
+      messageSid.toLowerCase() &&
+    message.account_sid ===
+      config.accountSid &&
+    message.from ===
+      config.restaurantPhone &&
+    message.to === expectedTo &&
+    message.body === expectedBody &&
+    typeof message.status ===
+      "string" &&
+    ![
+      "failed",
+      "undelivered",
+      "canceled",
+    ].includes(
+      message.status,
+    )
+  );
+}
+
+// ====================================================
+// POLL STUDIO CONTEXT WITHOUT RESENDING
+// ====================================================
+//
+// Studio widgets execute asynchronously.
+//
+// These are read-only checks.
+// No additional Studio execution is created.
+// ====================================================
+
+async function findVerifiedStudioSmsSid(
+  config: StudioConfig,
+  executionSid: string,
+  expectedTo: string,
+  expectedBody: string,
+): Promise<string | null> {
+  for (
+    let attempt = 0;
+    attempt < 5;
+    attempt += 1
+  ) {
+    if (attempt > 0) {
+      await new Promise<void>(
+        (resolve) =>
+          setTimeout(
+            resolve,
+            750,
+          ),
+      );
+    }
+
+    try {
+      const sid =
+        await readStudioMessageSid(
+          config,
+          executionSid,
+        );
+
+      if (
+        sid &&
+        await verifyStudioMessage(
+          config,
+          sid,
+          expectedTo,
+          expectedBody,
+        )
+      ) {
+        return sid;
+      }
+    } catch {
+      // A context lookup failure does not
+      // authorize another SMS.
+    }
+  }
+
+  return null;
+}
+
+// ====================================================
+// TRUSTED SUPABASE CLIENT
+// ====================================================
+
 function createTrustedNotificationClient() {
   const rawUrl =
     process.env.SUPABASE_URL ??
@@ -526,7 +964,10 @@ function createTrustedNotificationClient() {
     process.env.SUPABASE_SECRET_KEY ??
     process.env.SUPABASE_SERVICE_ROLE_KEY;
 
-  if (!rawUrl || !serviceKey) {
+  if (
+    !rawUrl ||
+    !serviceKey
+  ) {
     return null;
   }
 
@@ -534,9 +975,18 @@ function createTrustedNotificationClient() {
     const url = new URL(rawUrl);
 
     if (
-      (url.protocol !== "https:" &&
-        !(url.protocol === "http:" &&
-          ["localhost", "127.0.0.1"].includes(url.hostname))) ||
+      (
+        url.protocol !== "https:" &&
+        !(
+          url.protocol === "http:" &&
+          [
+            "localhost",
+            "127.0.0.1",
+          ].includes(
+            url.hostname,
+          )
+        )
+      ) ||
       !url.hostname ||
       url.username ||
       url.password
@@ -544,39 +994,45 @@ function createTrustedNotificationClient() {
       return null;
     }
 
-    return createClient(rawUrl, serviceKey, {
-      auth: {
-        persistSession: false,
-        autoRefreshToken: false,
+    return createClient(
+      rawUrl,
+      serviceKey,
+      {
+        auth: {
+          persistSession: false,
+          autoRefreshToken: false,
+        },
       },
-    });
+    );
   } catch {
     return null;
   }
 }
 
-/**
- * Register an already-accepted Twilio Message SID.
- *
- * Never call this before the notification finish RPC
- * has successfully saved the SID.
- *
- * Uses the preconfigured service-role client.
- * The staff session client is never used for registration.
- *
- * Registration failure must NEVER initiate another SMS.
- */
+// ====================================================
+// REGISTER OUTBOUND MESSAGE OWNERSHIP
+// ====================================================
+
 async function registerOutboundOwnership(
-  admin: NonNullable<ReturnType<typeof createTrustedNotificationClient>>,
+  admin: NonNullable<
+    ReturnType<
+      typeof createTrustedNotificationClient
+    >
+  >,
   reservationId: string,
   messageSid: string,
 ): Promise<OwnershipResult> {
   try {
-    const { data, error } = await admin.rpc(
+    const {
+      data,
+      error,
+    } = await admin.rpc(
       "register_reservation_message_sid_ownership",
       {
-        p_reservation_id: reservationId,
-        p_twilio_message_sid: messageSid,
+        p_reservation_id:
+          reservationId,
+        p_twilio_message_sid:
+          messageSid,
       },
     );
 
@@ -590,47 +1046,73 @@ async function registerOutboundOwnership(
       );
 
       return {
-        status: "needs_attention",
-        reason: "OWNERSHIP_RPC_FAILED",
+        status:
+          "needs_attention",
+        reason:
+          "OWNERSHIP_RPC_FAILED",
       };
     }
 
-    const result = firstRow<OwnershipRow>(data);
+    const result =
+      firstRow<OwnershipRow>(
+        data,
+      );
 
     if (
       !result ||
-      !["recorded", "duplicate"].includes(result.outcome) ||
-      typeof result.owner_reservation_id !== "string" ||
+      ![
+        "recorded",
+        "duplicate",
+      ].includes(
+        result.outcome,
+      ) ||
+      typeof result.owner_reservation_id !==
+        "string" ||
       result.owner_reservation_id.toLowerCase() !==
         reservationId.toLowerCase()
     ) {
       console.error(
         "Deposit SMS ownership response rejected.",
-        { reservationId },
+        {
+          reservationId,
+        },
       );
 
       return {
-        status: "needs_attention",
-        reason: "OWNERSHIP_RESULT_INVALID",
+        status:
+          "needs_attention",
+        reason:
+          "OWNERSHIP_RESULT_INVALID",
       };
     }
 
     return {
       status: "registered",
-      outcome: result.outcome as "recorded" | "duplicate",
+      outcome:
+        result.outcome as
+          | "recorded"
+          | "duplicate",
     };
   } catch {
     console.error(
       "Deposit SMS ownership registration exception.",
-      { reservationId },
+      {
+        reservationId,
+      },
     );
 
     return {
-      status: "needs_attention",
-      reason: "OWNERSHIP_REGISTRATION_EXCEPTION",
+      status:
+        "needs_attention",
+      reason:
+        "OWNERSHIP_REGISTRATION_EXCEPTION",
     };
   }
 }
+
+// ====================================================
+// NOTIFICATION VALIDATION
+// ====================================================
 
 function validPrepared(
   value: PreparedDecision | null,
@@ -639,9 +1121,13 @@ function validPrepared(
 ): value is PreparedDecision {
   return (
     !!value &&
-    UUID.test(value.notification_event_id) &&
-    value.notification_event_key === eventKey &&
-    value.deposit_decision === decision
+    UUID.test(
+      value.notification_event_id,
+    ) &&
+    value.notification_event_key ===
+      eventKey &&
+    value.deposit_decision ===
+      decision
   );
 }
 
@@ -651,8 +1137,12 @@ function validClaim(
 ): value is ClaimResult {
   return (
     !!value &&
-    UUID.test(value.notification_event_id) &&
-    UUID.test(value.claim_token) &&
+    UUID.test(
+      value.notification_event_id,
+    ) &&
+    UUID.test(
+      value.claim_token,
+    ) &&
     value.notification_event_id ===
       prepared.notification_event_id &&
     value.notification_event_key ===
@@ -660,15 +1150,19 @@ function validClaim(
   );
 }
 
-/**
- * The caller must authenticate and authorize staff.
- *
- * Sending is disabled until its feature flag is enabled.
- * Notification claims must be completed before ownership
- * registration is attempted.
- *
- * No automatic retry occurs after any uncertain result.
- */
+// ====================================================
+// MAIN DEPOSIT DECISION DISPATCHER
+// ====================================================
+//
+// The caller must authenticate and
+// authorize reservation staff.
+//
+// All existing reservation checks,
+// notification locks and RPCs remain.
+//
+// No automatic resend after uncertainty.
+// ====================================================
+
 export async function dispatchReservationDepositDecision(
   supabase: SupabaseClient,
   reservationId: string,
@@ -683,11 +1177,17 @@ export async function dispatchReservationDepositDecision(
     );
   }
 
-  if (!UUID.test(reservationId)) {
-    return fail("Invalid reservation ID.", 400);
+  if (
+    !UUID.test(reservationId)
+  ) {
+    return fail(
+      "Invalid reservation ID.",
+      400,
+    );
   }
 
-  const config = notificationConfig();
+  const config =
+    studioConfig();
 
   if (!config) {
     return fail(
@@ -696,11 +1196,10 @@ export async function dispatchReservationDepositDecision(
     );
   }
 
-  // The staff client remains the authorization boundary.
-  // The trusted client is needed only for claim, finish, and
-  // outbound ownership registration; fail before preparation
-  // if it cannot be constructed.
-  const admin = createTrustedNotificationClient();
+  // Preserve the staff authorization boundary.
+
+  const admin =
+    createTrustedNotificationClient();
 
   if (!admin) {
     return fail(
@@ -709,13 +1208,25 @@ export async function dispatchReservationDepositDecision(
     );
   }
 
-  let before: Reservation | null;
-  let beforeWorkflow: Workflow | null;
+  let before:
+    Reservation | null;
+
+  let beforeWorkflow:
+    Workflow | null;
 
   try {
-    [before, beforeWorkflow] = await Promise.all([
-      loadReservation(supabase, reservationId),
-      loadWorkflow(supabase, reservationId),
+    [
+      before,
+      beforeWorkflow,
+    ] = await Promise.all([
+      loadReservation(
+        supabase,
+        reservationId,
+      ),
+      loadWorkflow(
+        supabase,
+        reservationId,
+      ),
     ]);
   } catch {
     return fail(
@@ -725,15 +1236,21 @@ export async function dispatchReservationDepositDecision(
   }
 
   if (!before) {
-    return fail("Reservation not found.", 404);
+    return fail(
+      "Reservation not found.",
+      404,
+    );
   }
 
-  const decision = validateReservation(before);
+  const decision =
+    validateReservation(before);
 
   if (
     !decision ||
     !beforeWorkflow ||
-    !validWorkflow(beforeWorkflow)
+    !validWorkflow(
+      beforeWorkflow,
+    )
   ) {
     return fail(
       "Reservation is not eligible for deposit notification.",
@@ -744,11 +1261,12 @@ export async function dispatchReservationDepositDecision(
   let originalBody: string;
 
   try {
-    originalBody = buildMessage(
-      before,
-      beforeWorkflow,
-      decision,
-    );
+    originalBody =
+      buildMessage(
+        before,
+        beforeWorkflow,
+        decision,
+      );
   } catch {
     return fail(
       "Guest notification details are incomplete.",
@@ -760,7 +1278,12 @@ export async function dispatchReservationDepositDecision(
     `reservation_deposit_decision:${reservationId}`;
 
   try {
-    if (await loadNotification(supabase, eventKey)) {
+    if (
+      await loadNotification(
+        supabase,
+        eventKey,
+      )
+    ) {
       return fail(
         "A deposit-decision notification already exists. Review its status before proceeding.",
         409,
@@ -773,45 +1296,76 @@ export async function dispatchReservationDepositDecision(
     );
   }
 
-  // Prepare the decision under database row locks.
+  // Prepare under existing database row locks.
+
   const {
     data: preparedData,
     error: preparedError,
   } = await supabase.rpc(
     "prepare_reservation_deposit_decision",
-    { p_reservation_id: reservationId },
+    {
+      p_reservation_id:
+        reservationId,
+    },
   );
 
   if (preparedError) {
     return fail(
       "Deposit notification could not be prepared.",
-      preparedError.code === "42501" ? 403 :
-      preparedError.code === "22023" ? 409 : 500,
+      preparedError.code === "42501"
+        ? 403
+        : preparedError.code === "22023"
+          ? 409
+          : 500,
     );
   }
 
   const prepared =
-    firstRow<PreparedDecision>(preparedData);
+    firstRow<PreparedDecision>(
+      preparedData,
+    );
 
-  if (!validPrepared(prepared, eventKey, decision)) {
+  if (
+    !validPrepared(
+      prepared,
+      eventKey,
+      decision,
+    )
+  ) {
     return fail(
       "Prepared decision mismatch. Manual reconciliation required.",
       409,
     );
   }
 
-  // Recheck all message-relevant details before claim.
-  let current: Reservation | null;
-  let currentWorkflow: Workflow | null;
-  let event: NotificationEvent | null;
+  let current:
+    Reservation | null;
+
+  let currentWorkflow:
+    Workflow | null;
+
+  let event:
+    NotificationEvent | null;
 
   try {
-    [current, currentWorkflow, event] =
-      await Promise.all([
-        loadReservation(supabase, reservationId),
-        loadWorkflow(supabase, reservationId),
-        loadNotification(supabase, eventKey),
-      ]);
+    [
+      current,
+      currentWorkflow,
+      event,
+    ] = await Promise.all([
+      loadReservation(
+        supabase,
+        reservationId,
+      ),
+      loadWorkflow(
+        supabase,
+        reservationId,
+      ),
+      loadNotification(
+        supabase,
+        eventKey,
+      ),
+    ]);
   } catch {
     return fail(
       "Prepared notification snapshot could not be verified.",
@@ -823,16 +1377,29 @@ export async function dispatchReservationDepositDecision(
     !current ||
     !currentWorkflow ||
     !event ||
-    !equalReservation(before, current) ||
-    !equalWorkflow(beforeWorkflow, currentWorkflow) ||
-    validateReservation(current) !== decision ||
-    !validWorkflow(currentWorkflow) ||
-    event.id !== prepared.notification_event_id ||
+    !equalReservation(
+      before,
+      current,
+    ) ||
+    !equalWorkflow(
+      beforeWorkflow,
+      currentWorkflow,
+    ) ||
+    validateReservation(
+      current,
+    ) !== decision ||
+    !validWorkflow(
+      currentWorkflow,
+    ) ||
+    event.id !==
+      prepared.notification_event_id ||
     event.event_key !== eventKey ||
     event.notification_type !==
       "reservation_deposit_decision" ||
-    event.deposit_decision !== decision ||
-    event.notification_status !== "pending" ||
+    event.deposit_decision !==
+      decision ||
+    event.notification_status !==
+      "pending" ||
     event.dispatch_token !== null ||
     event.twilio_message_sid !== null
   ) {
@@ -845,11 +1412,12 @@ export async function dispatchReservationDepositDecision(
   let messageBody: string;
 
   try {
-    messageBody = buildMessage(
-      current,
-      currentWorkflow,
-      decision,
-    );
+    messageBody =
+      buildMessage(
+        current,
+        currentWorkflow,
+        decision,
+      );
   } catch {
     return fail(
       "Prepared notification message is invalid.",
@@ -857,64 +1425,110 @@ export async function dispatchReservationDepositDecision(
     );
   }
 
-  if (messageBody !== originalBody) {
+  if (
+    messageBody !== originalBody
+  ) {
     return fail(
       "Notification contents changed during preparation.",
       409,
     );
   }
 
-  // Claim exactly once before the external send.
+  // Claim exactly once before starting Studio.
+
   const {
     data: claimData,
     error: claimError,
   } = await admin.rpc(
     "claim_reservation_deposit_decision",
-    { p_reservation_id: reservationId },
+    {
+      p_reservation_id:
+        reservationId,
+    },
   );
 
   if (claimError) {
     return fail(
       "Deposit notification could not be claimed. Check its status before retrying.",
-      claimError.code === "42501" ? 403 :
-      claimError.code === "22023" ? 409 : 500,
+      claimError.code === "42501"
+        ? 403
+        : claimError.code === "22023"
+          ? 409
+          : 500,
     );
   }
 
-  const claim = firstRow<ClaimResult>(claimData);
+  const claim =
+    firstRow<ClaimResult>(
+      claimData,
+    );
 
-  if (!validClaim(claim, prepared)) {
+  if (
+    !validClaim(
+      claim,
+      prepared,
+    )
+  ) {
     return fail(
       "Notification claim could not be verified. Do not send.",
       500,
     );
   }
 
-  let twilioResult: TwilioResult | null = null;
-  let messageSid: string | null = null;
+  // ====================================================
+  // SEND THROUGH TWILIO STUDIO
+  // ====================================================
+
+  let studioExecutionSid:
+    string | null = null;
+
+  let messageSid:
+    string | null = null;
 
   try {
-    twilioResult = await sendToTwilio(
-      config,
-      eventKey,
-      current.customer_phone,
-      messageBody,
+    const execution =
+      await startDepositStudioExecution(
+        config,
+        eventKey,
+        reservationId,
+        decision,
+        current.customer_phone,
+        messageBody,
+      );
+
+    studioExecutionSid =
+      execution.sid;
+
+    // Retrieve the actual SMS SID from the widget.
+    // This does not generate another message.
+
+    messageSid =
+      await findVerifiedStudioSmsSid(
+        config,
+        execution.sid,
+        current.customer_phone,
+        messageBody,
+      );
+  } catch (error) {
+    console.error(
+      "Studio deposit execution could not be verified.",
+      {
+        reservationId,
+        category:
+          error instanceof Error
+            ? error.message
+            : "UNKNOWN_ERROR",
+      },
     );
 
-    if (
-      twilioResult.success === true &&
-      twilioResult.accepted === true &&
-      twilioResult.eventKey === eventKey &&
-      typeof twilioResult.messageSid === "string" &&
-      MESSAGE_SID.test(twilioResult.messageSid)
-    ) {
-      messageSid = twilioResult.messageSid;
-    }
-  } catch {
-    // Unknown external outcomes are never retried.
+    // Never automatically repeat
+    // the Studio execution POST.
   }
 
-  // Store Twilio acceptance or uncertain outcome.
+  // ====================================================
+  // COMPLETE EXISTING NOTIFICATION RECORD
+  // ====================================================
+
   const {
     data: finishData,
     error: finishError,
@@ -923,15 +1537,24 @@ export async function dispatchReservationDepositDecision(
     {
       p_notification_event_id:
         claim.notification_event_id,
-      p_claim_token: claim.claim_token,
-      p_result: messageSid ? "accepted" : "uncertain",
-      p_message_sid: messageSid,
+
+      p_claim_token:
+        claim.claim_token,
+
+      p_result:
+        messageSid
+          ? "accepted"
+          : "uncertain",
+
+      p_message_sid:
+        messageSid,
     },
   );
 
-  const finished = firstRow<FinishedDecision>(
-    finishData,
-  );
+  const finished =
+    firstRow<FinishedDecision>(
+      finishData,
+    );
 
   if (
     finishError ||
@@ -939,7 +1562,11 @@ export async function dispatchReservationDepositDecision(
     finished.notification_event_id !==
       claim.notification_event_id ||
     finished.notification_status !==
-      (messageSid ? "sent" : "unknown") ||
+      (
+        messageSid
+          ? "sent"
+          : "unknown"
+      ) ||
     (
       messageSid !== null &&
       (
@@ -955,7 +1582,9 @@ export async function dispatchReservationDepositDecision(
         reservationId,
         notificationEventId:
           claim.notification_event_id,
-        code: finishError?.code ?? "INVALID_RESULT",
+        code:
+          finishError?.code ??
+          "INVALID_RESULT",
       },
     );
 
@@ -970,38 +1599,39 @@ export async function dispatchReservationDepositDecision(
       {
         success: false,
         accepted: false,
-        failureCode: "TWILIO_ACCEPTANCE_UNVERIFIED",
+        failureCode:
+          "STUDIO_SMS_ACCEPTANCE_UNVERIFIED",
+        studioExecutionSid,
         error:
-          "SMS acceptance could not be verified. Automatic resend is disabled.",
+          "Studio SMS acceptance could not be verified. No automatic resend. Reconcile the Studio execution, Twilio Messages, and Supabase notification history.",
       },
       502,
     );
   }
 
   // ====================================================
-  // REGISTER ACCEPTED MESSAGE OWNERSHIP
+  // REGISTER ACTUAL TWILIO MESSAGE OWNERSHIP
   // ====================================================
-  //
-  // Twilio acceptance is already recorded in Supabase.
-  // This step is strictly for durable reservation
-  // association and conversation-history consistency.
-  //
-  // Failure here must not trigger another SMS.
 
-  const ownership = await registerOutboundOwnership(
-    admin,
-    reservationId,
-    messageSid,
-  );
+  const ownership =
+    await registerOutboundOwnership(
+      admin,
+      reservationId,
+      messageSid,
+    );
 
-  if (ownership.status === "needs_attention") {
+  if (
+    ownership.status ===
+    "needs_attention"
+  ) {
     console.error(
       "Deposit SMS accepted; ownership needs reconciliation.",
       {
         reservationId,
         notificationEventId:
           claim.notification_event_id,
-        reason: ownership.reason,
+        reason:
+          ownership.reason,
       },
     );
 
@@ -1012,13 +1642,17 @@ export async function dispatchReservationDepositDecision(
         reservationId,
         notificationEventId:
           claim.notification_event_id,
-        notificationStatus: "sent",
-        depositDecision: decision,
+        notificationStatus:
+          "sent",
+        depositDecision:
+          decision,
         messageSid,
         messageStatus:
-          twilioResult?.messageStatus ?? "unknown",
-        historyRegistration: "needs_attention",
-        historyFailureCode: ownership.reason,
+          "verified_twilio_message",
+        historyRegistration:
+          "needs_attention",
+        historyFailureCode:
+          ownership.reason,
         message:
           "Twilio accepted the SMS, but reservation history registration needs attention. Do not resend.",
       },
@@ -1032,13 +1666,17 @@ export async function dispatchReservationDepositDecision(
     reservationId,
     notificationEventId:
       claim.notification_event_id,
-    notificationStatus: "sent",
-    depositDecision: decision,
+    notificationStatus:
+      "sent",
+    depositDecision:
+      decision,
     messageSid,
     messageStatus:
-      twilioResult?.messageStatus ?? "unknown",
-    historyRegistration: "registered",
-    historyRegistrationOutcome: ownership.outcome,
+      "verified_twilio_message",
+    historyRegistration:
+      "registered",
+    historyRegistrationOutcome:
+      ownership.outcome,
     message:
       "Twilio accepted the SMS and reservation-specific message ownership was registered. Handset delivery is not yet verified.",
   });
