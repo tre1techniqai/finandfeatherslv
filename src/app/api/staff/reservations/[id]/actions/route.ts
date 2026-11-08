@@ -1,21 +1,22 @@
 import { NextResponse } from "next/server";
+import twilio from "twilio";
+import { decideArchiveStudioEligibility } from "@/lib/reservations/archive-studio-eligibility";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { isReservationStaffRole } from "@/lib/auth/require-reservation-staff";
 import { dispatchReservationConfirmation } from "@/lib/reservations/dispatch-reservation-confirmation";
 import { dispatchReservationAlternatives } from "@/lib/reservations/dispatch-reservation-alternatives";
 import { dispatchReservationDepositDecision } from "@/lib/reservations/dispatch-reservation-deposit-decision";
-
 const MAX_BODY_BYTES = 8192;
-
+const TWILIO_ACCOUNT_SID_PATTERN = /^AC[0-9a-f]{32}$/i;
+const TWILIO_FLOW_SID_PATTERN = /^FW[0-9a-f]{32}$/i;
+const TWILIO_EXECUTION_SID_PATTERN = /^FN[0-9a-f]{32}$/i;
+const E164_PATTERN = /^\+[1-9]\d{7,14}$/;
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
 const TIME_PATTERN =
   /^(0[0-9]|1[0-9]|2[0-3]):[0-5][0-9]$/;
-
 const UNSUPPORTED_CONTROLS =
   /[\u0000-\u001F\u007F-\u009F]/u;
-
 const ALLOWED_ACTIONS = [
   "approve_availability",
   "decline_availability",
@@ -28,21 +29,17 @@ const ALLOWED_ACTIONS = [
   "waive_deposit",
   "confirm_yelp_booking",
   "close_reservation",
+  "archive_reservation",
 ] as const;
-
 type ActionKey = (typeof ALLOWED_ACTIONS)[number];
-
 type RouteContext = {
   params: Promise<{ id: string }>;
 };
-
 type ActionRequest = {
   action?: unknown;
   payload?: unknown;
 };
-
 type JsonObject = Record<string, unknown>;
-
 function jsonError(message: string, status: number) {
   return NextResponse.json(
     {
@@ -57,16 +54,12 @@ function jsonError(message: string, status: number) {
     },
   );
 }
-
 function hasValidOrigin(request: Request): boolean {
   const origin = request.headers.get("origin");
-
   if (!origin) return false;
-
   try {
     const source = new URL(origin);
     const target = new URL(request.url);
-
     return (
       source.origin === target.origin &&
       (
@@ -79,7 +72,6 @@ function hasValidOrigin(request: Request): boolean {
     return false;
   }
 }
-
 function isPlainObject(value: unknown): value is JsonObject {
   return (
     value !== null &&
@@ -87,14 +79,10 @@ function isPlainObject(value: unknown): value is JsonObject {
     !Array.isArray(value)
   );
 }
-
 function isValidTime(value: unknown): value is string {
   if (typeof value !== "string") return false;
-
   if (!TIME_PATTERN.test(value)) return false;
-
   const [hours, minutes] = value.split(":").map(Number);
-
   return (
     hours >= 10 &&
     hours <= 22 &&
@@ -102,7 +90,6 @@ function isValidTime(value: unknown): value is string {
     !(hours === 22 && minutes !== 0)
   );
 }
-
 function isValidEvidence(value: unknown): value is string {
   return (
     typeof value === "string" &&
@@ -111,7 +98,6 @@ function isValidEvidence(value: unknown): value is string {
     !UNSUPPORTED_CONTROLS.test(value)
   );
 }
-
 function isValidChannel(value: unknown): value is string {
   return (
     value === "sms" ||
@@ -120,7 +106,6 @@ function isValidChannel(value: unknown): value is string {
     value === "in_person"
   );
 }
-
 function validatePayload(
   action: ActionKey,
   payload: JsonObject,
@@ -130,7 +115,37 @@ function validatePayload(
     case "decline_availability":
     case "close_reservation":
       return Object.keys(payload).length === 0;
-
+    case "archive_reservation": {
+      const keys = Object.keys(payload);
+      if (
+        payload.outcome !== "seated" &&
+        payload.outcome !== "no_show" &&
+        payload.outcome !== "canceled"
+      ) {
+        return false;
+      }
+      if (payload.outcome !== "canceled") {
+        return (
+          keys.length === 1 &&
+          keys[0] === "outcome"
+        );
+      }
+      return (
+        keys.length === 2 &&
+        Object.prototype.hasOwnProperty.call(
+          payload,
+          "outcome",
+        ) &&
+        Object.prototype.hasOwnProperty.call(
+          payload,
+          "yelp_cancellation_acknowledged",
+        ) &&
+        typeof payload.yelp_cancellation_acknowledged === "boolean"
+      ) || (
+        keys.length === 1 &&
+        keys[0] === "outcome"
+      );
+    }
     case "propose_alternatives": {
       if (
         Object.keys(payload).length !== 1 ||
@@ -140,18 +155,14 @@ function validatePayload(
       ) {
         return false;
       }
-
       if (!payload.times.every(isValidTime)) {
         return false;
       }
-
       return new Set(payload.times).size === payload.times.length;
     }
-
     case "send_alternatives":
     case "send_deposit_decision":
       return Object.keys(payload).length === 0;
-
     case "record_alternative_offer":
       return (
         Object.keys(payload).length === 3 &&
@@ -159,7 +170,6 @@ function validatePayload(
         isValidChannel(payload.offer_channel) &&
         isValidEvidence(payload.offer_evidence)
       );
-
     case "accept_alternative":
       return (
         Object.keys(payload).length === 4 &&
@@ -168,13 +178,11 @@ function validatePayload(
         isValidChannel(payload.acceptance_channel) &&
         isValidEvidence(payload.acceptance_evidence)
       );
-
     case "verify_deposit":
       return (
         Object.keys(payload).length === 1 &&
         payload.payment_independently_verified === true
       );
-
     case "waive_deposit":
       return (
         Object.keys(payload).length === 1 &&
@@ -184,16 +192,12 @@ function validatePayload(
         payload.waiver_reason.length <= 500 &&
         !UNSUPPORTED_CONTROLS.test(payload.waiver_reason)
       );
-
     case "confirm_yelp_booking": {
       const keys = Object.keys(payload);
-
       if (keys.length === 0) return true;
-
       if (keys.length === 1) {
         return payload.deposit_link_sent === true;
       }
-
       return (
         keys.length === 2 &&
         Object.prototype.hasOwnProperty.call(
@@ -212,12 +216,10 @@ function validatePayload(
         !UNSUPPORTED_CONTROLS.test(payload.waiver_reason)
       );
     }
-
     default:
       return false;
   }
 }
-
 async function readLimitedJson(
   request: Request,
 ): Promise<
@@ -225,10 +227,8 @@ async function readLimitedJson(
   | { success: false; status: number; message: string }
 > {
   const declaredLength = request.headers.get("content-length");
-
   if (declaredLength !== null) {
     const length = Number(declaredLength);
-
     if (!Number.isSafeInteger(length) || length < 0) {
       return {
         success: false,
@@ -236,7 +236,6 @@ async function readLimitedJson(
         message: "Invalid Content-Length header.",
       };
     }
-
     if (length > MAX_BODY_BYTES) {
       return {
         success: false,
@@ -245,7 +244,6 @@ async function readLimitedJson(
       };
     }
   }
-
   if (!request.body) {
     return {
       success: false,
@@ -253,46 +251,35 @@ async function readLimitedJson(
       message: "JSON request body required.",
     };
   }
-
   const reader = request.body.getReader();
   const chunks: Uint8Array[] = [];
   let totalBytes = 0;
-
   try {
     while (true) {
       const { done, value } = await reader.read();
-
       if (done) break;
-
       totalBytes += value.byteLength;
-
       if (totalBytes > MAX_BODY_BYTES) {
         await reader.cancel();
-
         return {
           success: false,
           status: 413,
           message: "Request body exceeds 8 KB.",
         };
       }
-
       chunks.push(value);
     }
-
     const bytes = new Uint8Array(totalBytes);
     let offset = 0;
-
     for (const chunk of chunks) {
       bytes.set(chunk, offset);
       offset += chunk.byteLength;
     }
-
     const parsed: unknown = JSON.parse(
       new TextDecoder("utf-8", {
         fatal: true,
       }).decode(bytes),
     );
-
     if (!isPlainObject(parsed)) {
       return {
         success: false,
@@ -300,7 +287,6 @@ async function readLimitedJson(
         message: "Invalid JSON object.",
       };
     }
-
     return {
       success: true,
       body: parsed as ActionRequest,
@@ -315,7 +301,6 @@ async function readLimitedJson(
     reader.releaseLock();
   }
 }
-
 export async function POST(
   request: Request,
   context: RouteContext,
@@ -328,40 +313,31 @@ export async function POST(
       503,
     );
   }
-
   if (!hasValidOrigin(request)) {
     return jsonError(
       "Request origin is not authorized.",
       403,
     );
   }
-
   const { id } = await context.params;
-
   if (!UUID_PATTERN.test(id)) {
     return jsonError("Invalid reservation ID.", 400);
   }
-
   const supabase = await createSupabaseServerClient();
-
   const {
     data: claimsData,
     error: claimsError,
   } = await supabase.auth.getClaims();
-
   const userId = claimsData?.claims?.sub;
-
   if (claimsError || !userId) {
     return jsonError("Authentication required.", 401);
   }
-
   const { data: staffRole, error: roleError } = await supabase
     .from("staff_roles")
     .select("role, is_active")
     .eq("user_id", userId)
     .eq("is_active", true)
     .maybeSingle();
-
   if (
     roleError ||
     !staffRole ||
@@ -373,25 +349,19 @@ export async function POST(
       403,
     );
   }
-
   const contentType =
     request.headers.get("content-type") ?? "";
-
   if (!/^application\/json(?:\s*;|$)/i.test(contentType)) {
     return jsonError(
       "JSON request body required.",
       415,
     );
   }
-
   const parsed = await readLimitedJson(request);
-
   if (!parsed.success) {
     return jsonError(parsed.message, parsed.status);
   }
-
   const { action, payload } = parsed.body;
-
   if (
     typeof action !== "string" ||
     !ALLOWED_ACTIONS.includes(action as ActionKey)
@@ -401,12 +371,9 @@ export async function POST(
       400,
     );
   }
-
   const validatedAction = action as ActionKey;
-
   const validatedPayload =
     payload === undefined ? {} : payload;
-
   if (
     !isPlainObject(validatedPayload) ||
     !validatePayload(validatedAction, validatedPayload)
@@ -416,7 +383,6 @@ export async function POST(
       400,
     );
   }
-
   // Manager-only authorization is enforced independently here
   // and in the database RPC.
   if (
@@ -430,18 +396,175 @@ export async function POST(
       403,
     );
   }
-
+  if (validatedAction === "archive_reservation") {
+    if (
+      process.env.RESERVATION_ARCHIVE_ENABLED !== "true"
+    ) {
+      return jsonError(
+        "Reservation archiving is not yet enabled.",
+        503,
+      );
+    }
+    // Fail closed unless the target reservation's own Studio execution
+    // is verified to have ended. Never infer ownership from the phone alone.
+    const { data: reservation, error: reservationError } =
+      await supabase
+        .from("reservation_requests")
+        .select("id, customer_phone, twilio_execution_sid, request_status")
+        .eq("id", id)
+        .maybeSingle();
+    if (reservationError) {
+      console.error("Archive Studio preflight reservation lookup failed:", {
+        reservationId: id,
+        code: reservationError.code,
+      });
+      return jsonError("Unable to verify reservation Studio status.", 503);
+    }
+    if (!reservation) {
+      return jsonError("Reservation not found.", 404);
+    }
+    if (reservation.request_status === "closed") {
+      return jsonError("Reservation is already archived.", 409);
+    }
+    if (
+      reservation.id !== id ||
+      typeof reservation.customer_phone !== "string" ||
+      !E164_PATTERN.test(reservation.customer_phone) ||
+      typeof reservation.twilio_execution_sid !== "string" ||
+      !TWILIO_EXECUTION_SID_PATTERN.test(reservation.twilio_execution_sid)
+    ) {
+      return jsonError(
+        "Reservation Studio execution identity cannot be verified.",
+        409,
+      );
+    }
+    const accountSid = process.env.TWILIO_ACCOUNT_SID;
+    const authToken = process.env.TWILIO_AUTH_TOKEN;
+    const flowSid = process.env.TWILIO_STUDIO_FLOW_SID;
+    if (
+      !accountSid ||
+      !TWILIO_ACCOUNT_SID_PATTERN.test(accountSid) ||
+      !authToken ||
+      !flowSid ||
+      !TWILIO_FLOW_SID_PATTERN.test(flowSid)
+    ) {
+      return jsonError("Studio execution verification is not configured.", 503);
+    }
+    let execution;
+    try {
+      const client = twilio(accountSid, authToken);
+      execution = await client.studio.v2
+        .flows(flowSid)
+        .executions(reservation.twilio_execution_sid)
+        .fetch();
+    } catch (caught) {
+      console.error("Archive Studio execution verification failed:", {
+        reservationId: id,
+        errorName: caught instanceof Error ? caught.name : "UnknownError",
+      });
+      return jsonError(
+        "Unable to verify that the reservation's Studio execution has ended.",
+        503,
+      );
+    }
+    const studioDecision = decideArchiveStudioEligibility({
+      expectedExecutionSid: reservation.twilio_execution_sid,
+      expectedFlowSid: flowSid,
+      expectedGuestPhone: reservation.customer_phone,
+      execution,
+    });
+    if (!studioDecision.eligible) {
+      return jsonError(
+        studioDecision.reason === "EXECUTION_NOT_ENDED"
+          ? "Reservation cannot be archived until its Studio execution has ended and been verified."
+          : "Studio execution identity or availability could not be verified for this reservation.",
+        409,
+      );
+    }
+    // The archive RPC performs authoritative, locked reservation/SMS/
+    // notification checks. This external preflight is not an atomic Studio fence.
+    const { data: archiveData, error: archiveError } =
+      await supabase.rpc("archive_reservation", {
+        p_reservation_id: id,
+        p_outcome: validatedPayload.outcome as string,
+        p_yelp_cancellation_acknowledged:
+          validatedPayload.yelp_cancellation_acknowledged === true,
+      });
+    if (archiveError) {
+      if (archiveError.code === "42501") {
+        return jsonError(
+          "Reservation staff authorization required.",
+          403,
+        );
+      }
+      if (archiveError.code === "P0002") {
+        return jsonError(
+          "Reservation not found.",
+          404,
+        );
+      }
+      if (archiveError.code === "22023") {
+        return jsonError(
+          "Archiving was rejected. Check the reservation status, selected outcome, and Yelp cancellation acknowledgment.",
+          409,
+        );
+      }
+      if (archiveError.code === "55000") {
+        return jsonError(
+          "An unresolved SMS or notification dispatch prevents archiving. Reconcile messaging activity before retrying.",
+          409,
+        );
+      }
+      if (archiveError.code === "54000") {
+        return jsonError(
+          "Reservation activity limit reached.",
+          409,
+        );
+      }
+      console.error("Reservation archive failed:", {
+        reservationId: id,
+        code: archiveError.code,
+      });
+      return jsonError(
+        "Unable to archive reservation.",
+        500,
+      );
+    }
+    const archived = Array.isArray(archiveData)
+      ? archiveData[0]
+      : archiveData;
+    if (
+      !archived ||
+      archived.reservation_id !== id ||
+      archived.archived_status !== "closed" ||
+      archived.archive_outcome !== validatedPayload.outcome
+    ) {
+      return jsonError(
+        "Archive result could not be verified. Review reservation status before trying again.",
+        500,
+      );
+    }
+    return NextResponse.json(
+      {
+        success: true,
+        archive: archived,
+      },
+      {
+        headers: {
+          "Cache-Control": "no-store",
+        },
+      },
+    );
+  }
   if (validatedAction === "send_alternatives") {
     return dispatchReservationAlternatives(supabase, id);
   }
-
   // Send the separate deposit-decision SMS only on explicit staff action.
   // The dispatcher enforces its own feature flag, eligibility checks,
   // notification claim lifecycle, and no-automatic-resend policy.
   if (validatedAction === "send_deposit_decision") {
     return dispatchReservationDepositDecision(supabase, id);
   }
-
   const { data, error } = await supabase.rpc(
     "apply_reservation_staff_action",
     {
@@ -450,7 +573,6 @@ export async function POST(
       p_payload: validatedPayload,
     },
   );
-
   if (error) {
     if (error.code === "42501") {
       return jsonError(
@@ -458,47 +580,39 @@ export async function POST(
         403,
       );
     }
-
     if (error.code === "P0002") {
       return jsonError("Reservation not found.", 404);
     }
-
     if (error.code === "22023") {
       return jsonError(
         "Reservation action rejected. Check the reservation's current status and required information.",
         409,
       );
     }
-
     if (error.code === "54000") {
       return jsonError(
         "Reservation activity limit reached. Contact an administrator.",
         409,
       );
     }
-
     console.error("Reservation staff action failed:", {
       code: error.code,
       message: error.message,
       action: validatedAction,
       reservationId: id,
     });
-
     return jsonError(
       "Unable to process reservation action.",
       500,
     );
   }
-
   const result = Array.isArray(data) ? data[0] : data;
-
   if (!result) {
     return jsonError(
       "Reservation action returned no result.",
       500,
     );
   }
-
   // An approved waiver is saved before notification dispatch.
   // SMS failure must never be reported as waiver-approval failure.
   if (validatedAction === "waive_deposit") {
@@ -509,22 +623,18 @@ export async function POST(
           id,
           "waiver",
         );
-
       const rawDispatchResult: unknown =
         await dispatchResponse.json();
-
       const dispatchResult =
         rawDispatchResult !== null &&
         typeof rawDispatchResult === "object" &&
         !Array.isArray(rawDispatchResult)
           ? (rawDispatchResult as Record<string, unknown>)
           : {};
-
       const accepted =
         dispatchResponse.ok &&
         dispatchResult.success === true &&
         dispatchResult.accepted === true;
-
       if (!accepted) {
         console.error(
           "Automatic courtesy-waiver SMS not verified:",
@@ -538,7 +648,6 @@ export async function POST(
           },
         );
       }
-
       return NextResponse.json(
         {
           success: true,
@@ -577,7 +686,6 @@ export async function POST(
               : "UNKNOWN_ERROR",
         },
       );
-
       return NextResponse.json(
         {
           success: true,
@@ -596,7 +704,6 @@ export async function POST(
       );
     }
   }
-
   // Other non-confirmation actions retain existing behavior.
   // Final Yelp confirmation retains its existing SMS dispatch.
   if (validatedAction !== "confirm_yelp_booking") {
@@ -605,26 +712,21 @@ export async function POST(
       { headers: { "Cache-Control": "no-store" } },
     );
   }
-
   try {
     const dispatchResponse =
       await dispatchReservationConfirmation(supabase, id);
-
     const rawDispatchResult: unknown =
       await dispatchResponse.json();
-
     const dispatchResult =
       rawDispatchResult !== null &&
       typeof rawDispatchResult === "object" &&
       !Array.isArray(rawDispatchResult)
         ? (rawDispatchResult as Record<string, unknown>)
         : {};
-
     const accepted =
       dispatchResponse.ok &&
       dispatchResult.success === true &&
       dispatchResult.accepted === true;
-
     if (!accepted) {
       console.error(
         "Automatic guest confirmation not verified:",
@@ -638,7 +740,6 @@ export async function POST(
         },
       );
     }
-
     return NextResponse.json(
       {
         success: true,
@@ -675,7 +776,6 @@ export async function POST(
             : "UnknownError",
       },
     );
-
     return NextResponse.json(
       {
         success: true,

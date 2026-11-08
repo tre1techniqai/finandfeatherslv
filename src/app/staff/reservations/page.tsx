@@ -20,6 +20,13 @@ type ReservationStatus =
   | "closed";
 
 
+type ArchiveOutcome =
+  | "seated"
+  | "no_show"
+  | "canceled"
+  | "unspecified"
+  | "unavailable";
+
 type QueueFilter = ReservationStatus | "all" | "queue";
 type SortOrder = "newest" | "oldest";
 type PageSize = 10 | 20 | 50 | 100;
@@ -177,7 +184,7 @@ function StatusBadge({
     <span
       className={`shrink-0 rounded-full border px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide ${statusStyles[status]}`}
     >
-      {status}
+      {status === "closed" ? "ARCHIVED" : status}
     </span>
   );
 }
@@ -217,8 +224,10 @@ function SummaryCard({
 
 function ReservationRow({
   reservation,
+  archiveOutcome = "unspecified",
 }: {
   reservation: ReservationRequest;
+  archiveOutcome?: ArchiveOutcome;
 }) {
   const status = statusOf(reservation);
 
@@ -241,7 +250,23 @@ function ReservationRow({
           )}
         </h3>
 
-        <StatusBadge status={status} />
+        <div className="flex shrink-0 flex-col items-end gap-1">
+          <StatusBadge status={status} />
+
+          {status === "closed" && (
+            <span className="text-right text-[11px] font-semibold text-zinc-300">
+              {archiveOutcome === "seated"
+                ? "Seated"
+                : archiveOutcome === "no_show"
+                  ? "No-Show"
+                  : archiveOutcome === "canceled"
+                    ? "Canceled"
+                    : archiveOutcome === "unavailable"
+                      ? "Status Unavailable"
+                      : "Unspecified"}
+            </span>
+          )}
+        </div>
       </div>
 
       <p className="mt-2 text-xs text-zinc-300 sm:text-sm">
@@ -284,10 +309,12 @@ function ReservationRow({
         </div>
 
         <div className="flex shrink-0 items-center gap-8 sm:gap-12">
-          {(status === "pending" || status === "incomplete" || status === "unvalidated") && (
+          {status !== "closed" && (
             <CloseReservationButton
               reservationId={reservation.id}
               guestName={reservation.customer_name}
+              isConfirmed={status === "confirmed"}
+              enabled={process.env.RESERVATION_ARCHIVE_ENABLED === "true"}
             />
           )}
         <Link
@@ -635,6 +662,81 @@ const selectedStatus: QueueFilter =
   const reservations =
     (data ?? []) as ReservationRequest[];
 
+  // Read only the workflow logs needed for archived
+  // reservations on this displayed page.
+  const archivedIds = reservations
+    .filter((reservation) => reservation.request_status === "closed")
+    .map((reservation) => reservation.id);
+
+  const archiveOutcomeById = new Map<string, ArchiveOutcome>();
+  let archiveOutcomesUnavailable = false;
+
+  if (archivedIds.length > 0) {
+    const {
+      data: archiveWorkflows,
+      error: archiveError,
+    } = await supabase
+      .from("reservation_staff_workflows")
+      .select("reservation_request_id, activity_log")
+      .in("reservation_request_id", archivedIds);
+
+    if (archiveError) {
+      archiveOutcomesUnavailable = true;
+      console.error("Archive outcome lookup failed:", {
+        code: archiveError.code,
+      });
+    } else {
+      for (const workflow of archiveWorkflows ?? []) {
+        const log: unknown = workflow.activity_log;
+
+        if (!Array.isArray(log)) {
+          archiveOutcomeById.set(
+            workflow.reservation_request_id,
+            "unavailable",
+          );
+          continue;
+        }
+
+        let outcome: ArchiveOutcome = "unspecified";
+
+        for (let index = log.length - 1; index >= 0; index--) {
+          const entry: unknown = log[index];
+
+          if (
+            entry === null ||
+            typeof entry !== "object" ||
+            Array.isArray(entry)
+          ) {
+            continue;
+          }
+
+          const event = entry as Record<string, unknown>;
+
+          if (event.action !== "archive_reservation") {
+            continue;
+          }
+
+          if (
+            event.archive_outcome === "seated" ||
+            event.archive_outcome === "no_show" ||
+            event.archive_outcome === "canceled"
+          ) {
+            outcome = event.archive_outcome;
+          } else {
+            outcome = "unavailable";
+          }
+
+          break;
+        }
+
+        archiveOutcomeById.set(
+          workflow.reservation_request_id,
+          outcome,
+        );
+      }
+    }
+  }
+
   const total = count ?? 0;
   const pages = Math.max(1, Math.ceil(total / size));
 
@@ -814,8 +916,10 @@ const selectedStatus: QueueFilter =
             <SummaryCard
               key={status}
               label={
-                status.charAt(0).toUpperCase() +
-                status.slice(1)
+                status === "closed"
+                  ? "Archived"
+                  : status.charAt(0).toUpperCase() +
+                    status.slice(1)
               }
               count={counts[status] ?? 0}
               status={status}
@@ -930,8 +1034,10 @@ const selectedStatus: QueueFilter =
                       ? "Active Queue"
                       : status === "all"
                         ? "All statuses"
-                        : status.charAt(0).toUpperCase() +
-                          status.slice(1)}
+                        : status === "closed"
+                          ? "Archived"
+                          : status.charAt(0).toUpperCase() +
+                            status.slice(1)}
                     </option>
                   ))}
                 </select>
@@ -1044,6 +1150,14 @@ const selectedStatus: QueueFilter =
                 <ReservationRow
                   key={reservation.id}
                   reservation={reservation}
+                  archiveOutcome={
+                    reservation.request_status === "closed"
+                      ? archiveOutcomesUnavailable
+                        ? "unavailable"
+                        : archiveOutcomeById.get(reservation.id) ??
+                          "unspecified"
+                      : undefined
+                  }
                 />
               ))}
             </div>
