@@ -154,6 +154,10 @@ function buildConfirmationMessage(
     "",
     "In the meantime, feel free to browse our menu:",
     "https://finandfeatherslv.live/menu",
+    "",
+    "Look out for an automated message from our booking app, asking you to confirm your reservation.",
+    "",
+    "FYI: We are a 21 AND OVER ONLY establishment after 9PM. Dress Code is strictly enforced - NO PLAIN WHITE T-SHIRTS, NO BACKPACKS. Once you have been seated, there is a 15min grace period to hold tables for your entire party. After 15mins, tables that are not occupied by your party will NOT be held. If for some reason your party count changes, please notify us in advance.",
   ].join("\n");
 
   if (message.length > MAX_MESSAGE_LENGTH) {
