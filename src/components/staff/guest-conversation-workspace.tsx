@@ -63,14 +63,40 @@ type Props = {
   reservationId: string;
 };
 
+type ActiveIntervention = {
+  id: string;
+  reservation_request_id: string;
+  conversation_id: string;
+  intervention_type: string;
+  status: "draft" | "awaiting_guest" | "staff_review";
+  mode_version_at_start: number;
+  initiated_by: string;
+  assigned_to: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+type InterventionPanelProps = {
+  reservationId: string;
+  conversationId: string | null | undefined;
+  modeVersion: number | null | undefined;
+  staffModeVerified: boolean;
+  sharedLoading: boolean;
+  joining: boolean;
+  resuming: boolean;
+  onResumeBlockedChange: (blocked: boolean) => void;
+};
+
 const PAGE_SIZE = 10;
 const MAX_MESSAGE_LENGTH = 1600;
 const POLL_INTERVAL_MS = 8000;
+const FULL_VERIFICATION_INTERVAL_MS = 60_000;
 
 const UUID =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 const MESSAGE_SID = /^SM[0-9a-f]{32}$/i;
+const FINGERPRINT = /^[0-9a-f]{64}$/;
 
 function messageTimestamp(
   message: ConversationMessage,
@@ -341,6 +367,286 @@ function errorDetail(
   return fallback;
 }
 
+/**
+ * A separate, reservation-scoped staff intervention entry point.
+ * This panel never sends SMS or changes reservation availability.
+ * The server and database remain authoritative for ownership.
+ */
+function StaffInterventionPanel({
+  reservationId,
+  conversationId,
+  modeVersion,
+  staffModeVerified,
+  sharedLoading,
+  joining,
+  resuming,
+  onResumeBlockedChange,
+}: InterventionPanelProps) {
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [message, setMessage] = useState("");
+  const [active, setActive] = useState<ActiveIntervention | null>(null);
+  const [starting, setStarting] = useState(false);
+  const startGuardRef = useRef(false);
+  // Keep a request key across retries, including uncertain network outcomes.
+  const pendingRequestKeyRef = useRef<string | null>(null);
+
+  const loadActive = useCallback(async (signal?: AbortSignal) => {
+    onResumeBlockedChange(true);
+    setLoading(true);
+    setError("");
+
+    try {
+      const response = await fetch(
+        `/api/staff/reservations/${encodeURIComponent(reservationId)}/interventions/active`,
+        {
+          method: "GET",
+          credentials: "same-origin",
+          cache: "no-store",
+          signal,
+        },
+      );
+      const payload: unknown = await response.json();
+
+      if (
+        !response.ok ||
+        !payload ||
+        typeof payload !== "object" ||
+        Array.isArray(payload)
+      ) {
+        throw new Error(errorDetail(payload, "Unable to check staff interventions."));
+      }
+
+      const result = payload as Record<string, unknown>;
+      if (
+        result.success !== true ||
+        result.reservationId !== reservationId ||
+        typeof result.hasActiveIntervention !== "boolean"
+      ) {
+        throw new Error("The intervention status response could not be verified.");
+      }
+
+      const row = result.intervention;
+      if (result.hasActiveIntervention) {
+        if (
+          !row ||
+          typeof row !== "object" ||
+          Array.isArray(row)
+        ) {
+          throw new Error("The active intervention record is invalid.");
+        }
+        const intervention = row as ActiveIntervention;
+        if (
+          !UUID.test(intervention.id) ||
+          intervention.reservation_request_id !== reservationId ||
+          !UUID.test(intervention.conversation_id) ||
+          intervention.intervention_type !== "revised_availability" ||
+          !["draft", "awaiting_guest", "staff_review"].includes(intervention.status)
+        ) {
+          throw new Error("Intervention state requires staff review.");
+        }
+        if (signal?.aborted) return;
+        setActive(intervention);
+        pendingRequestKeyRef.current = null;
+        onResumeBlockedChange(true);
+      } else {
+        if (row !== null) {
+          throw new Error("The intervention lookup returned inconsistent results.");
+        }
+        if (signal?.aborted) return;
+        setActive(null);
+        // A successful start request awaiting reconciliation must not
+        // silently clear the local block on automation handback.
+        onResumeBlockedChange(pendingRequestKeyRef.current !== null);
+      }
+    } catch (caught) {
+      if (signal?.aborted) return;
+      setError(
+        caught instanceof Error
+          ? caught.message
+          : "Unable to verify staff interventions.",
+      );
+      onResumeBlockedChange(true);
+    } finally {
+      if (!signal?.aborted) setLoading(false);
+    }
+  }, [reservationId, onResumeBlockedChange]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    void loadActive(controller.signal);
+    return () => {
+      controller.abort();
+      onResumeBlockedChange(true);
+    };
+  }, [loadActive, conversationId, modeVersion, onResumeBlockedChange]);
+
+  const canStart =
+    !loading &&
+    !error &&
+    !starting &&
+    !joining &&
+    !resuming &&
+    !sharedLoading &&
+    active === null &&
+    staffModeVerified &&
+    typeof conversationId === "string" &&
+    UUID.test(conversationId) &&
+    typeof modeVersion === "number" &&
+    Number.isSafeInteger(modeVersion) &&
+    modeVersion >= 1;
+
+  async function startIntervention() {
+    if (!canStart || startGuardRef.current || !conversationId || !modeVersion) {
+      return;
+    }
+
+    const requestKey = pendingRequestKeyRef.current ?? crypto.randomUUID();
+    pendingRequestKeyRef.current = requestKey;
+    startGuardRef.current = true;
+    onResumeBlockedChange(true);
+    setStarting(true);
+    setMessage("");
+    setError("");
+
+    try {
+      const response = await fetch(
+        `/api/staff/reservations/${encodeURIComponent(reservationId)}/interventions/start`,
+        {
+          method: "POST",
+          credentials: "same-origin",
+          cache: "no-store",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            conversationId,
+            expectedModeVersion: modeVersion,
+            requestKey,
+          }),
+        },
+      );
+      const payload: unknown = await response.json();
+      if (
+        !response.ok ||
+        !payload ||
+        typeof payload !== "object" ||
+        Array.isArray(payload)
+      ) {
+        throw new Error(errorDetail(payload, "Unable to start the intervention."));
+      }
+      const result = payload as Record<string, unknown>;
+      if (
+        result.success !== true ||
+        !UUID.test(String(result.interventionId ?? "")) ||
+        result.smsSent !== false
+      ) {
+        throw new Error("The intervention start could not be verified.");
+      }
+      setMessage("Staff intervention created. No SMS has been sent. Revised time options are not yet enabled.");
+    } catch (caught) {
+      setError(
+        caught instanceof Error
+          ? caught.message
+          : "Start outcome is uncertain. Review the active intervention before retrying.",
+      );
+    } finally {
+      startGuardRef.current = false;
+      setStarting(false);
+      await loadActive();
+    }
+  }
+
+  const statusLabel = active?.status === "draft"
+    ? "Draft"
+    : active?.status === "awaiting_guest"
+      ? "Awaiting Guest"
+      : active?.status === "staff_review"
+        ? "Staff Review"
+        : "";
+
+  return (
+    <section
+      aria-labelledby="staff-intervention-heading"
+      className="rounded-xl border border-white/15 bg-zinc-950 p-4 sm:p-5"
+    >
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h3 id="staff-intervention-heading" className="text-lg font-bold">
+            Staff Intervention
+          </h3>
+          <p className="mt-1 text-sm text-zinc-400">
+            Revised availability is handled separately from automated alternate-time offers.
+          </p>
+        </div>
+        {active && (
+          <span className="rounded-full border border-amber-500/40 px-3 py-1 text-xs font-semibold text-amber-200">
+            {statusLabel}
+          </span>
+        )}
+      </div>
+
+      {loading ? (
+        <p role="status" className="mt-4 text-sm text-zinc-300">
+          Checking active interventions...
+        </p>
+      ) : active ? (
+        <div className="mt-4 rounded-lg border border-amber-500/30 bg-amber-950/15 p-3 text-sm leading-6 text-amber-100">
+          <p className="font-semibold">REVISE TIME OPTIONS intervention is active.</p>
+          <p>Automation handback is blocked until this intervention is resolved or canceled.</p>
+          <p className="mt-2 text-xs text-amber-200">
+            Revised offers and resolution controls are not enabled yet. Staff can continue using direct guest messaging.
+          </p>
+        </div>
+      ) : (
+        <p className="mt-4 text-sm text-zinc-300">
+          {staffModeVerified
+            ? "Start a new staff-managed revised availability intervention. This action does not send SMS."
+            : "JOIN CONVERSATION above to verify staff control before revising available times."}
+        </p>
+      )}
+
+      {!active && (
+        <button
+          type="button"
+          disabled={!canStart}
+          aria-disabled={!canStart}
+          onClick={() => { void startIntervention(); }}
+          className="mt-4 min-h-11 rounded-lg bg-[#ea1b24] px-5 py-3 text-sm font-bold text-white transition hover:bg-red-700 disabled:cursor-not-allowed disabled:bg-zinc-800 disabled:text-zinc-400"
+        >
+          {starting ? "STARTING INTERVENTION..." : "REVISE TIME OPTIONS"}
+        </button>
+      )}
+
+      {active && (
+        <p className="mt-3 text-xs text-zinc-400">
+          Intervention ID: <span className="break-all font-mono">{active.id}</span>
+        </p>
+      )}
+
+      {message && (
+        <p role="status" className="mt-3 text-sm text-emerald-200">{message}</p>
+      )}
+      {error && (
+        <div role="alert" className="mt-3 space-y-2 text-sm text-red-200">
+          <p>{error}</p>
+          <button
+            type="button"
+            disabled={starting || loading}
+            onClick={() => { void loadActive(); }}
+            className="font-semibold underline underline-offset-4 disabled:opacity-50"
+          >
+            Recheck intervention status
+          </button>
+        </div>
+      )}
+      {!error && !loading && !active && pendingRequestKeyRef.current && (
+        <p role="status" className="mt-3 text-xs text-amber-200">
+          An earlier start attempt may be pending. Automation handback remains blocked locally until reconciled.
+        </p>
+      )}
+    </section>
+  );
+}
+
 export default function GuestConversationWorkspace({
   reservationId,
 }: Props) {
@@ -389,6 +695,12 @@ export default function GuestConversationWorkspace({
   const pollGuardRef =
     useRef(false);
 
+  const syncFingerprintRef =
+    useRef<string | null>(null);
+
+  const lastFullVerificationRef =
+    useRef(0);
+
   const mountedRef =
     useRef(false);
 
@@ -406,6 +718,14 @@ export default function GuestConversationWorkspace({
 
   const shouldStickToBottomRef =
     useRef(false);
+
+  const [interventionResumeBlocked, setInterventionResumeBlocked] =
+    useState(true);
+
+  const handleInterventionResumeBlocked = useCallback(
+    (blocked: boolean) => setInterventionResumeBlocked(blocked),
+    [],
+  );
 
   const [sharedLoading, setSharedLoading] =
     useState(true);
@@ -541,18 +861,20 @@ export default function GuestConversationWorkspace({
   }, [loadSharedState]);
 
   const historyUrl = useCallback(
-    (cursor?: string | null) => {
+    (cursor: string | null, sync = false) => {
       const base =
         `/api/staff/reservations/` +
         `${encodeURIComponent(reservationId)}` +
         `/conversation/scoped-history`;
 
-      if (!cursor) return base;
+      if (cursor) {
+        return (
+          `${base}?cursor=` +
+          encodeURIComponent(cursor)
+        );
+      }
 
-      return (
-        `${base}?cursor=` +
-        encodeURIComponent(cursor)
-      );
+      return sync ? `${base}?sync=1` : base;
     },
     [reservationId],
   );
@@ -561,9 +883,10 @@ export default function GuestConversationWorkspace({
     async (
       cursor: string | null,
       signal: AbortSignal,
+      sync = false,
     ) => {
       const response = await fetch(
-        historyUrl(cursor),
+        historyUrl(cursor, sync),
         {
           method: "GET",
           credentials: "same-origin",
@@ -592,8 +915,63 @@ export default function GuestConversationWorkspace({
     [historyUrl, reservationId],
   );
 
+  // This endpoint is an invalidation hint, not an ownership proof.
+  // Only scoped-history is allowed to supply displayable SMS bodies.
+  const checkForChanges = useCallback(
+    async (signal: AbortSignal) => {
+      const base =
+        `/api/staff/reservations/` +
+        `${encodeURIComponent(reservationId)}` +
+        `/conversation/sync-check`;
+
+      const fingerprint = syncFingerprintRef.current;
+      const url = fingerprint
+        ? `${base}?fingerprint=${fingerprint}`
+        : base;
+
+      const response = await fetch(url, {
+        method: "GET",
+        credentials: "same-origin",
+        cache: "no-store",
+        signal,
+      });
+
+      const payload: unknown = await response.json();
+
+      if (
+        !response.ok ||
+        !payload ||
+        typeof payload !== "object" ||
+        Array.isArray(payload)
+      ) {
+        throw new Error(
+          errorDetail(payload, "Unable to check for message updates."),
+        );
+      }
+
+      const result = payload as Record<string, unknown>;
+      if (
+        result.success !== true ||
+        result.reservationId !== reservationId ||
+        typeof result.changed !== "boolean" ||
+        typeof result.fingerprint !== "string" ||
+        !FINGERPRINT.test(result.fingerprint)
+      ) {
+        throw new Error("Message synchronization response was invalid.");
+      }
+
+      return {
+        changed: result.changed,
+        fingerprint: result.fingerprint,
+      };
+    },
+    [reservationId],
+  );
+
   const loadInitial = useCallback(async () => {
     pollRequestRef.current?.abort();
+    syncFingerprintRef.current = null;
+    lastFullVerificationRef.current = 0;
     activeRequestRef.current?.abort();
 
     const controller = new AbortController();
@@ -622,6 +1000,7 @@ export default function GuestConversationWorkspace({
       setMessages(sortMessages(payload.messages));
       setHasMore(payload.hasMore);
       setNextCursor(payload.nextCursor);
+      lastFullVerificationRef.current = Date.now();
 
       initialScrollRef.current = true;
     } catch (caught) {
@@ -872,7 +1251,8 @@ export default function GuestConversationWorkspace({
     !joining &&
     !sending &&
     !resuming &&
-    !sendReviewRequired;
+    !sendReviewRequired &&
+    !interventionResumeBlocked;
 
   // ===================================================
   // Automatic reservation-scoped message synchronization.
@@ -888,14 +1268,17 @@ export default function GuestConversationWorkspace({
   // The older-history cursor is intentionally unchanged.
   // ===================================================
 
-  const refreshRecent = useCallback(async () => {
+  const refreshRecent = useCallback(async (
+    sync = true,
+    allowDuringSend = false,
+  ) => {
     if (
       !mountedRef.current ||
       document.visibilityState !== "visible" ||
       loadingRef.current ||
       loadingOlderRef.current ||
       joiningRef.current ||
-      sendingRef.current ||
+      (sendingRef.current && !allowDuringSend) ||
       pollGuardRef.current
     ) {
       return;
@@ -917,9 +1300,52 @@ export default function GuestConversationWorkspace({
       : false;
 
     try {
+      // A complete Twilio refresh is still required periodically because
+      // message delivery statuses are not currently recorded by the
+      // read-only delivery callback.
+      let fullVerification =
+        !sync ||
+        Date.now() - lastFullVerificationRef.current >=
+          FULL_VERIFICATION_INTERVAL_MS;
+
+      let nextFingerprint: string | null = null;
+
+      if (!fullVerification) {
+        try {
+          const check = await checkForChanges(controller.signal);
+          nextFingerprint = check.fingerprint;
+          if (
+            controller.signal.aborted ||
+            !mountedRef.current
+          ) {
+            return;
+          }
+
+          // No changed associations: skip all Twilio message fetches.
+          // The periodic full refresh still checks delivery statuses.
+          if (!check.changed) {
+            setSyncError("");
+            return;
+          }
+        } catch (checkError) {
+          if (controller.signal.aborted) return;
+          // Fail open to the existing verified history retrieval: a broken
+          // hint must never cause silent message loss.
+          console.warn("Conversation sync hint unavailable; verifying history.", {
+            reservationId,
+            name: checkError instanceof Error
+              ? checkError.name
+              : "UnknownError",
+          });
+          nextFingerprint = null;
+          fullVerification = true;
+        }
+      }
+
       const payload = await fetchHistory(
         null,
         controller.signal,
+        !fullVerification,
       );
 
       if (
@@ -936,20 +1362,23 @@ export default function GuestConversationWorkspace({
       }
 
       setMessages((existing) => {
-        const merged = mergeMessages(
-          payload.messages,
-          existing,
-        );
-
+        const merged = mergeMessages(payload.messages, existing);
         return sameMessages(existing, merged)
           ? existing
           : merged;
       });
 
-      // Do not replace the older pagination cursor.
-      // It identifies the boundary of previously
-      // loaded pages, not the newest messages.
+      if (fullVerification) {
+        lastFullVerificationRef.current = Date.now();
+        // Take a new baseline on the next poll after a full refresh.
+        // Association changes during the full fetch must not be missed.
+        syncFingerprintRef.current = null;
+      } else {
+        // The fingerprint is only accepted after verified history succeeds.
+        syncFingerprintRef.current = nextFingerprint;
+      }
 
+      // Keep the older-history cursor untouched.
       setSyncError("");
     } catch (caught) {
       if (
@@ -959,6 +1388,8 @@ export default function GuestConversationWorkspace({
         return;
       }
 
+      // Force the next poll to rebuild a verified baseline.
+      syncFingerprintRef.current = null;
       setSyncError(
         caught instanceof Error
           ? caught.message
@@ -968,10 +1399,9 @@ export default function GuestConversationWorkspace({
       if (pollRequestRef.current === controller) {
         pollRequestRef.current = null;
       }
-
       pollGuardRef.current = false;
     }
-  }, [fetchHistory]);
+  }, [checkForChanges, fetchHistory, reservationId]);
 
   useEffect(() => {
     if (
@@ -1367,7 +1797,8 @@ export default function GuestConversationWorkspace({
           "Twilio accepted the SMS. Delivery status may update later.",
         );
 
-        await refreshRecent();
+        // Post-send refresh retains full historical verification.
+        await refreshRecent(false, true);
         void loadSharedState();
 
         return;
@@ -1572,6 +2003,12 @@ export default function GuestConversationWorkspace({
           )}
         </div>
 
+        {sharedMode === "staff" && interventionResumeBlocked && (
+          <p role="status" className="mt-3 text-xs text-amber-200">
+            Automation handback is unavailable while staff intervention status is being verified or an intervention remains active.
+          </p>
+        )}
+
         {resumeResult && (
           <p
             role="status"
@@ -1627,6 +2064,17 @@ export default function GuestConversationWorkspace({
           </div>
         )}
       </section>
+
+      <StaffInterventionPanel
+        reservationId={reservationId}
+        conversationId={sharedState?.conversationId}
+        modeVersion={sharedState?.modeVersion}
+        staffModeVerified={validSharedAssociation && sharedMode === "staff" && !sharedLoading && !sharedError}
+        sharedLoading={sharedLoading}
+        joining={joining}
+        resuming={resuming}
+        onResumeBlockedChange={handleInterventionResumeBlocked}
+      />
 
       <section
         aria-labelledby="guest-message-history-heading"
