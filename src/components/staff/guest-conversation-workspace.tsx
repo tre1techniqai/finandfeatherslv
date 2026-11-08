@@ -1235,6 +1235,23 @@ export default function GuestConversationWorkspace({
     Number.isSafeInteger(sharedState.modeVersion) &&
     sharedState.modeVersion >= 1;
 
+  // Active Studio executions may be stopped by the
+  // server-controlled activation process. Other failed
+  // preflight checks must continue to block JOIN.
+  const activeStudioExecutionWarningOnly =
+    sharedState?.checksPassed === false &&
+    Array.isArray(sharedState.checks) &&
+    sharedState.checks.length > 0 &&
+    sharedState.checks.filter(
+      (check) => !check.passed
+    ).length === 1 &&
+    sharedState.checks.some(
+      (check) =>
+        !check.passed &&
+        check.detail.trim() ===
+          "One or more active Studio executions were observed for this guest."
+    );
+
   const canJoin =
     validSharedAssociation &&
     sharedMode === "automation" &&
@@ -1242,7 +1259,10 @@ export default function GuestConversationWorkspace({
     !joining &&
     !sending &&
     !resuming &&
-    sharedState?.checksPassed === true;
+    (
+      sharedState?.checksPassed === true ||
+      activeStudioExecutionWarningOnly
+    );
 
   const canResume =
     validSharedAssociation &&
