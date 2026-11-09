@@ -736,7 +736,6 @@ const selectedStatus: QueueFilter =
 
     if (!supabaseUrl || !serviceKey) {
       console.error("NEW badge staff SMS lookup is not configured.");
-      awaitingAvailabilityIds.clear();
     } else {
       const admin = createClient(supabaseUrl, serviceKey, {
         auth: {
@@ -770,7 +769,10 @@ const selectedStatus: QueueFilter =
           if (operationsError || !operations) {
             console.error("NEW badge staff SMS lookup failed:", {
               table,
-              code: operationsError?.code,
+              code: operationsError?.code ?? null,
+              message: operationsError?.message ?? null,
+              details: operationsError?.details ?? null,
+              hint: operationsError?.hint ?? null,
             });
             lookupFailed = true;
             break;
@@ -794,11 +796,7 @@ const selectedStatus: QueueFilter =
         }
       }
 
-      if (lookupFailed) {
-        // Avoid incorrectly labeling previously answered
-        // reservations as NEW when verification fails.
-        awaitingAvailabilityIds.clear();
-      } else {
+      if (!lookupFailed) {
         for (const reservationId of acceptedStaffReplyIds) {
           awaitingAvailabilityIds.delete(reservationId);
         }
