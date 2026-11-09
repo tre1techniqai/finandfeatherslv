@@ -225,9 +225,11 @@ function SummaryCard({
 function ReservationRow({
   reservation,
   archiveOutcome = "unspecified",
+  awaitingAvailability = false,
 }: {
   reservation: ReservationRequest;
   archiveOutcome?: ArchiveOutcome;
+  awaitingAvailability?: boolean;
 }) {
   const status = statusOf(reservation);
 
@@ -251,7 +253,17 @@ function ReservationRow({
         </h3>
 
         <div className="flex shrink-0 flex-col items-end gap-1">
-          <StatusBadge status={status} />
+          <div className="flex items-center gap-2">
+            {awaitingAvailability && (
+              <span
+                className="shrink-0 rounded-full bg-[#4ade80] px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide text-black"
+                title="Awaiting initial staff availability decision"
+              >
+                NEW
+              </span>
+            )}
+            <StatusBadge status={status} />
+          </div>
 
           {status === "closed" && (
             <span className="text-right text-[11px] font-semibold text-zinc-300">
@@ -661,6 +673,54 @@ const selectedStatus: QueueFilter =
 
   const reservations =
     (data ?? []) as ReservationRequest[];
+
+  // Show NEW only while the initial availability decision is pending.
+  const availabilityReviewIds = reservations
+    .filter(
+      (reservation) =>
+        reservation.details_validated === true &&
+        ["pending", "incomplete"].includes(
+          reservation.request_status,
+        ),
+    )
+    .map((reservation) => reservation.id);
+
+  const awaitingAvailabilityIds = new Set<string>();
+
+  if (availabilityReviewIds.length > 0) {
+    const {
+      data: availabilityWorkflows,
+      error: availabilityError,
+    } = await supabase
+      .from("reservation_staff_workflows")
+      .select("reservation_request_id, workflow_status")
+      .in("reservation_request_id", availabilityReviewIds);
+
+    if (availabilityError) {
+      console.error("Availability review lookup failed:", {
+        code: availabilityError.code,
+      });
+    } else {
+      const workflowByReservationId = new Map(
+        (availabilityWorkflows ?? []).map((workflow) => [
+          workflow.reservation_request_id,
+          workflow.workflow_status,
+        ]),
+      );
+
+      for (const reservationId of availabilityReviewIds) {
+        const workflowStatus =
+          workflowByReservationId.get(reservationId);
+
+        if (
+          workflowStatus === undefined ||
+          workflowStatus === "awaiting_review"
+        ) {
+          awaitingAvailabilityIds.add(reservationId);
+        }
+      }
+    }
+  }
 
   // Read only the workflow logs needed for archived
   // reservations on this displayed page.
@@ -1150,6 +1210,9 @@ const selectedStatus: QueueFilter =
                 <ReservationRow
                   key={reservation.id}
                   reservation={reservation}
+                  awaitingAvailability={awaitingAvailabilityIds.has(
+                    reservation.id,
+                  )}
                   archiveOutcome={
                     reservation.request_status === "closed"
                       ? archiveOutcomesUnavailable
