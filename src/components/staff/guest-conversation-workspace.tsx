@@ -61,6 +61,7 @@ type SharedPreflightResponse = {
 
 type Props = {
   reservationId: string;
+  compact?: boolean;
 };
 
 type ActiveIntervention = {
@@ -99,6 +100,7 @@ type InterventionPanelProps = {
   joining: boolean;
   resuming: boolean;
   onResumeBlockedChange: (blocked: boolean) => void;
+  compact?: boolean;
 };
 
 const PAGE_SIZE = 10;
@@ -406,6 +408,7 @@ function StaffInterventionPanel({
   joining,
   resuming,
   onResumeBlockedChange,
+  compact = false,
 }: InterventionPanelProps) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -1099,7 +1102,9 @@ function StaffInterventionPanel({
         <p className="mt-4 text-sm text-zinc-300">
           {staffModeVerified
             ? "Start a new staff-managed revised availability intervention. This action does not send SMS."
-            : "JOIN CONVERSATION above to verify staff control before revising available times."}
+            : compact
+              ? "Open Guest Conversation above and JOIN CONVERSATION there to verify staff control before revising available times."
+              : "JOIN CONVERSATION above to verify staff control before revising available times."}
         </p>
       )}
 
@@ -1320,6 +1325,7 @@ function StaffInterventionPanel({
 
 export default function GuestConversationWorkspace({
   reservationId,
+  compact = false,
 }: Props) {
   const [messages, setMessages] =
     useState<ConversationMessage[]>([]);
@@ -1747,7 +1753,12 @@ export default function GuestConversationWorkspace({
       }
     }
 
-    void initializeConversation();
+    if (compact) {
+      // Detail pages are opened frequently; do not trigger Studio recovery.
+      void loadInitial();
+    } else {
+      void initializeConversation();
+    }
 
     return () => {
       controller.abort();
@@ -1755,7 +1766,7 @@ export default function GuestConversationWorkspace({
       activeRequestRef.current?.abort();
       pollRequestRef.current?.abort();
     };
-  }, [loadInitial, reservationId]);
+  }, [compact, loadInitial, reservationId]);
 
   useEffect(() => {
     if (
@@ -2527,6 +2538,7 @@ export default function GuestConversationWorkspace({
 
   return (
     <div className="space-y-5">
+      {!compact && (
       <section
         aria-labelledby="shared-conversation-state"
         className="rounded-xl border border-white/15 bg-zinc-950 p-4 sm:p-5"
@@ -2584,7 +2596,9 @@ export default function GuestConversationWorkspace({
             <div className="mt-5 space-y-4">
               <p className="rounded-lg border border-white/10 bg-black/40 p-3 text-xs leading-5 text-zinc-300">
                 {sharedMode === "staff"
-                  ? "Staff conversation is active. You can compose and send SMS messages below."
+                  ? (compact
+                      ? "Staff conversation is active. Use OPEN GUEST CONVERSATION to send a direct SMS."
+                      : "Staff conversation is active. You can compose and send SMS messages below.")
                   : joining
                     ? "Connecting staff to this conversation..."
                     : sharedMode === "transitioning_to_staff"
@@ -2739,7 +2753,7 @@ export default function GuestConversationWorkspace({
           </p>
         )}
 
-        {recoveryStatus && (
+        {!compact && recoveryStatus && (
           <div className="mt-4 flex justify-end">
             <p
               role={
@@ -2758,6 +2772,13 @@ export default function GuestConversationWorkspace({
           </div>
         )}
       </section>
+      )}
+
+      {compact && (sharedError || error || syncError) && (
+        <p role="alert" className="rounded-lg border border-amber-500/30 bg-amber-950/15 p-3 text-sm text-amber-200">
+          Conversation verification or message history is unavailable. Review the full Guest Conversation before recording a guest selection.
+        </p>
+      )}
 
       <StaffInterventionPanel
         messages={messages}
@@ -2769,8 +2790,10 @@ export default function GuestConversationWorkspace({
         joining={joining}
         resuming={resuming}
         onResumeBlockedChange={handleInterventionResumeBlocked}
+        compact={compact}
       />
 
+      {!compact && (
       <section
         aria-labelledby="guest-message-history-heading"
         className="rounded-xl border border-white/15 bg-zinc-950 p-3 sm:p-5"
@@ -2788,12 +2811,14 @@ export default function GuestConversationWorkspace({
               {messages.length} loaded
             </span>
 
-            <RecoverConversationButton
-              reservationId={reservationId}
-              disabled={loading || loadingOlder}
-              onRecovered={loadInitial}
-              onStatusChange={setRecoveryStatus}
-            />
+            {!compact && (
+              <RecoverConversationButton
+                reservationId={reservationId}
+                disabled={loading || loadingOlder}
+                onRecovered={loadInitial}
+                onStatusChange={setRecoveryStatus}
+              />
+            )}
           </div>
         </div>
 
@@ -2946,7 +2971,9 @@ export default function GuestConversationWorkspace({
           </>
         )}
       </section>
+      )}
 
+      {!compact && (
       <section className="rounded-xl border border-white/15 bg-zinc-950 p-4 sm:p-5">
         <div className="mb-4">
           <h3 className="text-lg font-bold">
@@ -3060,6 +3087,7 @@ export default function GuestConversationWorkspace({
           </p>
         )}
       </section>
+      )}
     </div>
   );
 }

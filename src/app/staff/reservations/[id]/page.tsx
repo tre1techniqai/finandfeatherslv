@@ -7,6 +7,7 @@ import { requireReservationStaff } from "@/lib/auth/require-reservation-staff";
 import ReservationWorkflowActions from "@/components/staff/reservation-workflow-actions";
 import ReservationDateTimeEditor from "@/components/staff/reservation-datetime-editor";
 import ReservationConfirmationSummary from "@/components/staff/reservation-confirmation-summary";
+import GuestConversationWorkspace from "@/components/staff/guest-conversation-workspace";
 import {
   ReservationStaffNotesProvider,
   ReservationNotesIndicator,
@@ -645,6 +646,11 @@ async function ProtectedReservationDetail({
                   OPEN GUEST CONVERSATION →
                 </Link>
               </div>
+
+              <GuestConversationWorkspace
+                reservationId={reservation.id}
+                compact
+              />
 
               <Section title="Reservation Information">
                 <Detail
