@@ -1,6 +1,7 @@
 import { Suspense } from "react";
 import { connection } from "next/server";
 import Link from "next/link";
+import { createClient } from "@supabase/supabase-js";
 
 import GuestAssistanceActions from "@/components/staff/guest-assistance-actions";
 import CloseReservationButton from "@/components/staff/close-reservation-button";
@@ -717,6 +718,89 @@ const selectedStatus: QueueFilter =
           workflowStatus === "awaiting_review"
         ) {
           awaitingAvailabilityIds.add(reservationId);
+        }
+      }
+    }
+  }
+
+  // A staff-authored SMS counts as attention once Twilio accepts it.
+  // Check both reservation-specific and shared-conversation ledgers.
+  if (awaitingAvailabilityIds.size > 0) {
+    const supabaseUrl =
+      process.env.SUPABASE_URL ??
+      process.env.NEXT_PUBLIC_SUPABASE_URL;
+
+    const serviceKey =
+      process.env.SUPABASE_SECRET_KEY ??
+      process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+    if (!supabaseUrl || !serviceKey) {
+      console.error("NEW badge staff SMS lookup is not configured.");
+      awaitingAvailabilityIds.clear();
+    } else {
+      const admin = createClient(supabaseUrl, serviceKey, {
+        auth: {
+          persistSession: false,
+          autoRefreshToken: false,
+        },
+      });
+
+      const reservationIds = [...awaitingAvailabilityIds];
+
+      const acceptedStaffReplyIds = new Set<string>();
+
+      let lookupFailed = false;
+
+      for (const table of [
+        "reservation_staff_sms_operations",
+        "reservation_shared_sms_operations",
+      ] as const) {
+        let offset = 0;
+        const batchSize = 1000;
+
+        while (true) {
+          const { data: operations, error: operationsError } =
+            await admin
+              .from(table)
+              .select("reservation_request_id")
+              .in("reservation_request_id", reservationIds)
+              .eq("status", "accepted")
+              .range(offset, offset + batchSize - 1);
+
+          if (operationsError || !operations) {
+            console.error("NEW badge staff SMS lookup failed:", {
+              table,
+              code: operationsError?.code,
+            });
+            lookupFailed = true;
+            break;
+          }
+
+          for (const operation of operations) {
+            acceptedStaffReplyIds.add(
+              operation.reservation_request_id,
+            );
+          }
+
+          if (operations.length < batchSize) {
+            break;
+          }
+
+          offset += batchSize;
+        }
+
+        if (lookupFailed) {
+          break;
+        }
+      }
+
+      if (lookupFailed) {
+        // Avoid incorrectly labeling previously answered
+        // reservations as NEW when verification fails.
+        awaitingAvailabilityIds.clear();
+      } else {
+        for (const reservationId of acceptedStaffReplyIds) {
+          awaitingAvailabilityIds.delete(reservationId);
         }
       }
     }
