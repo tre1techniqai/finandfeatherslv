@@ -28,6 +28,7 @@ type InterventionRow = {
   assigned_to: string | null;
   created_at: string;
   updated_at: string;
+  details: Record<string, unknown>;
 };
 
 function respond(
@@ -91,7 +92,8 @@ function validIntervention(
     typeof row.created_at === "string" &&
     !Number.isNaN(Date.parse(row.created_at)) &&
     typeof row.updated_at === "string" &&
-    !Number.isNaN(Date.parse(row.updated_at))
+    !Number.isNaN(Date.parse(row.updated_at)) &&
+    row.details !== null && typeof row.details === "object" && !Array.isArray(row.details)
   );
 }
 
@@ -206,7 +208,7 @@ export async function GET(
       .select(
         "id, reservation_request_id, conversation_id, " +
         "intervention_type, status, mode_version_at_start, " +
-        "initiated_by, assigned_to, created_at, updated_at",
+        "initiated_by, assigned_to, created_at, updated_at, details",
       )
       .eq("reservation_request_id", id)
       .in("status", ACTIVE_STATUSES)
@@ -255,7 +257,17 @@ export async function GET(
       );
     }
 
+    const { data: booking, error: bookingError } = await admin
+      .from("reservation_requests")
+      .select("reservation_date")
+      .eq("id", id)
+      .maybeSingle();
+    if (bookingError || !booking || typeof booking.reservation_date !== "string") {
+      return fail("Unable to verify reservation date.", 503);
+    }
+
     return respond({
+      reservationDate: booking.reservation_date,
       success: true,
       reservationId: id,
       hasActiveIntervention: intervention !== null,

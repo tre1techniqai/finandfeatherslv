@@ -3,9 +3,10 @@ import { createClient } from "@supabase/supabase-js";
 import twilio from "twilio";
 
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { isReservationStaffRole } from "@/lib/auth/require-reservation-staff";
 
 const UUID =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 const E164 = /^\+[1-9]\d{7,14}$/;
 const ACCOUNT_SID = /^AC[0-9a-f]{32}$/i;
@@ -398,11 +399,12 @@ export async function POST(
 
     if (
       roleError ||
-      role?.is_active !== true ||
-      role.role !== "manager"
+      !role ||
+      role.is_active !== true ||
+      !isReservationStaffRole(role.role)
     ) {
       return fail(
-        "Manager access required.",
+        "Active reservation staff access required.",
         403,
       );
     }
@@ -451,16 +453,11 @@ export async function POST(
       );
     }
 
-    // Authenticated-manager RPC:
+    // Authenticated reservation staff RPC:
     //
-    // Checks the manager's active role,
+    // Checks the staff member's active role,
     // conversation mode, reservation linkage,
     // idempotency key and message content.
-    //
-    // No exclusive ownership claim is required.
-    //
-    // No browser-supplied destination phone
-    // is accepted.
     const {
       data: registeredData,
       error: registeredError,
