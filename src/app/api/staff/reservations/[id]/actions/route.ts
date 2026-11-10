@@ -6,6 +6,7 @@ import { isReservationStaffRole } from "@/lib/auth/require-reservation-staff";
 import { dispatchReservationConfirmation } from "@/lib/reservations/dispatch-reservation-confirmation";
 import { dispatchReservationAlternatives } from "@/lib/reservations/dispatch-reservation-alternatives";
 import { dispatchReservationDepositDecision } from "@/lib/reservations/dispatch-reservation-deposit-decision";
+import { dispatchReservationDepositPaymentLink } from "@/lib/reservations/dispatch-reservation-deposit-payment-link";
 const MAX_BODY_BYTES = 8192;
 const TWILIO_ACCOUNT_SID_PATTERN = /^AC[0-9a-f]{32}$/i;
 const TWILIO_FLOW_SID_PATTERN = /^FW[0-9a-f]{32}$/i;
@@ -23,6 +24,7 @@ const ALLOWED_ACTIONS = [
   "propose_alternatives",
   "send_alternatives",
   "send_deposit_decision",
+  "notify_deposit_payment_link",
   "record_alternative_offer",
   "accept_alternative",
   "verify_deposit",
@@ -166,6 +168,11 @@ function validatePayload(
     case "send_alternatives":
     case "send_deposit_decision":
       return Object.keys(payload).length === 0;
+    case "notify_deposit_payment_link":
+      return (
+        Object.keys(payload).length === 1 &&
+        payload.invoice_email_confirmed === true
+      );
     case "record_alternative_offer":
       return (
         Object.keys(payload).length === 3 &&
@@ -609,6 +616,13 @@ export async function POST(
   // notification claim lifecycle, and no-automatic-resend policy.
   if (validatedAction === "send_deposit_decision") {
     return dispatchReservationDepositDecision(supabase, id);
+  }
+  if (validatedAction === "notify_deposit_payment_link") {
+    return dispatchReservationDepositPaymentLink(
+      supabase,
+      id,
+      validatedPayload.invoice_email_confirmed === true,
+    );
   }
   const { data, error } = await supabase.rpc(
     "apply_reservation_staff_action",

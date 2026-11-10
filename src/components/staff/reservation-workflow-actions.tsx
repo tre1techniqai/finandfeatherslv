@@ -59,6 +59,7 @@ type ActionName =
   | "propose_alternatives"
   | "send_alternatives"
   | "send_deposit_decision"
+  | "notify_deposit_payment_link"
   | "waive_deposit"
   | "confirm_yelp_booking";
 
@@ -191,6 +192,13 @@ export default function ReservationWorkflowActions({
   const [offerAccepted, setOfferAccepted] = useState(false);
 
   const [depositLinkSent, setDepositLinkSent] = useState(false);
+
+  // An attempted invoice notification is never retried automatically,
+  // including when Twilio's acceptance status is uncertain.
+  const [paymentLinkNotificationAttempted, setPaymentLinkNotificationAttempted] =
+    useState(false);
+  const [paymentLinkNotificationOutcome, setPaymentLinkNotificationOutcome] =
+    useState<"accepted" | "needs_attention" | null>(null);
   const [depositWaived, setDepositWaived] = useState(false);
   const [waiverReason, setWaiverReason] = useState("");
 
@@ -413,6 +421,71 @@ export default function ReservationWorkflowActions({
           ? caught.message + " "
           : "Deposit-decision SMS outcome is unknown. ") +
           "Do not resend automatically. Review notification history and Twilio.",
+      );
+    } finally {
+      setBusy(null);
+      router.refresh();
+    }
+  }
+
+  async function notifyDepositPaymentLink() {
+    if (
+      actionPending ||
+      paymentLinkNotificationAttempted ||
+      !eligible ||
+      !depositRequired ||
+      !canConfirm ||
+      changingAvailability ||
+      alreadyWaived ||
+      depositStatus !== "pending" ||
+      !depositLinkSent
+    ) {
+      return;
+    }
+
+    if (
+      !window.confirm(
+        "Confirm that you have emailed the deposit invoice to the guest " +
+          "and want to send the payment instructions by SMS. " +
+          "This does not verify payment or confirm the reservation. " +
+          "If the SMS outcome is uncertain, review it before any follow-up.",
+      )
+    ) {
+      return;
+    }
+
+    // Lock the client immediately, before the first network request.
+    // The server separately enforces a reservation-specific one-time claim.
+    setPaymentLinkNotificationAttempted(true);
+    setPaymentLinkNotificationOutcome("needs_attention");
+    setBusy("notify_deposit_payment_link");
+    setError("");
+    setSuccess("");
+
+    try {
+      const result = await callAction("notify_deposit_payment_link", {
+        invoice_email_confirmed: true,
+      });
+
+      if (result.accepted === true) {
+        setPaymentLinkNotificationOutcome("accepted");
+        setSuccess(
+          "Twilio accepted the deposit payment instructions. " +
+            "Handset delivery is not yet verified. " +
+            "The deposit remains pending and the reservation is not confirmed.",
+        );
+      } else {
+        setError(
+          "SMS acceptance could not be verified. Review the recorded operation " +
+            "and Twilio before any follow-up. Do not resend automatically.",
+        );
+      }
+    } catch (caught) {
+      setError(
+        (caught instanceof Error
+          ? caught.message + " "
+          : "The deposit notification outcome is unknown. ") +
+          "Do not resend automatically. Review the SMS operation and Twilio.",
       );
     } finally {
       setBusy(null);
@@ -1213,33 +1286,37 @@ export default function ReservationWorkflowActions({
                     </label>
                   )}
 
-                  <label
-                    className={`mt-4 flex items-start gap-3 text-sm ${
-                      alreadyWaived
-                        ? "cursor-not-allowed text-zinc-500"
-                        : "text-white"
-                    }`}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={
-                        !alreadyWaived && depositLinkSent
-                      }
-                      onChange={(event) => {
-                        const checked = event.target.checked;
-                        setDepositLinkSent(checked);
+                  {!alreadyWaived && depositLinkSent && depositStatus === "pending" && (
+                    <div className="mt-4 space-y-2">
+                      <button
+                        type="button"
+                        disabled={actionPending || paymentLinkNotificationAttempted}
+                        onClick={() => void notifyDepositPaymentLink()}
+                        className={`${buttonClass} w-full bg-[#ea1b24] text-white hover:bg-red-700`}
+                      >
+                        {busy === "notify_deposit_payment_link"
+                          ? "Notifying guest..."
+                          : paymentLinkNotificationAttempted
+                            ? "Notify Guest — Check SMS Status"
+                            : "Notify Guest"}
+                      </button>
 
-                        if (!checked) {
-                          setYelpBookingVerified(false);
-                        }
-                      }}
-                      disabled={alreadyWaived || actionPending}
-                      className="mt-1"
-                    />
-
-                    I confirm that the deposit payment link has
-                    been emailed to the guest.
-                  </label>
+                      {paymentLinkNotificationOutcome === "accepted" ? (
+                        <p role="status" className="text-xs leading-5 text-emerald-200">
+                          SMS accepted by Twilio. Deposit payment still requires verification in Toast.
+                        </p>
+                      ) : paymentLinkNotificationAttempted ? (
+                        <p role="alert" className="text-xs leading-5 text-amber-200">
+                          Notification was attempted. Check the SMS record before any follow-up;
+                          automatic repeat sending is blocked.
+                        </p>
+                      ) : (
+                        <p className="text-xs leading-5 text-zinc-400">
+                          Sends a one-time payment-invoice notification. Checking the box alone does not send SMS.
+                        </p>
+                      )}
+                    </div>
+                  )}
                 </div>
               )}
 

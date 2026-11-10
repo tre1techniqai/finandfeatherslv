@@ -1,4 +1,3 @@
-
 import { Suspense } from "react";
 import { connection } from "next/server";
 import Link from "next/link";
@@ -371,10 +370,12 @@ function ReservationRow({
   reservation,
   archiveOutcome = "unspecified",
   awaitingAvailability = false,
+  hasDepositPaymentReply = false,
 }: {
   reservation: ReservationRequest;
   archiveOutcome?: ArchiveOutcome;
   awaitingAvailability?: boolean;
+  hasDepositPaymentReply?: boolean;
 }) {
   const status = statusOf(reservation);
   const note = workflowNote(reservation);
@@ -416,6 +417,16 @@ function ReservationRow({
               NEW
             </span>
           )}
+
+          {hasDepositPaymentReply &&
+            (status === "pending" || status === "incomplete") && (
+              <span
+                className="min-w-0 text-xs font-semibold leading-5 text-amber-200 sm:text-sm"
+                title="Guest reported paying the deposit; staff verification in Toast is still required"
+              >
+                Guest replied to deposit link
+              </span>
+            )}
 
           <StatusBadge status={status} />
 
@@ -833,6 +844,62 @@ async function ProtectedReservationQueue({
 
   const reservations =
     (data ?? []) as ReservationRequest[];
+
+  // A guest's PAID acknowledgment is display-only evidence, not payment
+  // verification. Query only the reservations displayed on this page.
+  // Keep the lookup disabled until the review-only ledger is deployed.
+  const depositPaymentReplyIds = new Set<string>();
+
+  if (
+    process.env.RESERVATION_DEPOSIT_PAYMENT_REPLY_NOTES_ENABLED === "true"
+  ) {
+    const visibleDepositIds = reservations
+      .filter(
+        (reservation) =>
+          ["pending", "incomplete"].includes(reservation.request_status) &&
+          reservation.deposit_status === "pending" &&
+          (reservation.deposit_amount ?? 0) > 0,
+      )
+      .map((reservation) => reservation.id);
+
+    if (visibleDepositIds.length > 0) {
+      const supabaseUrl =
+        process.env.SUPABASE_URL ??
+        process.env.NEXT_PUBLIC_SUPABASE_URL;
+      const serviceKey =
+        process.env.SUPABASE_SECRET_KEY ??
+        process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+      if (!supabaseUrl || !serviceKey) {
+        console.error("Deposit payment reply note lookup is not configured.");
+      } else {
+        const admin = createClient(supabaseUrl, serviceKey, {
+          auth: {
+            persistSession: false,
+            autoRefreshToken: false,
+          },
+        });
+
+        const { data: paymentReplies, error: paymentReplyError } =
+          await admin
+            .from("reservation_deposit_payment_replies")
+            .select("reservation_request_id")
+            .in("reservation_request_id", visibleDepositIds)
+            .eq("classification", "payment_claim")
+            .limit(1000);
+
+        if (paymentReplyError) {
+          console.error("Deposit payment reply note lookup failed:", {
+            code: paymentReplyError.code,
+          });
+        } else {
+          for (const reply of paymentReplies ?? []) {
+            depositPaymentReplyIds.add(reply.reservation_request_id);
+          }
+        }
+      }
+    }
+  }
 
   // Identify only displayed reservations awaiting their
   // initial YES/NO availability decision.
@@ -1470,6 +1537,9 @@ async function ProtectedReservationQueue({
                 <ReservationRow
                   key={reservation.id}
                   reservation={reservation}
+                  hasDepositPaymentReply={depositPaymentReplyIds.has(
+                    reservation.id,
+                  )}
                   awaitingAvailability={awaitingAvailabilityIds.has(
                     reservation.id,
                   )}
