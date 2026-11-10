@@ -23,6 +23,7 @@ type ReservationStatus =
 
 type ArchiveOutcome =
   | "seated"
+  | "walk_in"
   | "no_show"
   | "canceled"
   | "unspecified"
@@ -270,7 +271,9 @@ function ReservationRow({
             <span className="text-right text-[11px] font-semibold text-zinc-300">
               {archiveOutcome === "seated"
                 ? "Seated"
-                : archiveOutcome === "no_show"
+                : archiveOutcome === "walk_in"
+                  ? "Walk-In"
+                  : archiveOutcome === "no_show"
                   ? "No-Show"
                   : archiveOutcome === "canceled"
                     ? "Canceled"
@@ -860,6 +863,7 @@ const selectedStatus: QueueFilter =
 
           if (
             event.archive_outcome === "seated" ||
+            event.archive_outcome === "walk_in" ||
             event.archive_outcome === "no_show" ||
             event.archive_outcome === "canceled"
           ) {

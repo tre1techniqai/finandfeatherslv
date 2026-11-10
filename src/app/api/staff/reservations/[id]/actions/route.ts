@@ -117,13 +117,16 @@ function validatePayload(
       return Object.keys(payload).length === 0;
     case "archive_reservation": {
       const keys = Object.keys(payload);
+
       if (
         payload.outcome !== "seated" &&
         payload.outcome !== "no_show" &&
-        payload.outcome !== "canceled"
+        payload.outcome !== "canceled" &&
+        payload.outcome !== "walk_in"
       ) {
         return false;
       }
+
       if (payload.outcome !== "canceled") {
         return (
           keys.length === 1 &&
