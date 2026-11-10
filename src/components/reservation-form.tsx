@@ -342,13 +342,36 @@ export default function ReservationForm() {
       return;
     }
 
-    if (!first_name.trim()) {
-      setFormError("Please enter your first name.");
+    const firstName = first_name.trim();
+    const lastName = last_name.trim();
+
+    if (!/^[A-Za-z]{2,50}$/.test(firstName)) {
+      setFormError(
+        "First name must contain at least 2 letters, with no numbers, spaces, or special characters.",
+      );
       return;
     }
 
-    if (!last_name.trim()) {
-      setFormError("Please enter your last name.");
+    if (
+      !/^[A-Za-z]+(?:-[A-Za-z]+)*$/.test(lastName) ||
+      lastName.replace(/-/g, "").length < 3
+    ) {
+      setFormError(
+        "Last name must contain at least 3 letters. Only letters and hyphens are allowed.",
+      );
+      return;
+    }
+
+    const repeatedLetter = (value: string) =>
+      /^([A-Za-z])\1+$/i.test(value);
+
+    if (
+      repeatedLetter(firstName) ||
+      repeatedLetter(lastName.replace(/-/g, ""))
+    ) {
+      setFormError(
+        "Please enter a valid first and last name without repeated placeholder letters.",
+      );
       return;
     }
 
@@ -402,11 +425,6 @@ export default function ReservationForm() {
       setFormError(
         "That time is no longer available to select. Please choose another time.",
       );
-      return;
-    }
-
-    if (!OCCASIONS.includes(occasion)) {
-      setFormError("Please select an occasion.");
       return;
     }
 
@@ -488,8 +506,8 @@ export default function ReservationForm() {
             </h1>
 
             <p className="mt-3 text-sm leading-6 text-white/80">
-                Submit your preferred date, time, party size, and occasion. Your
-                request will be prepared as a text message for our team.
+                Submit your preferred date and time, party size, and optionally
+                your occasion. Your request will be prepared as a text message for our team.
             </p>
             </div>
 
@@ -688,13 +706,12 @@ export default function ReservationForm() {
                   htmlFor="reservation-occasion"
                   className="mb-2 block text-sm font-semibold"
                 >
-                  Occasion <span className="text-red-400">*</span>
+                  Occasion <span className="font-normal text-white/60">(Optional)</span>
                 </label>
 
                 <select
                   id="reservation-occasion"
                   name="occasion"
-                  required
                   value={occasion}
                   onChange={(event) =>
                     setOccasion(

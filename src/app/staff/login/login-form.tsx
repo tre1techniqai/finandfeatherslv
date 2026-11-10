@@ -58,7 +58,7 @@ export default function StaffLoginForm() {
           </label>
 
           <Link
-            href="/admin/forgot-password"
+            href="/staff/forgot-password"
             className="text-xs font-medium text-red-400 underline-offset-4 transition hover:text-red-300 hover:underline"
           >
             Forgot Password?

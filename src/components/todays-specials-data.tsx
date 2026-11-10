@@ -161,6 +161,7 @@ export default function TodaySpecials({
   const [today, setToday] = useState<string | null>(null);
   const [activeDay, setActiveDay] = useState("Monday");
   const [isOpen, setIsOpen] = useState(false);
+  const [videoStarted, setVideoStarted] = useState(false);
   const [portalReady, setPortalReady] = useState(false);
 
   useEffect(() => {
@@ -204,6 +205,7 @@ export default function TodaySpecials({
           onClick={() => {
             if (!today) return;
             setActiveDay(today);
+            setVideoStarted(false);
             setIsOpen(true);
           }}
           aria-label={`Open ${special.day}'s special details`}
@@ -308,7 +310,10 @@ export default function TodaySpecials({
                     key={item.day}
                     type="button"
                     aria-pressed={activeDay === item.day}
-                    onClick={() => setActiveDay(item.day)}
+                    onClick={() => {
+                      setActiveDay(item.day);
+                      setVideoStarted(false);
+                    }}
                     className={`shrink-0 rounded-t-lg border-b-2 px-3 py-2.5 text-xs font-extrabold uppercase tracking-wide transition sm:px-4 sm:text-sm ${
                       activeDay === item.day
                         ? "border-[#ea1b24] bg-[#ea1b24]/10 text-white"
@@ -323,21 +328,42 @@ export default function TodaySpecials({
               <div className="min-h-0 overflow-y-auto">
                 <div className="grid grid-cols-1 md:grid-cols-[minmax(0,1.15fr)_minmax(280px,0.85fr)]">
                   <div className="flex items-center justify-center bg-black">
-                    <video
-                      key={active.video}
-                      src={active.video}
-                      poster={active.thumbnail}
-                      controls
-                      autoPlay
-                      loop
-                      muted
-                      playsInline
-                      preload="metadata"
-                      className="max-h-[42vh] w-full bg-black object-contain md:max-h-[65vh]"
-                      aria-label={`${active.day} special video`}
-                    >
-                      Your browser does not support HTML video.
-                    </video>
+                    {videoStarted ? (
+                      <video
+                        key={active.video}
+                        src={active.video}
+                        poster={active.thumbnail}
+                        controls
+                        autoPlay
+                        playsInline
+                        preload="none"
+                        className="max-h-[42vh] w-full bg-black object-contain md:max-h-[65vh]"
+                        aria-label={`${active.day} special video`}
+                      >
+                        Your browser does not support HTML video.
+                      </video>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => setVideoStarted(true)}
+                        aria-label={`Play ${active.day} special video`}
+                        className="group relative flex min-h-48 w-full items-center justify-center bg-black focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#ea1b24]"
+                      >
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={active.thumbnail}
+                          alt=""
+                          loading="lazy"
+                          className="max-h-[42vh] w-full object-contain md:max-h-[65vh]"
+                        />
+                        <span
+                          aria-hidden="true"
+                          className="absolute flex h-16 w-16 items-center justify-center rounded-full border border-white/40 bg-black/70 text-2xl text-white shadow-lg transition group-hover:bg-[#ea1b24]"
+                        >
+                          ▶
+                        </span>
+                      </button>
+                    )}
                   </div>
 
                   <div className="p-5 sm:p-7">

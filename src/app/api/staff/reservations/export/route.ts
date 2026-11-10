@@ -1,6 +1,7 @@
 
 import { NextResponse } from "next/server";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { isReservationStaffRole } from "@/lib/auth/require-reservation-staff";
 import { connection } from "next/server";
 
 type ReservationRecord = {
@@ -154,7 +155,7 @@ export async function GET(
       );
     }
 
-    // Match the staff portal's manager-only access.
+    // Match the staff portal's active reservation staff access.
     const { data: role, error: roleError } =
       await supabase
         .from("staff_roles")
@@ -167,10 +168,10 @@ export async function GET(
       roleError ||
       !role ||
       role.is_active !== true ||
-      role.role !== "manager"
+      !isReservationStaffRole(role.role)
     ) {
       return errorResponse(
-        "Manager access required.",
+        "Active reservation staff access required.",
         403,
       );
     }
@@ -181,9 +182,12 @@ export async function GET(
       url.searchParams.get("q") ?? ""
     ).trim().slice(0, 100);
 
-    const status = url.searchParams.get("status") ?? "all";
+    const status =
+      url.searchParams.get("status") ??
+      (search ? "all" : "queue");
 
     const allowedStatuses = new Set([
+      "queue",
       "all",
       "pending",
       "incomplete",
@@ -213,25 +217,22 @@ export async function GET(
         .from("reservation_requests")
         .select(EXPORT_COLUMNS);
 
-      if (search) {
-        const safeSearch = search
-          .replace(/[,%()]/g, " ")
-          .trim();
-
-        if (safeSearch) {
-          const digits = safeSearch.replace(/\D/g, "");
-          const pattern = `%${safeSearch}%`;
-
-          query =
-            digits.length >= 3
-              ? query.or(
-                  `customer_name.ilike.${pattern},customer_phone.ilike.%${digits}%`,
-                )
-              : query.ilike(
-                  "customer_name",
-                  pattern,
-                );
-        }
+      if (status === "queue") {
+        query = query.in("request_status", [
+          "pending",
+          "incomplete",
+          "unvalidated",
+        ]);
+      } else if (status === "unvalidated") {
+        query = query.or(
+          "request_status.eq.unvalidated,and(request_status.eq.incomplete,details_validated.eq.false)",
+        );
+      } else if (status === "incomplete") {
+        query = query
+          .eq("request_status", "incomplete")
+          .eq("details_validated", true);
+      } else if (status !== "all") {
+        query = query.eq("request_status", status);
       }
 
       if (status === "unvalidated") {

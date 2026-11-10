@@ -8,7 +8,7 @@ import { requireReservationStaff } from "@/lib/auth/require-reservation-staff";
 export const metadata = {
   title: "Conversations | Fin & Feathers Las Vegas",
   description:
-    "Read-only guest conversation directory for authorized managers.",
+    "Guest conversations and reservation-linked contact directory for authorized staff.",
 };
 
 type ReservationRow = {
@@ -190,8 +190,8 @@ async function ProtectedConversationsInbox() {
           </h1>
 
           <p className="mt-3 text-sm leading-6 text-zinc-400">
-            Browse reservation-linked guest contacts and review their
-            existing SMS conversations.
+            Browse guest contacts, review SMS history, and access
+            their related reservations.
           </p>
 
           <p className="mt-3 text-xs text-zinc-500">
@@ -211,13 +211,16 @@ async function ProtectedConversationsInbox() {
           </p>
 
           <p className="mt-2 text-sm leading-6 text-zinc-400">
-            Entries are grouped by the guest phone number recorded
-            on existing reservations. General inquiries without a
-            reservation are not included yet.
+            Guest contacts are grouped by the phone number
+            associated with their reservations. Open a contact
+            to review their phone-level SMS history, or select
+            a related reservation to access its details and
+            reservation-specific conversation.
           </p>
 
-          <p className="mt-2 text-xs text-amber-200">
-            Read-only development stage. Sending SMS is not enabled.
+          <p className="mt-2 text-sm leading-6 text-zinc-400">
+            General inquiries without an associated reservation
+            are not included in this directory.
           </p>
         </section>
 
@@ -283,8 +286,6 @@ async function ProtectedConversationsInbox() {
             ) : (
               <div className="space-y-3">
                 {conversations.map((guest) => {
-                  const referenceReservation = guest.reservations[0];
-
                   return (
                     <article
                       key={guest.phone}
@@ -327,7 +328,7 @@ async function ProtectedConversationsInbox() {
 
                       <div className="mt-4">
                         <Link
-                          href={`/staff/conversations/guest/${referenceReservation.id}`}
+                          href={`/staff/conversations/phone/${encodeURIComponent(guest.phone)}`}
                           className="inline-flex min-h-11 w-full items-center justify-center rounded-lg bg-[#ea1b24] px-5 py-3 text-sm font-bold text-white transition hover:bg-red-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white sm:w-auto"
                         >
                           OPEN CONVERSATION →

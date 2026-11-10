@@ -1,4 +1,3 @@
-
 import { Suspense } from "react";
 import type { Metadata } from "next";
 import { connection } from "next/server";
@@ -286,11 +285,41 @@ async function ProtectedGuestConversation({
               Reservation Reference
             </p>
 
-            <div className="mt-2 flex flex-wrap items-center justify-between gap-3">
-              <p className="min-w-0 break-words text-2xl font-bold tracking-wide text-white">
-                {reservationReference ?? "Reference unavailable"}
-              </p>
+            <p className="mt-2 min-w-0 break-words text-2xl font-bold tracking-wide text-white">
+              {reservationReference ?? "Reference unavailable"}
+            </p>
+          </section>
 
+          <section
+            aria-label="Reservation Information"
+            className="mt-4 rounded-xl border border-white/15 bg-zinc-950 p-4 sm:p-5"
+          >
+            <h2 className="text-sm font-bold text-white">
+              Reservation Information
+            </h2>
+
+            <div className="mt-4 flex flex-wrap gap-3 text-xs text-zinc-300">
+              <span className="rounded-lg border border-white/15 px-3 py-2">
+                Date: {reservationDate}
+              </span>
+
+              <span className="rounded-lg border border-white/15 px-3 py-2">
+                Time: {reservationTime}
+              </span>
+
+              <span className="rounded-lg border border-white/15 px-3 py-2">
+                Guests: {guestCount}
+              </span>
+
+              {showVipBadge && (
+                <span className="inline-flex items-center gap-1.5 rounded-lg border border-amber-400/40 bg-amber-500/10 px-3 py-2 text-xs font-bold text-amber-300">
+                  <span aria-hidden="true">★</span>
+                  VIP
+                </span>
+              )}
+            </div>
+
+            <div className="mt-4 flex justify-start">
               <Link
                 href={reservationDetailsHref}
                 className="inline-flex min-h-11 shrink-0 items-center justify-center gap-2 rounded-lg border border-amber-400/50 bg-amber-500/10 px-5 py-3 text-sm font-bold text-amber-200 transition hover:border-amber-300 hover:bg-amber-500/20 hover:text-amber-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-300"
@@ -319,27 +348,6 @@ async function ProtectedGuestConversation({
               </Link>
             </div>
           </section>
-
-          <div className="mt-4 flex flex-wrap gap-3 text-xs text-zinc-300">
-            <span className="rounded-lg border border-white/15 px-3 py-2">
-              Date: {reservationDate}
-            </span>
-
-            <span className="rounded-lg border border-white/15 px-3 py-2">
-              Time: {reservationTime}
-            </span>
-
-            <span className="rounded-lg border border-white/15 px-3 py-2">
-              Guests: {guestCount}
-            </span>
-
-            {showVipBadge && (
-              <span className="inline-flex items-center gap-1.5 rounded-lg border border-amber-400/40 bg-amber-500/10 px-3 py-2 text-xs font-bold text-amber-300">
-                <span aria-hidden="true">★</span>
-                VIP
-              </span>
-            )}
-          </div>
         </header>
 
         <GuestConversationWorkspace

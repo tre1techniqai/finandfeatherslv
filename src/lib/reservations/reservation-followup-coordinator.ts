@@ -74,7 +74,7 @@ export function initialFollowupState(
   reservationId: string,
   reservationReference: string | null = null,
 ): FollowupState {
-  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(reservationId)) {
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(reservationId)) {
     throw new Error("Valid reservation UUID required.");
   }
   return {

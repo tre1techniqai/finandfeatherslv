@@ -1,3 +1,4 @@
+
 import { Suspense } from "react";
 import { connection } from "next/server";
 import Link from "next/link";
@@ -19,7 +20,6 @@ type ReservationStatus =
   | "unvalidated"
   | "confirmed"
   | "closed";
-
 
 type ArchiveOutcome =
   | "seated"
@@ -115,6 +115,149 @@ function statusOf(
   )
     ? "unvalidated"
     : reservation.request_status;
+}
+
+// Display a concise, meaningful description next to
+// the reservation status badge.
+//
+// The existing reservation state remains authoritative.
+// These notes are display-only and do not modify
+// reservation workflow, automation, or staff actions.
+//
+// Only the fields already retrieved by this page
+// are used to determine the note.
+function workflowNote(
+  reservation: ReservationRequest,
+): string | null {
+  const status = statusOf(reservation);
+
+  if (
+    status === "closed" ||
+    status === "confirmed"
+  ) {
+    return null;
+  }
+
+  const stage = (
+    reservation.interruption_stage ?? ""
+  ).trim();
+
+  const reason = (
+    reservation.interruption_reason ?? ""
+  ).trim();
+
+  const context = `${stage} ${reason}`
+    .toLowerCase()
+    .replace(/[_-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  // VIP seating follow-up.
+  if (
+    /\b(vip|seating preference|vip preference)\b/.test(
+      context,
+    )
+  ) {
+    if (
+      /\b(no reply|no response|timeout|timed out|unanswered|did not reply)\b/.test(
+        context,
+      )
+    ) {
+      return "No reply to VIP question";
+    }
+
+    return "VIP seating response needs review";
+  }
+
+  // Guest email follow-up.
+  if (/\b(email|e mail)\b/.test(context)) {
+    if (
+      /\b(invalid|incorrect|malformed|correction|not valid)\b/.test(
+        context,
+      )
+    ) {
+      return "Guest email needs correction";
+    }
+
+    if (
+      /\b(received|provided|verified|valid email|replied)\b/.test(
+        context,
+      )
+    ) {
+      return "Guest email received";
+    }
+
+    return "Waiting for guest email";
+  }
+
+  // Alternate-time and revised-availability follow-up.
+  if (
+    /\b(alternate|alternative|revised)\b/.test(
+      context,
+    ) &&
+    /\b(time|times|slot|option|availability|selection|reply|response)\b/.test(
+      context,
+    )
+  ) {
+    if (
+      /\b(replied|received|selected|responded)\b/.test(
+        context,
+      )
+    ) {
+      return "Review alternate-time reply";
+    }
+
+    if (
+      /\b(sent|offered|proposed|awaiting guest|waiting for guest)\b/.test(
+        context,
+      )
+    ) {
+      return "Alternate times sent to guest";
+    }
+
+    return "Alternate-time follow-up needed";
+  }
+
+  // Unvalidated reservation information.
+  if (status === "unvalidated") {
+    return "Guest details need validation";
+  }
+
+  // Deposit follow-up.
+  if (
+    reservation.deposit_amount !== null &&
+    reservation.deposit_amount > 0 &&
+    reservation.deposit_status === "pending" &&
+    !reason
+  ) {
+    return "Waiting for deposit verification";
+  }
+
+  // Prefer the actual staff-facing interruption reason
+  // when no known workflow description matches.
+  if (reason) {
+    const readable = reason
+      .replace(/[_]+/g, " ")
+      .replace(/\s+/g, " ")
+      .replace(/\s*[-–—:;.]+\s*$/, "")
+      .trim();
+
+    if (readable) {
+      const shortened =
+        readable.length > 120
+          ? `${readable.slice(0, 117).trimEnd()}…`
+          : readable;
+
+      return (
+        shortened.charAt(0).toUpperCase() +
+        shortened.slice(1)
+      );
+    }
+  }
+
+  // Do not expose technical interruption-stage
+  // identifiers or invent a guest action.
+  return null;
 }
 
 function formatDate(value: string | null) {
@@ -234,6 +377,7 @@ function ReservationRow({
   awaitingAvailability?: boolean;
 }) {
   const status = statusOf(reservation);
+  const note = workflowNote(reservation);
 
   const vip =
     reservation.vip_preference
@@ -243,7 +387,7 @@ function ReservationRow({
   return (
     <article className="rounded-lg border border-white/10 bg-zinc-950/90 px-3 py-3 sm:px-4">
       <div className="flex min-w-0 items-start justify-between gap-3">
-        <h3 className="min-w-0 truncate text-sm font-bold text-white sm:text-base">
+        <h3 className="min-w-0 flex-1 truncate text-sm font-bold text-white sm:text-base">
           {reservation.customer_name ||
             "Guest name unavailable"}
 
@@ -254,18 +398,26 @@ function ReservationRow({
           )}
         </h3>
 
-        <div className="flex shrink-0 flex-col items-end gap-1">
-          <div className="flex items-center gap-2">
-            {awaitingAvailability && (
-              <span
-                className="shrink-0 rounded-full bg-[#4ade80] px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide text-black"
-                title="Awaiting initial staff availability decision"
-              >
-                NEW
-              </span>
-            )}
-            <StatusBadge status={status} />
-          </div>
+        <div className="flex min-w-0 max-w-[65%] flex-wrap items-center justify-end gap-x-2 gap-y-1 text-right">
+          {note && (
+            <span
+              className="min-w-0 text-xs leading-5 text-zinc-300 sm:text-sm"
+              title={note}
+            >
+              {note}
+            </span>
+          )}
+
+          {awaitingAvailability && (
+            <span
+              className="shrink-0 rounded-full bg-[#4ade80] px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide text-black"
+              title="Awaiting initial staff availability decision"
+            >
+              NEW
+            </span>
+          )}
+
+          <StatusBadge status={status} />
 
           {status === "closed" && (
             <span className="text-right text-[11px] font-semibold text-zinc-300">
@@ -330,30 +482,34 @@ function ReservationRow({
               reservationId={reservation.id}
               guestName={reservation.customer_name}
               isConfirmed={status === "confirmed"}
-              enabled={process.env.RESERVATION_ARCHIVE_ENABLED === "true"}
+              enabled={
+                process.env.RESERVATION_ARCHIVE_ENABLED ===
+                "true"
+              }
             />
           )}
-        <Link
-          href={`/staff/reservations/${reservation.id}`}
-          aria-label={`View reservation for ${
-            reservation.customer_name || "guest"
-          }`}
-          title="View reservation details"
-          className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-white/20 bg-white/5 text-white transition hover:border-[#ea1b24] hover:bg-[#ea1b24] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
-        >
-          <svg
-            aria-hidden="true"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="3"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            className="h-5 w-5"
+
+          <Link
+            href={`/staff/reservations/${reservation.id}`}
+            aria-label={`View reservation for ${
+              reservation.customer_name || "guest"
+            }`}
+            title="View reservation details"
+            className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-white/20 bg-white/5 text-white transition hover:border-[#ea1b24] hover:bg-[#ea1b24] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
           >
-            <path d="m9 5 7 7-7 7" />
-          </svg>
-        </Link>
+            <svg
+              aria-hidden="true"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="3"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              className="h-5 w-5"
+            >
+              <path d="m9 5 7 7-7 7" />
+            </svg>
+          </Link>
         </div>
       </div>
     </article>
@@ -584,13 +740,12 @@ async function ProtectedReservationQueue({
 
   const rawStatus = single(params.status);
 
-  
-const selectedStatus: QueueFilter =
-  statuses.includes(rawStatus as QueueFilter)
-    ? (rawStatus as QueueFilter)
-    : search
-      ? "all"
-      : "queue";
+  const selectedStatus: QueueFilter =
+    statuses.includes(rawStatus as QueueFilter)
+      ? (rawStatus as QueueFilter)
+      : search
+        ? "all"
+        : "queue";
 
   const sort: SortOrder =
     single(params.sort) === "oldest"
@@ -642,7 +797,6 @@ const selectedStatus: QueueFilter =
     }
   }
 
-  
   if (selectedStatus === "queue") {
     query = query
       .in("request_status", ["pending", "incomplete"])
@@ -651,7 +805,10 @@ const selectedStatus: QueueFilter =
     query = query.or(
       "request_status.eq.unvalidated,and(request_status.eq.incomplete,details_validated.eq.false)",
     );
-  } else if (selectedStatus === "incomplete" || selectedStatus === "pending") {
+  } else if (
+    selectedStatus === "incomplete" ||
+    selectedStatus === "pending"
+  ) {
     query = query
       .eq("request_status", selectedStatus)
       .eq("details_validated", true);
@@ -661,7 +818,6 @@ const selectedStatus: QueueFilter =
       selectedStatus,
     );
   }
-
 
   const { data, error, count } = await query
     .order("created_at", {
@@ -678,7 +834,8 @@ const selectedStatus: QueueFilter =
   const reservations =
     (data ?? []) as ReservationRequest[];
 
-  // Show NEW only while the initial availability decision is pending.
+  // Identify only displayed reservations awaiting their
+  // initial YES/NO availability decision.
   const availabilityReviewIds = reservations
     .filter(
       (reservation) =>
@@ -770,13 +927,13 @@ const selectedStatus: QueueFilter =
               .range(offset, offset + batchSize - 1);
 
           if (operationsError || !operations) {
-            console.error("NEW badge staff SMS lookup failed:", {
-              table,
-              code: operationsError?.code ?? null,
-              message: operationsError?.message ?? null,
-              details: operationsError?.details ?? null,
-              hint: operationsError?.hint ?? null,
-            });
+           console.error("NEW badge staff SMS lookup failed:", {
+            table,
+            code: operationsError?.code ?? null,
+            message: operationsError?.message ?? null,
+            details: operationsError?.details ?? null,
+            hint: operationsError?.hint ?? null,
+          });
             lookupFailed = true;
             break;
           }
@@ -810,10 +967,15 @@ const selectedStatus: QueueFilter =
   // Read only the workflow logs needed for archived
   // reservations on this displayed page.
   const archivedIds = reservations
-    .filter((reservation) => reservation.request_status === "closed")
+    .filter(
+      (reservation) =>
+        reservation.request_status === "closed",
+    )
     .map((reservation) => reservation.id);
 
-  const archiveOutcomeById = new Map<string, ArchiveOutcome>();
+  const archiveOutcomeById =
+    new Map<string, ArchiveOutcome>();
+
   let archiveOutcomesUnavailable = false;
 
   if (archivedIds.length > 0) {
@@ -827,6 +989,7 @@ const selectedStatus: QueueFilter =
 
     if (archiveError) {
       archiveOutcomesUnavailable = true;
+
       console.error("Archive outcome lookup failed:", {
         code: archiveError.code,
       });
@@ -839,12 +1002,17 @@ const selectedStatus: QueueFilter =
             workflow.reservation_request_id,
             "unavailable",
           );
+
           continue;
         }
 
         let outcome: ArchiveOutcome = "unspecified";
 
-        for (let index = log.length - 1; index >= 0; index--) {
+        for (
+          let index = log.length - 1;
+          index >= 0;
+          index--
+        ) {
           const entry: unknown = log[index];
 
           if (
@@ -855,9 +1023,12 @@ const selectedStatus: QueueFilter =
             continue;
           }
 
-          const event = entry as Record<string, unknown>;
+          const event =
+            entry as Record<string, unknown>;
 
-          if (event.action !== "archive_reservation") {
+          if (
+            event.action !== "archive_reservation"
+          ) {
             continue;
           }
 
@@ -912,7 +1083,10 @@ const selectedStatus: QueueFilter =
       countQuery = countQuery.or(
         "request_status.eq.unvalidated,and(request_status.eq.incomplete,details_validated.eq.false)",
       );
-    } else if (status === "incomplete" || status === "pending") {
+    } else if (
+      status === "incomplete" ||
+      status === "pending"
+    ) {
       countQuery = countQuery
         .eq("request_status", status)
         .eq("details_validated", true);
@@ -994,7 +1168,7 @@ const selectedStatus: QueueFilter =
 
   const alertGuests =
     (alertGuestData ?? []) as ReservationRequest[];
-  
+
   const filtersActive =
     !!search ||
     selectedStatus !== "queue" ||
@@ -1028,6 +1202,7 @@ const selectedStatus: QueueFilter =
           the header, navigation menu, Sign Out,
           and universal footer.
         */}
+
         <section
           aria-label="Staff portal introduction"
           className="mb-5 border-b border-white/10 pb-5"
@@ -1175,15 +1350,14 @@ const selectedStatus: QueueFilter =
                       key={status}
                       value={status}
                     >
-                      
-                    {status === "queue"
-                      ? "Active Queue"
-                      : status === "all"
-                        ? "All statuses"
-                        : status === "closed"
-                          ? "Archived"
-                          : status.charAt(0).toUpperCase() +
-                            status.slice(1)}
+                      {status === "queue"
+                        ? "Active Queue"
+                        : status === "all"
+                          ? "All statuses"
+                          : status === "closed"
+                            ? "Archived"
+                            : status.charAt(0).toUpperCase() +
+                              status.slice(1)}
                     </option>
                   ))}
                 </select>

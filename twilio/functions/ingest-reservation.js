@@ -1,4 +1,3 @@
-
 const crypto = require("node:crypto");
 
 const ALLOWED_STATUSES = new Set([
@@ -6,6 +5,13 @@ const ALLOWED_STATUSES = new Set([
   "incomplete",
   "unvalidated",
 ]);
+
+class DuplicateReservationError extends Error {
+  constructor() {
+    super("Guest already has a validated reservation for this date.");
+    this.name = "DuplicateReservationError";
+  }
+}
 
 function normalizeDate(value) {
   if (typeof value !== "string") return null;
@@ -35,10 +41,7 @@ function normalizeDate(value) {
   }
 
   const daysInMonth = new Date(Date.UTC(year, month, 0)).getUTCDate();
-
-  if (day > daysInMonth) {
-    return null;
-  }
+  if (day > daysInMonth) return null;
 
   return (
     `${String(year).padStart(4, "0")}-` +
@@ -49,21 +52,14 @@ function normalizeDate(value) {
 
 function normalizeTime(value) {
   if (typeof value !== "string") return null;
-
   const trimmed = value.trim();
-
-  const twentyFourHourMatch =
-    /^(\d{2}):(\d{2})(?::(\d{2}))?$/.exec(trimmed);
+  const twentyFourHourMatch = /^(\d{2}):(\d{2})(?::(\d{2}))?$/.exec(trimmed);
 
   if (twentyFourHourMatch) {
     const hour = Number(twentyFourHourMatch[1]);
     const minute = Number(twentyFourHourMatch[2]);
     const second = Number(twentyFourHourMatch[3] ?? "0");
-
-    if (hour > 23 || minute > 59 || second > 59) {
-      return null;
-    }
-
+    if (hour > 23 || minute > 59 || second > 59) return null;
     return (
       `${String(hour).padStart(2, "0")}:` +
       `${String(minute).padStart(2, "0")}:` +
@@ -71,30 +67,21 @@ function normalizeTime(value) {
     );
   }
 
-  const twelveHourMatch =
-    /^(\d{1,2}):(\d{2})\s*(AM|PM)$/i.exec(trimmed);
-
+  const twelveHourMatch = /^(\d{1,2}):(\d{2})\s*(AM|PM)$/i.exec(trimmed);
   if (!twelveHourMatch) return null;
 
   let hour = Number(twelveHourMatch[1]);
   const minute = Number(twelveHourMatch[2]);
   const period = twelveHourMatch[3].toUpperCase();
-
-  if (hour < 1 || hour > 12 || minute > 59) {
-    return null;
-  }
-
+  if (hour < 1 || hour > 12 || minute > 59) return null;
   if (period === "AM" && hour === 12) hour = 0;
   if (period === "PM" && hour !== 12) hour += 12;
-
   return `${String(hour).padStart(2, "0")}:${twelveHourMatch[2]}:00`;
 }
 
 function optionalText(value) {
   if (typeof value !== "string") return null;
-
   const trimmed = value.trim();
-
   return trimmed || null;
 }
 
@@ -102,10 +89,8 @@ function buildPayload(event) {
   const requestStatus = optionalText(event.requestStatus);
   const detailsValidated =
     event.detailsValidated === true ||
-    (
-        typeof event.detailsValidated === "string" &&
-        event.detailsValidated.trim().toLowerCase() === "true"
-    );
+    (typeof event.detailsValidated === "string" &&
+      event.detailsValidated.trim().toLowerCase() === "true");
 
   if (!ALLOWED_STATUSES.has(requestStatus)) {
     throw new Error("Invalid reservation status.");
@@ -130,12 +115,11 @@ function buildPayload(event) {
   if (detailsValidated) {
     const partySizeValue = optionalText(String(event.partySize ?? ""));
     const partySize = partySizeValue === null ? null : Number(partySizeValue);
-
     if (
-    partySize !== null &&
-    (!Number.isInteger(partySize) || partySize < 1 || partySize > 20)
+      partySize !== null &&
+      (!Number.isInteger(partySize) || partySize < 1 || partySize > 20)
     ) {
-    throw new Error("Invalid party size.");
+      throw new Error("Invalid party size.");
     }
     payload.customerName = optionalText(event.customerName);
     payload.reservationDate = normalizeDate(event.reservationDate);
@@ -146,33 +130,22 @@ function buildPayload(event) {
     payload.email = email?.toUpperCase() === "NOT PROVIDED" ? null : email;
     const vipPreference = optionalText(event.vipPreference);
     payload.vipPreference =
-      vipPreference?.toUpperCase() === "NOT PROVIDED"
-        ? null
-        : vipPreference;
+      vipPreference?.toUpperCase() === "NOT PROVIDED" ? null : vipPreference;
   }
-
   return payload;
 }
 
 async function submitReservation(context, payload) {
   const apiUrl = context.RESERVATION_API_URL;
   const secret = context.RESERVATION_INGEST_SECRET;
-
-const isHttps =
-    typeof apiUrl === "string" &&
-    /^https:\/\//i.test(apiUrl);
-
-  if (!isHttps) {
-    throw new Error("Reservation API URL is not configured.");
-  }
-
+  const isHttps = typeof apiUrl === "string" && /^https:\/\//i.test(apiUrl);
+  if (!isHttps) throw new Error("Reservation API URL is not configured.");
   if (!secret || !/^[a-f0-9]{64}$/.test(secret)) {
     throw new Error("Reservation ingestion secret is invalid.");
   }
 
   const body = JSON.stringify(payload);
   const timestamp = String(Math.floor(Date.now() / 1000));
-
   const signature = crypto
     .createHmac("sha256", Buffer.from(secret, "hex"))
     .update(`${timestamp}.${body}`)
@@ -189,12 +162,14 @@ const isHttps =
     signal: AbortSignal.timeout(10000),
   });
 
+  // Preserve the API's exact HTTP status, but keep guest data out of logs.
   const result = await response.json();
-
-  if (!response.ok || result.success !== true) {
+  if (response.status === 409 && result?.code === "SAME_DATE_RESERVATION") {
+    throw new DuplicateReservationError();
+  }
+  if (!response.ok || result?.success !== true) {
     throw new Error("Reservation API rejected the request.");
   }
-
   return result;
 }
 
@@ -202,32 +177,36 @@ exports.handler = async function (context, event, callback) {
   try {
     const payload = buildPayload(event);
     const result = await submitReservation(context, payload);
-
     return callback(null, {
       success: true,
       persisted: result.persisted === true,
+      duplicate: false,
       reservationId: result.reservationId ?? null,
       reservationStatus: result.reservationStatus ?? null,
       notificationCreated: result.notificationCreated ?? false,
       notificationEventKey: result.notificationEventKey ?? null,
     });
   } catch (error) {
+    if (error instanceof DuplicateReservationError) {
+      console.warn("Reservation duplicate review required: SAME_DATE_RESERVATION");
+      return callback(null, {
+        success: false,
+        persisted: false,
+        duplicate: true,
+        error: "DUPLICATE_RESERVATION",
+      });
+    }
     console.error(
       "Reservation ingestion failed:",
       error instanceof Error ? error.message : "Unknown error",
     );
-
     return callback(null, {
       success: false,
       persisted: false,
+      duplicate: false,
       error: "RESERVATION_INGEST_FAILED",
     });
   }
 };
 
-// Export pure helpers for local tests only.
-exports._test = {
-  normalizeDate,
-  normalizeTime,
-  buildPayload,
-};
+exports._test = { normalizeDate, normalizeTime, buildPayload };

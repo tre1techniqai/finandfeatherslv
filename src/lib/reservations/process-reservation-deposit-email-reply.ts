@@ -40,6 +40,9 @@ type ProcessInput = {
 
 type ProcessOptions = {
   enabled?: boolean;
+  // Staff recovery only: fail closed if independent
+  // attribution chooses a different reservation.
+  expectedReservationId?: string;
 };
 
 export type DepositEmailProcessingResult =
@@ -773,6 +776,29 @@ export async function processReservationDepositEmailReply(
       status: "blocked",
       reason: "INVALID_RESERVATION_ID",
     };
+  }
+
+  // Before any registration or email persistence,
+  // enforce the target reservation selected by staff.
+  // Normal automated processing remains unchanged when
+  // expectedReservationId is omitted.
+  if (options.expectedReservationId !== undefined) {
+    if (!UUID.test(options.expectedReservationId)) {
+      return {
+        status: "blocked",
+        reason: "INVALID_EXPECTED_RESERVATION_ID",
+      };
+    }
+
+    if (
+      reservationId.toLowerCase() !==
+      options.expectedReservationId.toLowerCase()
+    ) {
+      return {
+        status: "review",
+        reason: "RECOVERY_RESERVATION_MISMATCH",
+      };
+    }
   }
 
   // Independently verify the selected reservation's

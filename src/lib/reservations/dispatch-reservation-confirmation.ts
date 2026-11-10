@@ -275,7 +275,8 @@ type SupabaseClient = Awaited<ReturnType<typeof createSupabaseServerClient>>;
 
 /**
  * Dispatch a confirmed reservation notification exactly once.
- * Caller must authenticate and authorize the manager before calling.
+ * Caller must authenticate and authorize an active reservation staff
+ * member before calling.
  * This function performs all local checks before claiming a queued event.
  * Once claimed, an uncertain outcome is never retried automatically.
  */
@@ -436,7 +437,10 @@ export async function dispatchReservationConfirmation(
 
   if (claimError) {
     if (claimError.code === "42501") {
-      return jsonError("Manager access required.", 403);
+      return jsonError(
+        "Active reservation staff access required.",
+        403,
+      );
     }
 
     if (claimError.code === "22023") {

@@ -2,16 +2,6 @@ const TIME_ZONE = "America/Los_Angeles";
 const MIN_LEAD_MINUTES = 120;
 const MAX_ADVANCE_DAYS = 90;
 
-const ALLOWED_OCCASIONS = [
-  "JUST DINING",
-  "BIRTHDAY",
-  "ANNIVERSARY",
-  "DATE NIGHT",
-  "BUSINESS",
-  "CELEBRATION",
-  "OTHER"
-];
-
 // Sunday = 0, Monday = 1, ... Saturday = 6.
 // Minutes are measured from midnight of the reservation date.
 // Midnight and after-midnight reservations are not permitted.
@@ -21,7 +11,7 @@ const SERVICE_HOURS = [
   { open: 660, last: 1320 }, // Tuesday: 11 AM - 10 PM
   { open: 660, last: 1320 }, // Wednesday: 11 AM - 10 PM
   { open: 660, last: 1320 }, // Thursday: 11 AM - 10 PM
-  { open: 660, last: 1410 }, // Friday: 11 AM - 11:30 PM
+  { open: 660, last: 1320 }, // Friday: 11 AM - 11:30 PM
   { open: 600, last: 1410 }  // Saturday: 10 AM - 11:30 PM
 ];
 
@@ -225,7 +215,11 @@ exports.handler = function (context, event, callback) {
   const date = fields.date || "";
   const time = fields.time || "";
   const guests = fields.guests || "";
-  const occasion = (fields.occasion || "").toUpperCase();
+
+  // Occasion is optional. Preserve guest-added descriptions instead of
+  // restricting the value to the website's predefined select choices.
+  // Keep the existing API's 120-character bound.
+  const occasion = (fields.occasion || "").trim();
 
   if (!first_name) errors.push("Missing first_name");
   if (!last_name) errors.push("Missing last_name");
@@ -243,11 +237,40 @@ exports.handler = function (context, event, callback) {
     errors.push("Last name must not exceed 50 characters");
   }
 
+  if (first_name && !/^[A-Za-z]{2,50}$/.test(first_name)) {
+    errors.push(
+      "First name must contain 2 to 50 letters, with no numbers, spaces, or special characters"
+    );
+  }
+
+  if (
+    last_name &&
+    (
+      !/^[A-Za-z]+(?:-[A-Za-z]+)*$/.test(last_name) ||
+      last_name.replace(/-/g, "").length < 3
+    )
+  ) {
+    errors.push(
+      "Last name must contain at least 3 letters; only letters and hyphens are allowed"
+    );
+  }
+
+  const repeatedLetter = (value) =>
+    /^([A-Za-z])\1+$/i.test(value);
+
+  if (
+    (first_name && repeatedLetter(first_name)) ||
+    (last_name && repeatedLetter(last_name.replace(/-/g, "")))
+  ) {
+    errors.push(
+      "First and last names must not consist entirely of repeated placeholder letters"
+    );
+  }
+
   for (const field of [
     "date",
     "time",
-    "guests",
-    "occasion"
+    "guests"
   ]) {
     if (!fields[field]) {
       errors.push(`Missing ${field}`);
@@ -277,11 +300,12 @@ exports.handler = function (context, event, callback) {
     );
   }
 
-  if (
-    occasion &&
-    !ALLOWED_OCCASIONS.includes(occasion)
-  ) {
-    errors.push("Invalid occasion");
+  if (occasion.length > 120) {
+    errors.push("Occasion must not exceed 120 characters");
+  }
+
+  if (/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/.test(occasion)) {
+    errors.push("Occasion contains invalid control characters");
   }
 
   const parsedDate = date ? parseDate(date) : null;
@@ -388,4 +412,4 @@ exports.handler = function (context, event, callback) {
   };
 
   return callback(null, response);
-};
+}

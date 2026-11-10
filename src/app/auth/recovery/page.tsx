@@ -187,7 +187,7 @@ export default function RecoveryPage() {
           <p className="mt-3 text-sm leading-6 text-zinc-400">
             {status === "success"
               ? "Your password has been updated. Sign in using your new credentials."
-              : "Choose a new password for your manager account."}
+              : "Choose a new password for your Fin & Feathers account."}
           </p>
         </div>
 
@@ -210,12 +210,21 @@ export default function RecoveryPage() {
               Please request a new password reset.
             </p>
 
-            <Link
-              href="/admin/forgot-password"
-              className="block rounded-lg bg-[#ea1b24] px-5 py-3 text-center font-semibold text-white"
-            >
-              REQUEST NEW RESET LINK
-            </Link>
+            <div className="grid gap-3">
+              <Link
+                href="/staff/forgot-password"
+                className="block rounded-lg bg-[#ea1b24] px-5 py-3 text-center text-sm font-semibold text-white transition hover:bg-red-700"
+              >
+                STAFF PASSWORD RESET
+              </Link>
+
+              <Link
+                href="/admin/forgot-password"
+                className="block rounded-lg border border-white/20 bg-white/5 px-5 py-3 text-center text-sm font-semibold text-white transition hover:bg-white/10"
+              >
+                MANAGER PASSWORD RESET
+              </Link>
+            </div>
           </div>
         )}
 
@@ -308,22 +317,44 @@ export default function RecoveryPage() {
               </p>
             )}
 
-            <Link
-              href="/admin/login"
-              className="block rounded-lg bg-[#ea1b24] px-5 py-3 text-center font-semibold text-white"
-            >
-              RETURN TO MANAGER SIGN IN
-            </Link>
+            <div className="grid gap-3">
+              <Link
+                href="/staff/login"
+                className="block rounded-lg bg-[#ea1b24] px-5 py-3 text-center text-sm font-semibold text-white transition hover:bg-red-700"
+              >
+                RETURN TO STAFF SIGN IN
+              </Link>
+
+              <Link
+                href="/admin/login"
+                className="block rounded-lg border border-white/20 bg-white/5 px-5 py-3 text-center text-sm font-semibold text-white transition hover:bg-white/10"
+              >
+                RETURN TO MANAGER SIGN IN
+              </Link>
+            </div>
           </div>
         )}
 
         <div className="mt-7 border-t border-white/10 pt-5 text-center">
-          <Link
-            href="/admin/login"
-            className="text-sm text-zinc-300 underline decoration-zinc-600 underline-offset-4 transition hover:text-white"
-          >
-            Back to Manager Sign In
-          </Link>
+          <p className="mb-3 text-xs text-zinc-400">
+            Return to your sign-in page
+          </p>
+
+          <div className="flex flex-wrap items-center justify-center gap-x-5 gap-y-2">
+            <Link
+              href="/staff/login"
+              className="text-sm text-zinc-300 underline decoration-zinc-600 underline-offset-4 transition hover:text-white"
+            >
+              Staff Sign In
+            </Link>
+
+            <Link
+              href="/admin/login"
+              className="text-sm text-zinc-300 underline decoration-zinc-600 underline-offset-4 transition hover:text-white"
+            >
+              Manager Sign In
+            </Link>
+          </div>
         </div>
       </section>
     </main>

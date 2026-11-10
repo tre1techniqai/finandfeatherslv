@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
@@ -13,8 +12,6 @@ export type GalleryImage = {
   display_order: number;
   src: string;
 };
-
-const AUTOPLAY_INTERVAL = 3000;
 
 function ArrowIcon({ direction }: { direction: "prev" | "next" }) {
   return (
@@ -47,8 +44,6 @@ export default function ImageGallery({
   const galleryImages = images;
   const totalImages = galleryImages.length;
 
-  const [isHovered, setIsHovered] = useState(false);
-  const [isPageVisible, setIsPageVisible] = useState(true);
   const [trackIndex, setTrackIndex] = useState(1);
   const [transitionEnabled, setTransitionEnabled] = useState(true);
   const [isOpen, setIsOpen] = useState(false);
@@ -59,6 +54,32 @@ export default function ImageGallery({
       ? ((trackIndex - 1) % totalImages + totalImages) %
         totalImages
       : 0;
+
+  // Only mount images in the current slide and its immediate
+  // neighbors. Empty slide containers preserve track geometry.
+  // Cloned first/last slides are included when adjacent.
+  const isNearCurrentSlide = (slideIndex: number) =>
+    Math.abs(slideIndex - trackIndex) <= 1;
+
+  // Distant dot selections jump directly instead of animating
+  // through offscreen slides that are intentionally not loaded.
+  const selectImage = (index: number) => {
+    if (index === currentIndex) return;
+
+    const targetTrackIndex = index + 1;
+
+    if (Math.abs(targetTrackIndex - trackIndex) > 1) {
+      setTransitionEnabled(false);
+      setTrackIndex(targetTrackIndex);
+      window.requestAnimationFrame(() => {
+        window.requestAnimationFrame(() => {
+          setTransitionEnabled(true);
+        });
+      });
+    } else {
+      setTrackIndex(targetTrackIndex);
+    }
+  };
 
   // Restore the real slide position without a visible jump.
   // This also recovers from a transitionend event missed by
@@ -111,64 +132,6 @@ export default function ImageGallery({
     });
   }, [totalImages]);
 
-  // Pause autoplay in background tabs and recover the
-  // track position when the visitor returns.
-  useEffect(() => {
-    function handleVisibilityChange() {
-      const visible = document.visibilityState === "visible";
-
-      setIsPageVisible(visible);
-
-      if (visible) {
-        normalizeTrackPosition();
-      }
-    }
-
-    handleVisibilityChange();
-
-    document.addEventListener(
-      "visibilitychange",
-      handleVisibilityChange,
-    );
-
-    return () => {
-      document.removeEventListener(
-        "visibilitychange",
-        handleVisibilityChange,
-      );
-    };
-  }, [normalizeTrackPosition]);
-
-  // Automatically advance every three seconds.
-  // Pause while hovered, the modal is open, or the
-  // browser tab is hidden.
-  useEffect(() => {
-    if (
-      !isPageVisible ||
-      isHovered ||
-      isOpen ||
-      totalImages < 2
-    ) {
-      return;
-    }
-
-    const interval = window.setInterval(() => {
-      if (document.visibilityState === "visible") {
-        nextImage();
-      }
-    }, AUTOPLAY_INTERVAL);
-
-    return () => {
-      window.clearInterval(interval);
-    };
-  }, [
-    isPageVisible,
-    isHovered,
-    isOpen,
-    nextImage,
-    totalImages,
-  ]);
-
   // Preserve modal keyboard controls and page scroll locking.
   useEffect(() => {
     if (!isOpen) return;
@@ -213,8 +176,6 @@ export default function ImageGallery({
     <section
       aria-label="Fin & Feathers photo gallery"
       className="mx-auto w-full max-w-4xl px-4 py-8 sm:px-6"
-      onMouseEnter={() => setIsHovered(true)}
-      onMouseLeave={() => setIsHovered(false)}
     >
       <div className="mb-5 text-center">
         <h2 className="text-2xl font-bold uppercase tracking-wide text-white sm:text-3xl">
@@ -276,13 +237,16 @@ export default function ImageGallery({
                 }}
                 aria-hidden={slideIndex !== trackIndex}
               >
-                <Image
-                  src={image.src}
-                  alt={image.alt_text}
-                  className="object-cover"
-                  fill
-                  sizes="(max-width: 768px) 100vw, 896px"
-                />
+                {isNearCurrentSlide(slideIndex) && (
+                  <Image
+                    src={image.src}
+                    alt={image.alt_text}
+                    className="object-cover"
+                    fill
+                    sizes="(max-width: 768px) 100vw, 896px"
+                    loading="lazy"
+                  />
+                )}
               </div>
             ))}
           </div>
@@ -323,9 +287,7 @@ export default function ImageGallery({
           <button
             key={image.id}
             type="button"
-            onClick={() => {
-              setTrackIndex(index + 1);
-            }}
+            onClick={() => selectImage(index)}
             aria-label={`Show image ${index + 1}`}
             aria-current={
               currentIndex === index ? "true" : undefined

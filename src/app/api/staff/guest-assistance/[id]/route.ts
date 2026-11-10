@@ -1,9 +1,11 @@
+
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { isReservationStaffRole } from "@/lib/auth/require-reservation-staff";
 
 const UUID_PATTERN =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 const MAX_BODY_BYTES = 512;
 
@@ -94,7 +96,7 @@ export async function POST(
     }
 
     // Only requests originating from this website
-    // may perform manager alert actions.
+    // may perform reservation assistance actions.
     const origin = request.headers.get("origin");
     const expectedOrigin = new URL(request.url).origin;
 
@@ -144,8 +146,8 @@ export async function POST(
       return fail("Invalid assistance action.", 400);
     }
 
-    // Validate the current manager's authenticated
-    // session before accessing privileged credentials.
+    // Authenticate the staff member before accessing
+    // privileged Supabase credentials.
     const supabase =
       await createSupabaseServerClient();
 
@@ -177,14 +179,17 @@ export async function POST(
     if (
       roleError ||
       !staffRole ||
-      staffRole.role !== "manager" ||
-      staffRole.is_active !== true
+      staffRole.is_active !== true ||
+      !isReservationStaffRole(staffRole.role)
     ) {
-      return fail("Manager access required.", 403);
+      return fail(
+        "Reservation staff access required.",
+        403,
+      );
     }
 
-    // Service-role access is used only after
-    // authenticating and authorizing the manager.
+    // Service-role access is permitted only after
+    // authenticating and authorizing reservation staff.
     const supabaseUrl =
       process.env.SUPABASE_URL ??
       process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -195,7 +200,7 @@ export async function POST(
 
     if (!supabaseUrl || !supabaseKey) {
       console.error(
-        "Guest assistance manager API is not configured.",
+        "Guest assistance staff API is not configured.",
       );
 
       return fail(
@@ -215,14 +220,14 @@ export async function POST(
       },
     );
 
-    // State transitions are deliberately strict:
+    // State transitions remain deliberately strict:
     //
     // open         -> acknowledged
     // acknowledged -> resolved
     //
     // The database UPDATE checks the expected
     // previous state, preventing two simultaneous
-    // manager actions from overwriting one another.
+    // staff actions from overwriting one another.
     const expectedStatus =
       action === "acknowledge"
         ? "open"
@@ -274,7 +279,7 @@ export async function POST(
 
     if (updateError) {
       console.error(
-        "Guest assistance manager update failed:",
+        "Guest assistance staff update failed:",
         {
           category: "GUEST_ASSISTANCE_UPDATE_ERROR",
           code: updateError.code,
@@ -354,7 +359,7 @@ export async function POST(
     });
   } catch (error) {
     console.error(
-      "Guest assistance manager action failed:",
+      "Guest assistance staff action failed:",
       {
         category: "GUEST_ASSISTANCE_ACTION_ERROR",
         name:

@@ -1,9 +1,10 @@
 import { NextResponse } from "next/server";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { isReservationStaffRole } from "@/lib/auth/require-reservation-staff";
 import { dispatchReservationConfirmation } from "@/lib/reservations/dispatch-reservation-confirmation";
 
 const UUID_PATTERN =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 type RouteContext = {
   params: Promise<{ id: string }>;
@@ -75,10 +76,13 @@ export async function POST(request: Request, context: RouteContext) {
   if (
     roleError ||
     !staffRole ||
-    staffRole.role !== "manager" ||
-    !staffRole.is_active
+    staffRole.is_active !== true ||
+    !isReservationStaffRole(staffRole.role)
   ) {
-    return jsonError("Manager access required.", 403);
+    return jsonError(
+      "Active reservation staff access required.",
+      403,
+    );
   }
 
   // The shared dispatcher performs reservation and notification validation,

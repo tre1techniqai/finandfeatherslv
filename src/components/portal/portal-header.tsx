@@ -72,6 +72,10 @@ export default function PortalHeader({
         label: "RESERVATIONS",
         href: "/staff/reservations",
       },
+      {
+        label: "CONVERSATIONS",
+        href: "/staff/conversations",
+      },
     );
   }
 

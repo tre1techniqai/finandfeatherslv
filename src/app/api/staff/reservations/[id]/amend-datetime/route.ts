@@ -292,10 +292,10 @@ export async function POST(
     roleError ||
     !staffRole ||
     staffRole.is_active !== true ||
-    staffRole.role !== "manager"
+    !["manager", "reservation_agent"].includes(staffRole.role)
   ) {
     return jsonError(
-      "Manager authorization required.",
+      "Active reservation staff authorization required.",
       403,
     );
   }
@@ -356,7 +356,7 @@ export async function POST(
   if (error) {
     if (error.code === "42501") {
       return jsonError(
-        "Manager authorization required.",
+        "Active reservation staff authorization required.",
         403,
       );
     }
