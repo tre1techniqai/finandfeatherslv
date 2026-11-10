@@ -1,3 +1,4 @@
+
 import test from "node:test";
 import assert from "node:assert/strict";
 
@@ -37,20 +38,23 @@ test("01 - Exact ended execution permits preflight", () => {
   });
 });
 
-test("02 - Active execution blocks preflight", () => {
+test("02 - Active verified execution requires termination", () => {
   assert.deepEqual(
     decide({ status: "active" }),
     {
       eligible: false,
-      reason: "EXECUTION_NOT_ENDED",
+      reason: "ACTIVE_VERIFIED",
     },
   );
 });
 
 test("03 - Unexpected execution status blocks preflight", () => {
-  assert.equal(
-    decide({ status: "unexpected" }).eligible,
-    false,
+  assert.deepEqual(
+    decide({ status: "unexpected" }),
+    {
+      eligible: false,
+      reason: "EXECUTION_NOT_ENDED",
+    },
   );
 });
 
@@ -65,18 +69,24 @@ test("04 - Wrong execution SID blocks preflight", () => {
 });
 
 test("05 - Wrong Flow SID blocks preflight", () => {
-  assert.equal(
-    decide({ flowSid: OTHER_FLOW }).eligible,
-    false,
+  assert.deepEqual(
+    decide({ flowSid: OTHER_FLOW }),
+    {
+      eligible: false,
+      reason: "EXECUTION_IDENTITY_MISMATCH",
+    },
   );
 });
 
 test("06 - Wrong guest phone blocks preflight", () => {
-  assert.equal(
+  assert.deepEqual(
     decide({
       contactChannelAddress: OTHER_PHONE,
-    }).eligible,
-    false,
+    }),
+    {
+      eligible: false,
+      reason: "EXECUTION_IDENTITY_MISMATCH",
+    },
   );
 });
 
@@ -117,26 +127,74 @@ test("09 - Same-phone, other-reservation execution cannot substitute", () => {
 });
 
 test("10 - SID capitalization is treated consistently", () => {
-  assert.equal(
+  assert.deepEqual(
     decide({
       sid: SID.toLowerCase(),
-    }).eligible,
-    true,
+    }),
+    {
+      eligible: true,
+      reason: "ENDED_VERIFIED",
+    },
   );
 });
 
 test("11 - Missing execution status blocks preflight", () => {
-  assert.equal(
-    decide({ status: undefined }).eligible,
-    false,
+  assert.deepEqual(
+    decide({ status: undefined }),
+    {
+      eligible: false,
+      reason: "EXECUTION_NOT_ENDED",
+    },
   );
 });
 
 test("12 - Missing guest address blocks preflight", () => {
-  assert.equal(
+  assert.deepEqual(
     decide({
       contactChannelAddress: null,
-    }).eligible,
-    false,
+    }),
+    {
+      eligible: false,
+      reason: "EXECUTION_IDENTITY_MISMATCH",
+    },
+  );
+});
+
+test("13 - Active execution with wrong SID cannot be terminated", () => {
+  assert.deepEqual(
+    decide({
+      sid: OTHER_SID,
+      status: "active",
+    }),
+    {
+      eligible: false,
+      reason: "EXECUTION_IDENTITY_MISMATCH",
+    },
+  );
+});
+
+test("14 - Active execution with wrong phone cannot be terminated", () => {
+  assert.deepEqual(
+    decide({
+      contactChannelAddress: OTHER_PHONE,
+      status: "active",
+    }),
+    {
+      eligible: false,
+      reason: "EXECUTION_IDENTITY_MISMATCH",
+    },
+  );
+});
+
+test("15 - Active execution with wrong Flow cannot be terminated", () => {
+  assert.deepEqual(
+    decide({
+      flowSid: OTHER_FLOW,
+      status: "active",
+    }),
+    {
+      eligible: false,
+      reason: "EXECUTION_IDENTITY_MISMATCH",
+    },
   );
 });

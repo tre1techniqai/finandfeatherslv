@@ -1,7 +1,16 @@
+
 /**
- * Pure, reservation-specific eligibility decision for ARCHIVE.
- * Does not fetch Twilio data, mutate the database, or send messages.
- * A successful result is only a preflight, not an atomic automation fence.
+ * Pure, reservation-specific Studio execution decision for ARCHIVE.
+ *
+ * Does not fetch Twilio data, terminate executions,
+ * mutate the database, or send messages.
+ *
+ * ACTIVE_VERIFIED indicates that the specific execution
+ * may be considered for controlled termination.
+ * It does not authorize archiving.
+ *
+ * ENDED_VERIFIED permits the archive preflight to continue,
+ * but is not an atomic automation fence.
  */
 
 const EXECUTION_SID = /^FN[0-9a-f]{32}$/i;
@@ -16,10 +25,14 @@ type ExecutionIdentity = {
 };
 
 export type ArchiveStudioDecision =
-  | { eligible: true; reason: "ENDED_VERIFIED" }
+  | {
+      eligible: true;
+      reason: "ENDED_VERIFIED";
+    }
   | {
       eligible: false;
       reason:
+        | "ACTIVE_VERIFIED"
         | "INVALID_EXPECTED_IDENTITY"
         | "EXECUTION_UNAVAILABLE"
         | "EXECUTION_IDENTITY_MISMATCH"
@@ -32,7 +45,12 @@ export function decideArchiveStudioEligibility(input: {
   expectedGuestPhone: unknown;
   execution: ExecutionIdentity | null | undefined;
 }): ArchiveStudioDecision {
-  const { expectedExecutionSid, expectedFlowSid, expectedGuestPhone, execution } = input;
+  const {
+    expectedExecutionSid,
+    expectedFlowSid,
+    expectedGuestPhone,
+    execution,
+  } = input;
 
   if (
     typeof expectedExecutionSid !== "string" ||
@@ -42,26 +60,53 @@ export function decideArchiveStudioEligibility(input: {
     typeof expectedGuestPhone !== "string" ||
     !E164.test(expectedGuestPhone)
   ) {
-    return { eligible: false, reason: "INVALID_EXPECTED_IDENTITY" };
+    return {
+      eligible: false,
+      reason: "INVALID_EXPECTED_IDENTITY",
+    };
   }
 
-  if (!execution || typeof execution !== "object" || Array.isArray(execution)) {
-    return { eligible: false, reason: "EXECUTION_UNAVAILABLE" };
+  if (
+    !execution ||
+    typeof execution !== "object" ||
+    Array.isArray(execution)
+  ) {
+    return {
+      eligible: false,
+      reason: "EXECUTION_UNAVAILABLE",
+    };
   }
 
   if (
     typeof execution.sid !== "string" ||
     !EXECUTION_SID.test(execution.sid) ||
-    execution.sid.toLowerCase() !== expectedExecutionSid.toLowerCase() ||
+    execution.sid.toLowerCase() !==
+      expectedExecutionSid.toLowerCase() ||
     execution.flowSid !== expectedFlowSid ||
     execution.contactChannelAddress !== expectedGuestPhone
   ) {
-    return { eligible: false, reason: "EXECUTION_IDENTITY_MISMATCH" };
+    return {
+      eligible: false,
+      reason: "EXECUTION_IDENTITY_MISMATCH",
+    };
   }
 
-  if (execution.status !== "ended") {
-    return { eligible: false, reason: "EXECUTION_NOT_ENDED" };
+  if (execution.status === "ended") {
+    return {
+      eligible: true,
+      reason: "ENDED_VERIFIED",
+    };
   }
 
-  return { eligible: true, reason: "ENDED_VERIFIED" };
+  if (execution.status === "active") {
+    return {
+      eligible: false,
+      reason: "ACTIVE_VERIFIED",
+    };
+  }
+
+  return {
+    eligible: false,
+    reason: "EXECUTION_NOT_ENDED",
+  };
 }

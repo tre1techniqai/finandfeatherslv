@@ -408,8 +408,8 @@ export async function POST(
         503,
       );
     }
-    // Fail closed unless the target reservation's own Studio execution
-    // is verified to have ended. Never infer ownership from the phone alone.
+    // Verify the reservation's own Studio execution before taking any
+    // action. Never infer execution ownership from a shared phone number.
     const { data: reservation, error: reservationError } =
       await supabase
         .from("reservation_requests")
@@ -453,39 +453,81 @@ export async function POST(
     ) {
       return jsonError("Studio execution verification is not configured.", 503);
     }
+
+    const client = twilio(accountSid, authToken);
+    const studioExecution = client.studio.v2
+      .flows(flowSid)
+      .executions(reservation.twilio_execution_sid);
+
     let execution;
     try {
-      const client = twilio(accountSid, authToken);
-      execution = await client.studio.v2
-        .flows(flowSid)
-        .executions(reservation.twilio_execution_sid)
-        .fetch();
+      execution = await studioExecution.fetch();
     } catch (caught) {
       console.error("Archive Studio execution verification failed:", {
         reservationId: id,
         errorName: caught instanceof Error ? caught.name : "UnknownError",
       });
       return jsonError(
-        "Unable to verify that the reservation's Studio execution has ended.",
+        "Unable to verify the reservation's Studio execution.",
         503,
       );
     }
-    const studioDecision = decideArchiveStudioEligibility({
+
+    let studioDecision = decideArchiveStudioEligibility({
       expectedExecutionSid: reservation.twilio_execution_sid,
       expectedFlowSid: flowSid,
       expectedGuestPhone: reservation.customer_phone,
       execution,
     });
+
+    if (studioDecision.reason === "ACTIVE_VERIFIED") {
+      // Only an exact SID + Flow + guest match may be terminated.
+      // A successful Twilio update is not sufficient: fetch again and
+      // require the same execution to be verified as ended.
+      try {
+        const stopped = await studioExecution.update({ status: "ended" });
+        if (
+          stopped.sid.toLowerCase() !==
+            reservation.twilio_execution_sid.toLowerCase() ||
+          stopped.status !== "ended"
+        ) {
+          return jsonError(
+            "Twilio could not confirm Studio execution termination.",
+            503,
+          );
+        }
+        execution = await studioExecution.fetch();
+      } catch (caught) {
+        console.error("Archive Studio execution termination failed:", {
+          reservationId: id,
+          errorName: caught instanceof Error ? caught.name : "UnknownError",
+        });
+        return jsonError(
+          "Unable to safely end the reservation's Studio execution. Review Twilio before retrying.",
+          503,
+        );
+      }
+      studioDecision = decideArchiveStudioEligibility({
+        expectedExecutionSid: reservation.twilio_execution_sid,
+        expectedFlowSid: flowSid,
+        expectedGuestPhone: reservation.customer_phone,
+        execution,
+      });
+    }
+
     if (!studioDecision.eligible) {
       return jsonError(
-        studioDecision.reason === "EXECUTION_NOT_ENDED"
-          ? "Reservation cannot be archived until its Studio execution has ended and been verified."
+        studioDecision.reason === "EXECUTION_NOT_ENDED" ||
+          studioDecision.reason === "ACTIVE_VERIFIED"
+          ? "Reservation Studio execution is not confirmed ended."
           : "Studio execution identity or availability could not be verified for this reservation.",
         409,
       );
     }
-    // The archive RPC performs authoritative, locked reservation/SMS/
-    // notification checks. This external preflight is not an atomic Studio fence.
+
+    // Studio verification and termination are external operations,
+    // not an atomic fence against independently queued messages.
+    // The archive RPC retains its authoritative database checks.
     const { data: archiveData, error: archiveError } =
       await supabase.rpc("archive_reservation", {
         p_reservation_id: id,
