@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 type WorkflowStatus =
   | "awaiting_review"
@@ -170,6 +170,24 @@ export default function ReservationWorkflowActions({
   const status = workflow?.workflow_status ?? "awaiting_review";
 
   const [busy, setBusy] = useState<ActionName | null>(null);
+  type ConfirmationKind = "deposit_decision" | "invoice_notification" | "waiver";
+  const [confirmationKind, setConfirmationKind] = useState<ConfirmationKind | null>(null);
+  const cancelConfirmationRef = useRef<HTMLButtonElement>(null);
+  const confirmationTriggerRef = useRef<HTMLButtonElement | null>(null);
+
+  useEffect(() => {
+    if (!confirmationKind) return;
+    cancelConfirmationRef.current?.focus();
+    return () => confirmationTriggerRef.current?.focus();
+  }, [confirmationKind]);
+
+  function openConfirmation(kind: ConfirmationKind) {
+    if (actionPending || confirmationKind) return;
+    const active = document.activeElement;
+    confirmationTriggerRef.current = active instanceof HTMLButtonElement ? active : null;
+    setConfirmationKind(kind);
+  }
+
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
 
@@ -406,16 +424,6 @@ export default function ReservationWorkflowActions({
       return;
     }
 
-    if (
-      !window.confirm(
-        "Send the large-party deposit decision to the guest by SMS? " +
-          "This is not a final reservation confirmation. " +
-          "Do not repeat this action if the delivery status is uncertain.",
-      )
-    ) {
-      return;
-    }
-
     // Lock immediately, before the first network request, even if it fails.
     setDepositDecisionNeedsReview(true);
     setBusy("send_deposit_decision");
@@ -468,17 +476,6 @@ export default function ReservationWorkflowActions({
       return;
     }
 
-    if (
-      !window.confirm(
-        "Confirm that you have emailed the deposit invoice to the guest " +
-          "and want to send the payment instructions by SMS. " +
-          "This does not verify payment or confirm the reservation. " +
-          "If the SMS outcome is uncertain, review it before any follow-up.",
-      )
-    ) {
-      return;
-    }
-
     // Lock the client immediately, before the first network request.
     // The server separately enforces a reservation-specific one-time claim.
     setPaymentLinkNotificationAttempted(true);
@@ -517,6 +514,43 @@ export default function ReservationWorkflowActions({
       router.refresh();
     }
   }
+
+  function confirmSelectedAction() {
+    if (actionPending || confirmationKind === null) return;
+    const selected = confirmationKind;
+    setConfirmationKind(null);
+
+    if (selected === "deposit_decision") {
+      void sendDepositDecision();
+    } else if (selected === "invoice_notification") {
+      void notifyDepositPaymentLink();
+    } else if (selected === "waiver" && waiverSelected && validWaiverReason) {
+      void performAction("waive_deposit", { waiver_reason: waiverReasonValue });
+    }
+  }
+
+  const confirmationDetails = confirmationKind === "deposit_decision"
+    ? {
+        title: "Send Deposit Instructions?",
+        description: "Send the guest an SMS requesting their email address for the required deposit.",
+        warning: "This is not a final reservation confirmation. If SMS delivery is uncertain, review its status before any follow-up. Do not resend automatically.",
+        actionLabel: "Send Deposit Instructions",
+      }
+    : confirmationKind === "invoice_notification"
+      ? {
+          title: "Notify Guest About Invoice?",
+          description: `Confirm the deposit invoice was emailed to ${guestEmailValue} and send the guest an SMS with payment instructions.`,
+          warning: "This action does not verify payment or confirm the reservation. If the SMS outcome is uncertain, review the operation before any follow-up.",
+          actionLabel: "Notify Guest",
+        }
+      : confirmationKind === "waiver"
+        ? {
+            title: "Approve Deposit Waiver?",
+            description: `Approve a $${depositAmount?.toFixed(2)} deposit waiver for this reservation? The approval and reason will be audited.`,
+            warning: "A courtesy SMS will be initiated automatically. This does not confirm the reservation.",
+            actionLabel: "Approve Waiver",
+          }
+        : null;
 
   async function sendAlternativeTimes() {
     if (
@@ -1089,19 +1123,7 @@ export default function ReservationWorkflowActions({
                           disabled={
                             actionPending || !validWaiverReason
                           }
-                          onClick={() => {
-                            if (
-                              !window.confirm(
-                                `Approve a $${depositAmount?.toFixed(2)} deposit waiver for this reservation? This decision will be audited and a courtesy SMS will be initiated automatically.`,
-                              )
-                            ) {
-                              return;
-                            }
-
-                            void performAction("waive_deposit", {
-                              waiver_reason: waiverReasonValue,
-                            });
-                          }}
+                          onClick={() => openConfirmation("waiver")}
                           className={`${buttonClass} mt-4 w-full border border-amber-400/40 bg-amber-800/30 text-amber-100 hover:bg-amber-800/50`}
                         >
                           Confirm Deposit Waiver
@@ -1125,7 +1147,7 @@ export default function ReservationWorkflowActions({
                       depositDecisionSendBlocked ||
                       depositStatus !== "pending"
                     }
-                    onClick={() => void sendDepositDecision()}
+                    onClick={() => openConfirmation("deposit_decision")}
                     className={`${buttonClass} w-full bg-[#ea1b24] text-white hover:bg-red-700`}
                   >
                     {busy === "send_deposit_decision"
@@ -1341,7 +1363,7 @@ export default function ReservationWorkflowActions({
                       <button
                         type="button"
                         disabled={actionPending || paymentLinkNotificationAttempted}
-                        onClick={() => void notifyDepositPaymentLink()}
+                        onClick={() => openConfirmation("invoice_notification")}
                         className={`${buttonClass} w-full bg-[#ea1b24] text-white hover:bg-red-700`}
                       >
                         {busy === "notify_deposit_payment_link"
@@ -1483,6 +1505,81 @@ export default function ReservationWorkflowActions({
               </div>
             );
           })()}
+        </div>
+      )}
+      {confirmationDetails && (
+        <div
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/85 p-4"
+          onKeyDown={(event) => {
+            if (event.key === "Escape" && !actionPending) {
+              event.preventDefault();
+              setConfirmationKind(null);
+            }
+            if (event.key === "Tab") {
+              const dialog = event.currentTarget.querySelector('[role="dialog"]');
+              const buttons = dialog?.querySelectorAll<HTMLButtonElement>('button:not(:disabled)');
+              if (!buttons?.length) return;
+              const first = buttons[0];
+              const last = buttons[buttons.length - 1];
+              if (event.shiftKey && document.activeElement === first) {
+                event.preventDefault();
+                last.focus();
+              } else if (!event.shiftKey && document.activeElement === last) {
+                event.preventDefault();
+                first.focus();
+              }
+            }
+          }}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="reservation-action-confirm-title"
+            aria-describedby="reservation-action-confirm-desc"
+            className="w-full max-w-xl rounded-xl border border-white/20 bg-zinc-950 p-5 text-left text-white shadow-2xl sm:p-7"
+          >
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <h2 id="reservation-action-confirm-title" className="text-xl font-bold text-white">
+                  {confirmationDetails.title}
+                </h2>
+                <p id="reservation-action-confirm-desc" className="mt-3 text-sm leading-6 text-zinc-300">
+                  {confirmationDetails.description}
+                </p>
+              </div>
+              <button
+                type="button"
+                aria-label="Close confirmation dialog"
+                disabled={actionPending}
+                onClick={() => setConfirmationKind(null)}
+                className="rounded-lg border border-white/20 px-3 py-2 text-lg text-zinc-300 hover:bg-white/10 disabled:opacity-50"
+              >
+                ×
+              </button>
+            </div>
+            <p className="mt-5 rounded-lg border border-amber-400/30 bg-amber-950/20 p-4 text-sm leading-6 text-amber-100">
+              {confirmationDetails.warning}
+            </p>
+            <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+              <button
+                type="button"
+                ref={cancelConfirmationRef}
+                disabled={actionPending}
+                onClick={() => setConfirmationKind(null)}
+                className={`${buttonClass} border border-white/20 bg-white/5 text-zinc-200 hover:bg-white/10`}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={actionPending}
+                onClick={confirmSelectedAction}
+                className={`${buttonClass} bg-[#ea1b24] text-white hover:bg-red-700`}
+              >
+                {confirmationDetails.actionLabel}
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </section>
