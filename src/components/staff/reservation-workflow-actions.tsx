@@ -44,6 +44,9 @@ type Props = {
   detailsValidated: boolean;
   depositAmount: number | null;
   depositStatus: string;
+  // Must be provided by the server-rendered reservation detail page.
+  // Missing email intentionally blocks the invoice-notification stage.
+  guestEmail?: string | null;
   staffRole?: "manager" | "reservation_agent";
   workflow: WorkflowData | null;
   confirmationNotification?: ConfirmationNotification | null;
@@ -153,6 +156,7 @@ export default function ReservationWorkflowActions({
   detailsValidated,
   depositAmount,
   depositStatus,
+  guestEmail = null,
   staffRole = "reservation_agent",
   workflow,
   confirmationNotification = null,
@@ -259,6 +263,26 @@ export default function ReservationWorkflowActions({
 
   const depositDecisionSavedStatus =
     depositDecisionNotification?.notification_status ?? null;
+
+  // A checked invoice checkbox is NOT evidence that guest email was collected
+  // or that the initial deposit-instructions notification was sent.
+  // Persisted SMS history takes precedence over the local success banner.
+  const depositInstructionsSent =
+    !depositDecisionNotificationUnavailable &&
+    (depositDecisionSavedStatus === "sent" ||
+      depositDecisionSavedStatus === "delivered" ||
+      (!depositDecisionPreviouslyAttempted &&
+        depositDecisionOutcome === "accepted"));
+
+  const guestEmailValue = guestEmail?.trim() ?? "";
+  const guestEmailRecorded =
+    guestEmailValue.length > 0 &&
+    guestEmailValue.length <= 254 &&
+    /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(guestEmailValue) &&
+    !/[\u0000-\u001F\u007F-\u009F]/u.test(guestEmailValue);
+
+  const invoiceStageReady =
+    depositInstructionsSent && guestEmailRecorded && !alreadyWaived;
 
   const actionPending = busy !== null;
   const availableAlternatives = workflow?.proposed_times ?? [];
@@ -438,6 +462,7 @@ export default function ReservationWorkflowActions({
       changingAvailability ||
       alreadyWaived ||
       depositStatus !== "pending" ||
+      !invoiceStageReady ||
       !depositLinkSent
     ) {
       return;
@@ -1092,7 +1117,7 @@ export default function ReservationWorkflowActions({
                 )}
 
                 <div className="mt-4 space-y-3">
-                  {!alreadyWaived && (
+                  {!alreadyWaived && !depositInstructionsSent && (
                   <button
                     type="button"
                     disabled={
@@ -1228,11 +1253,36 @@ export default function ReservationWorkflowActions({
               </div>
             )}
 
-          {canConfirm && !changingAvailability && (
+          {canConfirm && !changingAvailability && depositRequired &&
+            !alreadyWaived && depositInstructionsSent && (
+              <div className="border-b border-white/10 pb-6">
+                <h3 className="text-base font-semibold text-white">
+                  Step 3 — Guest Email and Toast Invoice
+                </h3>
+                {!guestEmailRecorded ? (
+                  <p className="mt-3 text-sm leading-6 text-amber-200">
+                    Deposit instructions were sent. Await the guest's valid
+                    email address before sending a Toast invoice or the
+                    payment notification. Refresh after the email reply is
+                    recorded. Notify Guest is unavailable until then.
+                  </p>
+                ) : (
+                  <p className="mt-3 text-sm leading-6 text-zinc-300">
+                    Guest email on record: <strong className="break-all text-white">
+                      {guestEmailValue}
+                    </strong>. Send the deposit invoice in Toast, then
+                    confirm below that the invoice was emailed.
+                  </p>
+                )}
+              </div>
+            )}
+
+          {canConfirm && !changingAvailability &&
+            (!depositRequired || alreadyWaived || invoiceStageReady) && (
             <div>
               <h3 className="text-base font-semibold text-white">
                 {depositRequired
-                  ? "Step 3 — Final Reservation Confirmation"
+                  ? "Step 4 — Final Reservation Confirmation"
                   : "Confirm Reservation"}
               </h3>
 
@@ -1264,7 +1314,7 @@ export default function ReservationWorkflowActions({
                     {formatStatus(depositStatus)}.
                   </p>
 
-                  {!alreadyWaived && (
+                  {!alreadyWaived && invoiceStageReady && (
                     <label className="mt-4 flex items-start gap-3 text-sm text-white">
                       <input
                         type="checkbox"
@@ -1286,7 +1336,7 @@ export default function ReservationWorkflowActions({
                     </label>
                   )}
 
-                  {!alreadyWaived && depositLinkSent && depositStatus === "pending" && (
+                  {!alreadyWaived && invoiceStageReady && depositLinkSent && depositStatus === "pending" && (
                     <div className="mt-4 space-y-2">
                       <button
                         type="button"

@@ -796,6 +796,7 @@ async function ProtectedReservationDetail({
                     depositStatus={
                       reservation.deposit_status
                     }
+                    guestEmail={reservation.email}
                     workflow={workflow}
                     confirmationNotification={
                       confirmationNotification

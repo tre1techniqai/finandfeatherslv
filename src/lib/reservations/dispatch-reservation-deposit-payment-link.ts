@@ -83,6 +83,39 @@ export async function dispatchReservationDepositPaymentLink(
     return reply("Deposit notification transport is not configured.", 503);
   }
 
+  // Enforce the deposit workflow before claiming a payment-invoice SMS operation.
+  // The invoice notification is the SECOND guest message; first the guest must
+  // have received the reservation-specific deposit-instructions notification.
+  // Only a verified Twilio Message SID with a recorded successful notification
+  // status qualifies. Unknown/pending/failed events must never be treated as sent.
+  const { data: depositDecision, error: depositDecisionError } = await staffDb
+    .from("reservation_notification_events")
+    .select("notification_status, notification_type, deposit_decision, twilio_message_sid")
+    .eq("event_key", `reservation_deposit_decision:${reservationId}`)
+    .maybeSingle();
+
+  if (depositDecisionError) {
+    console.error("Deposit instruction prerequisite lookup failed", {
+      reservationId,
+      code: depositDecisionError.code,
+    });
+    return reply("Unable to verify deposit-instructions SMS history. Review the reservation before proceeding.", 503);
+  }
+
+  if (
+    !depositDecision ||
+    depositDecision.notification_type !== "reservation_deposit_decision" ||
+    depositDecision.deposit_decision !== "required" ||
+    !["sent", "delivered"].includes(depositDecision.notification_status) ||
+    typeof depositDecision.twilio_message_sid !== "string" ||
+    !MESSAGE_SID.test(depositDecision.twilio_message_sid)
+  ) {
+    return reply(
+      "Deposit instructions must be sent and verified before notifying the guest about an emailed invoice. Review the deposit notification record; do not resend automatically.",
+      409,
+    );
+  }
+
   // Authenticated staff identity and role are checked again by registration RPC.
   const { data: registered, error: registrationError } = await staffDb.rpc(
     "register_reservation_deposit_payment_link_sms",
